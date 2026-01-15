@@ -17,25 +17,40 @@ class SafetyConfig:
     def __post_init__(self) -> None:
         if not self.protected_paths:
             self.protected_paths = [
+                # User data
                 "~/Documents",
                 "~/Desktop",
                 "~/Pictures",
                 "~/Movies",
                 "~/Music",
+                # Credentials & secrets
                 "~/.ssh",
                 "~/.gnupg",
+                "~/.aws",
+                "~/.azure",
+                "~/.config/gcloud",
+                "~/.kube",
+                "~/.docker/config.json",
                 "~/Library/Keychains",
+                # App data (not caches)
+                "~/Library/Preferences",
+                "~/Library/Application Support/MobileSync",  # iOS backups
+                "~/Library/Application Support/AddressBook",
+                "~/Library/Application Support/Calendar",
+                "~/Library/Messages",
+                "~/Library/Mail",
+                # Databases
+                "~/Library/Application Support/Firefox/Profiles/*/places.sqlite",
+                "~/Library/Application Support/Firefox/Profiles/*/logins.json",
             ]
 
 
 class SafetyChecker:
     """Validates operations before execution."""
 
-    # Paths that should never be deleted
+    # Paths that should NEVER be deleted - catastrophic if removed
     NEVER_DELETE: set[Path] = {
-        Path.home() / ".ssh",
-        Path.home() / ".gnupg",
-        Path.home() / "Library/Keychains",
+        # System directories
         Path("/System"),
         Path("/Applications"),
         Path("/usr"),
@@ -43,6 +58,32 @@ class SafetyChecker:
         Path("/sbin"),
         Path("/Library"),
         Path("/private/var"),
+        Path("/private/etc"),
+        Path("/cores"),
+        # User credentials - SENSITIVE AF
+        Path.home() / ".ssh",
+        Path.home() / ".gnupg",
+        Path.home() / ".aws",
+        Path.home() / ".azure",
+        Path.home() / ".kube",
+        Path.home() / ".config/gcloud",
+        Path.home() / "Library/Keychains",
+        # User data
+        Path.home() / "Documents",
+        Path.home() / "Desktop",
+        Path.home() / "Pictures",
+        Path.home() / "Movies",
+        Path.home() / "Music",
+        Path.home() / "Downloads",  # Don't auto-delete downloads
+        # Critical app data
+        Path.home() / "Library/Preferences",
+        Path.home() / "Library/Messages",
+        Path.home() / "Library/Mail",
+        Path.home() / "Library/Calendars",
+        Path.home() / "Library/Application Support/MobileSync",  # iOS backups
+        Path.home() / "Library/Application Support/AddressBook",
+        # iCloud
+        Path.home() / "Library/Mobile Documents",
     }
 
     # Paths that are safe to clean (allow-list approach for certain system paths)
@@ -54,6 +95,58 @@ class SafetyChecker:
         Path.home() / ".cache",
     }
 
+    # Sensitive file patterns - NEVER delete these even in safe directories
+    SENSITIVE_FILE_PATTERNS: set[str] = {
+        # Browser credentials & data
+        "Login Data",
+        "Login Data-journal",
+        "Cookies",
+        "Cookies-journal",
+        "Web Data",
+        "Web Data-journal",
+        "History",
+        "History-journal",
+        "Bookmarks",
+        "Preferences",
+        "Secure Preferences",
+        "logins.json",
+        "key4.db",
+        "cert9.db",
+        "places.sqlite",
+        "formhistory.sqlite",
+        # Encryption keys
+        "*.pem",
+        "*.key",
+        "*.crt",
+        "*.p12",
+        "*.pfx",
+        # Credentials
+        "credentials",
+        "credentials.json",
+        "token.json",
+        "*.keychain",
+        "*.keychain-db",
+    }
+
+    # Directories that are always safe to delete entirely
+    SAFE_DIR_NAMES: set[str] = {
+        "Cache",
+        "Code Cache",
+        "GPUCache",
+        "ShaderCache",
+        "GrShaderCache",
+        "Service Worker",
+        "CachedData",
+        "CachedExtensions",
+        "CachedExtensionVSIXs",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+        "DerivedData",
+    }
+
     def __init__(self, config: SafetyConfig | None = None) -> None:
         self.config = config or SafetyConfig()
 
@@ -63,6 +156,10 @@ class SafetyChecker:
             resolved = path.resolve()
         except (OSError, RuntimeError):
             return False, "Cannot resolve path"
+
+        # Check for sensitive file patterns first
+        if self._is_sensitive_file(path):
+            return False, f"Sensitive file detected: {path.name}"
 
         # Never delete protected paths
         for protected in self.NEVER_DELETE:
@@ -100,6 +197,26 @@ class SafetyChecker:
                 return False, "Cannot resolve symlink"
 
         return True, "OK"
+
+    def _is_sensitive_file(self, path: Path) -> bool:
+        """Check if file matches sensitive patterns."""
+        name = path.name
+
+        # Exact match
+        if name in self.SENSITIVE_FILE_PATTERNS:
+            return True
+
+        # Wildcard patterns (*.pem, *.key, etc.)
+        for pattern in self.SENSITIVE_FILE_PATTERNS:
+            if pattern.startswith("*"):
+                if name.endswith(pattern[1:]):
+                    return True
+
+        return False
+
+    def is_safe_directory(self, path: Path) -> bool:
+        """Check if a directory name is known-safe to delete entirely."""
+        return path.name in self.SAFE_DIR_NAMES
 
     def _is_in_safe_cache_root(self, path: Path) -> bool:
         """Check if path is under a known safe cache root."""
