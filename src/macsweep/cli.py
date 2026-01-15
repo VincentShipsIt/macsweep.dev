@@ -165,12 +165,13 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
         console.print("[yellow]No items found to clean.[/yellow]")
         return
 
-    total_size = sum(item.size for item in all_items)
     safety = SafetyChecker()
 
     # Validate all items
     validation = safety.validate_batch([item.path for item in all_items])
     safe_items = [item for item in all_items if item.path in validation["safe"]]
+    safe_items_sorted = sorted(safe_items, key=lambda x: x.size, reverse=True)
+    safe_total_size = sum(item.size for item in safe_items)
 
     if validation["blocked"]:
         console.print(f"[yellow]{len(validation['blocked'])} items blocked for safety[/yellow]")
@@ -183,24 +184,21 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
         table.add_column("Size", justify="right", style="green")
         table.add_column("Category", style="yellow")
 
-        for item in safe_items[:20]:
+        for item in safe_items_sorted:
             table.add_row(
                 str(item.path).replace(str(Path.home()), "~"),
                 format_size(item.size),
                 item.subcategory,
             )
 
-        if len(safe_items) > 20:
-            table.add_row("...", "", f"+{len(safe_items) - 20} more")
-
         console.print(table)
-        console.print(f"\n[bold]Total: {format_size(total_size)}[/bold]")
+        console.print(f"\n[bold]Total: {format_size(safe_total_size)}[/bold]")
         console.print("\n[dim]Run with [bold]--execute[/bold] to delete[/dim]")
         return
 
     # Actual deletion
     if not force:
-        confirm = typer.confirm(f"Delete {len(safe_items)} items ({format_size(total_size)})?")
+        confirm = typer.confirm(f"Delete {len(safe_items)} items ({format_size(safe_total_size)})?")
         if not confirm:
             console.print("[yellow]Cancelled.[/yellow]")
             return
