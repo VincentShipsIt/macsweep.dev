@@ -477,8 +477,7 @@ class MacSweepApp(App):
         """Apply size filter to scanned items."""
         if self._size_filter_enabled:
             self._scanned_items = [
-                item for item in self._all_scanned_items
-                if item.size >= self.MIN_SIZE_BYTES
+                item for item in self._all_scanned_items if item.size >= self.MIN_SIZE_BYTES
             ]
         else:
             self._scanned_items = list(self._all_scanned_items)

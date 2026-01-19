@@ -1,6 +1,8 @@
 """CLI interface for MacSweep."""
 
 import asyncio
+import logging
+import time
 from pathlib import Path
 
 import typer
@@ -10,6 +12,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from macsweep import __version__
+from macsweep.core.logging import configure_logging, get_logger
 from macsweep.core.safety import SafetyChecker
 from macsweep.utils.size import format_size, parse_size
 
@@ -20,6 +23,9 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+# Initialize logger
+logger = get_logger()
 
 
 def version_callback(value: bool) -> None:
@@ -38,9 +44,29 @@ def main(
         is_eager=True,
         help="Show version and exit",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-V",
+        help="Enable verbose output",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug logging",
+    ),
 ) -> None:
     """MacSweep - Clean, optimize, and monitor your Mac."""
-    pass
+    # Configure logging based on verbosity
+    log_level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
+    configure_logging(
+        level=log_level,
+        enable_console_logging=verbose or debug,
+        enable_file_logging=True,
+        enable_audit_log=True,
+    )
+    if debug:
+        logger.debug("Debug logging enabled")
 
 
 @app.command()
@@ -62,6 +88,9 @@ async def _scan_async(category: str | None, json_output: bool) -> None:
     from macsweep.modules.service_workers import ServiceWorkerModule
     from macsweep.modules.system.caches import SystemCachesModule
 
+    logger.info("Starting scan", extra={"category": category})
+    start_time = time.time()
+
     modules = [
         ServiceWorkerModule(),
         SystemCachesModule(),
@@ -82,11 +111,27 @@ async def _scan_async(category: str | None, json_output: bool) -> None:
         console=console,
     ) as progress:
         for module in modules:
+            module_start = time.time()
             task = progress.add_task(f"Scanning {module.name}...", total=None)
             result = await module.get_scan_result()
             results.append(result)
             total_size += result.total_size
             progress.remove_task(task)
+
+            # Log scan result for each module
+            module_duration = time.time() - module_start
+            logger.debug(
+                f"Scanned {module.name}: {len(result.items)} items, {result.total_size} bytes"
+            )
+            logger.audit_scan(
+                module_name=module.name,
+                items_found=len(result.items),
+                total_size=result.total_size,
+                duration_seconds=module_duration,
+            )
+
+    total_duration = time.time() - start_time
+    logger.info(f"Scan complete: {total_size} bytes in {total_duration:.2f}s")
 
     if json_output:
         import json
@@ -148,6 +193,9 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
     from macsweep.modules.service_workers import ServiceWorkerModule
     from macsweep.modules.system.caches import SystemCachesModule
 
+    logger.info(f"Starting clean (dry_run={dry_run}, category={category})")
+    start_time = time.time()
+
     modules = [
         ServiceWorkerModule(),
         SystemCachesModule(),
@@ -163,6 +211,7 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
 
     if not all_items:
         console.print("[yellow]No items found to clean.[/yellow]")
+        logger.info("Clean completed: no items found")
         return
 
     safety = SafetyChecker()
@@ -175,6 +224,7 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
 
     if validation["blocked"]:
         console.print(f"[yellow]{len(validation['blocked'])} items blocked for safety[/yellow]")
+        logger.warning(f"{len(validation['blocked'])} items blocked by safety checker")
 
     if dry_run:
         console.print(Panel("[bold yellow]DRY RUN[/bold yellow] - No files will be deleted"))
@@ -190,10 +240,27 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
                 format_size(item.size),
                 item.subcategory,
             )
+            # Log each item that would be cleaned
+            logger.audit_deletion(
+                path=item.path,
+                size_bytes=item.size,
+                category=item.category,
+                subcategory=item.subcategory,
+                success=True,
+                dry_run=True,
+            )
 
         console.print(table)
         console.print(f"\n[bold]Total: {format_size(safe_total_size)}[/bold]")
         console.print("\n[dim]Run with [bold]--execute[/bold] to delete[/dim]")
+
+        duration = time.time() - start_time
+        logger.audit_clean_summary(
+            items_cleaned=len(safe_items),
+            bytes_freed=safe_total_size,
+            duration_seconds=duration,
+            dry_run=True,
+        )
         return
 
     # Actual deletion
@@ -201,9 +268,11 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
         confirm = typer.confirm(f"Delete {len(safe_items)} items ({format_size(safe_total_size)})?")
         if not confirm:
             console.print("[yellow]Cancelled.[/yellow]")
+            logger.info("Clean cancelled by user")
             return
 
     bytes_freed = 0
+    errors = 0
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -211,20 +280,48 @@ async def _clean_async(dry_run: bool, category: str | None, force: bool) -> None
     ) as progress:
         task = progress.add_task("Cleaning...", total=len(safe_items))
         for item in safe_items:
+            success = False
+            error_msg = None
             try:
                 if item.path.is_dir():
                     import shutil
 
                     bytes_freed += item.size
                     shutil.rmtree(item.path, ignore_errors=True)
+                    success = True
                 elif item.path.exists():
                     bytes_freed += item.path.stat().st_size
                     item.path.unlink()
-            except (PermissionError, OSError):
-                pass
+                    success = True
+            except (PermissionError, OSError) as e:
+                errors += 1
+                error_msg = str(e)
+                logger.error(f"Failed to delete {item.path}: {e}")
+
+            # Audit log each deletion
+            logger.audit_deletion(
+                path=item.path,
+                size_bytes=item.size,
+                category=item.category,
+                subcategory=item.subcategory,
+                success=success,
+                dry_run=False,
+                error=error_msg,
+            )
             progress.advance(task)
 
+    duration = time.time() - start_time
     console.print(f"\n[bold green]Cleaned {format_size(bytes_freed)}[/bold green]")
+
+    # Log summary
+    logger.info(f"Clean complete: freed {bytes_freed} bytes, {errors} errors")
+    logger.audit_clean_summary(
+        items_cleaned=len(safe_items) - errors,
+        bytes_freed=bytes_freed,
+        duration_seconds=duration,
+        dry_run=False,
+        errors=errors,
+    )
 
 
 @app.command("service-workers")
