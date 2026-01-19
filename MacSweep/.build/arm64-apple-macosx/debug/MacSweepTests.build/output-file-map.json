@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/master.swiftdeps"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Tests/MacSweepTests.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/MacSweepTests.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/MacSweepTests.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/MacSweepTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/MacSweepTests.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweepTests.build/MacSweepTests.dia"
+  }
+}

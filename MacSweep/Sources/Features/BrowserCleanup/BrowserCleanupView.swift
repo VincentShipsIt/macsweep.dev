@@ -1,0 +1,464 @@
+import SwiftUI
+
+/// View for browser cleanup with per-browser breakdown
+struct BrowserCleanupView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var isScanning = false
+    @State private var browserResults: [BrowserScanResult] = []
+    @State private var selectedItems: Set<UUID> = []
+    @State private var showingConfirmation = false
+
+    private let browsers: [any BrowserModule] = [
+        ChromeModule(),
+        SafariModule(),
+        FirefoxModule(),
+        BraveModule(),
+        ArcModule(),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            if isScanning {
+                scanningView
+            } else if browserResults.isEmpty {
+                emptyState
+            } else {
+                resultsList
+            }
+
+            if !browserResults.isEmpty && !isScanning {
+                Divider()
+                footer
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Browser Cleanup")
+                    .font(.title)
+                    .fontWeight(.bold)
+
+                Text("Remove caches and service workers from browsers")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                Task {
+                    await scanBrowsers()
+                }
+            } label: {
+                Label("Scan Browsers", systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isScanning)
+        }
+        .padding()
+    }
+
+    // MARK: - Scanning View
+
+    private var scanningView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+
+            Text("Scanning browsers...")
+                .font(.headline)
+
+            Text("Finding caches and service workers")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "globe")
+                .font(.system(size: 64))
+                .foregroundStyle(.secondary)
+
+            Text("No browser data found")
+                .font(.headline)
+
+            Text("Run a scan to find browser caches")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Scan Now") {
+                Task {
+                    await scanBrowsers()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Results List
+
+    private var resultsList: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                ForEach(browserResults) { result in
+                    BrowserResultCard(
+                        result: result,
+                        selectedItems: $selectedItems
+                    )
+                }
+
+                // Service Workers Section
+                if !serviceWorkerItems.isEmpty {
+                    ServiceWorkerSection(
+                        items: serviceWorkerItems,
+                        selectedItems: $selectedItems
+                    )
+                }
+            }
+            .padding()
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(selectedItems.count) items selected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Will free \(selectedSize)")
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            Button("Select All") {
+                selectAll()
+            }
+            .buttonStyle(.bordered)
+
+            Button("Clean") {
+                showingConfirmation = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(selectedItems.isEmpty)
+        }
+        .padding()
+        .confirmationDialog(
+            "Clean browser data?",
+            isPresented: $showingConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clean", role: .destructive) {
+                Task {
+                    await cleanSelected()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove \(selectedSize) of browser caches and service workers. Browsers will recreate caches as needed.")
+        }
+    }
+
+    // MARK: - Actions
+
+    private func scanBrowsers() async {
+        isScanning = true
+        browserResults = []
+        selectedItems = []
+
+        defer { isScanning = false }
+
+        for browser in browsers {
+            guard browser.isInstalled else { continue }
+
+            do {
+                let items = try await browser.scan()
+                if !items.isEmpty {
+                    let result = BrowserScanResult(
+                        id: UUID(),
+                        browserName: browser.name,
+                        browserIcon: browser.icon,
+                        isRunning: browser.isRunning,
+                        items: items
+                    )
+                    browserResults.append(result)
+                }
+            } catch {
+                print("Error scanning \(browser.name): \(error)")
+            }
+        }
+
+        // Scan service workers
+        let swModule = ServiceWorkerModule()
+        if let swItems = try? await swModule.scan(), !swItems.isEmpty {
+            // Service worker items are handled separately
+            appState.scanResults.append(contentsOf: swItems)
+        }
+    }
+
+    private func cleanSelected() async {
+        let itemsToClean = allItems.filter { selectedItems.contains($0.id) }
+
+        for browser in browsers {
+            let browserItems = itemsToClean.filter { $0.module == browser.id }
+            if !browserItems.isEmpty {
+                _ = try? await browser.clean(items: browserItems, dryRun: false)
+            }
+        }
+
+        // Rescan
+        await scanBrowsers()
+    }
+
+    private func selectAll() {
+        selectedItems = Set(allItems.map(\.id))
+    }
+
+    // MARK: - Computed
+
+    private var allItems: [CleanupItem] {
+        browserResults.flatMap(\.items)
+    }
+
+    private var serviceWorkerItems: [CleanupItem] {
+        appState.scanResults.filter { $0.module == "service-workers" }
+    }
+
+    private var selectedSize: String {
+        let total = allItems
+            .filter { selectedItems.contains($0.id) }
+            .reduce(0) { $0 + $1.size }
+        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+}
+
+// MARK: - Browser Scan Result
+
+struct BrowserScanResult: Identifiable {
+    let id: UUID
+    let browserName: String
+    let browserIcon: String
+    let isRunning: Bool
+    let items: [CleanupItem]
+
+    var totalSize: Int64 {
+        items.reduce(0) { $0 + $1.size }
+    }
+
+    var formattedSize: String {
+        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+    }
+}
+
+// MARK: - Browser Result Card
+
+struct BrowserResultCard: View {
+    let result: BrowserScanResult
+    @Binding var selectedItems: Set<UUID>
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            Button {
+                withAnimation {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: result.browserIcon)
+                        .font(.title2)
+                        .frame(width: 32)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(result.browserName)
+                                .font(.headline)
+
+                            if result.isRunning {
+                                Text("Running")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(.orange.opacity(0.2), in: Capsule())
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+
+                        Text("\(result.items.count) items • \(result.formattedSize)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding()
+
+            // Expanded items
+            if isExpanded {
+                Divider()
+
+                VStack(spacing: 0) {
+                    ForEach(result.items) { item in
+                        BrowserItemRow(
+                            item: item,
+                            isSelected: selectedItems.contains(item.id)
+                        ) {
+                            if selectedItems.contains(item.id) {
+                                selectedItems.remove(item.id)
+                            } else {
+                                selectedItems.insert(item.id)
+                            }
+                        }
+
+                        if item.id != result.items.last?.id {
+                            Divider()
+                                .padding(.leading, 48)
+                        }
+                    }
+                }
+            }
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Browser Item Row
+
+struct BrowserItemRow: View {
+    let item: CleanupItem
+    let isSelected: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                Image(systemName: item.icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.moduleName)
+                        .font(.subheadline)
+
+                    Text(item.path.path)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer()
+
+                Text(item.formattedSize)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Service Worker Section
+
+struct ServiceWorkerSection: View {
+    let items: [CleanupItem]
+    @Binding var selectedItems: Set<UUID>
+    @State private var isExpanded = false
+
+    var totalSize: String {
+        let total = items.reduce(0) { $0 + $1.size }
+        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "app.badge.checkmark")
+                        .font(.title2)
+                        .frame(width: 32)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("App Service Workers")
+                            .font(.headline)
+
+                        Text("\(items.count) apps • \(totalSize)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding()
+
+            if isExpanded {
+                Divider()
+
+                VStack(spacing: 0) {
+                    ForEach(items) { item in
+                        BrowserItemRow(
+                            item: item,
+                            isSelected: selectedItems.contains(item.id)
+                        ) {
+                            if selectedItems.contains(item.id) {
+                                selectedItems.remove(item.id)
+                            } else {
+                                selectedItems.insert(item.id)
+                            }
+                        }
+
+                        if item.id != items.last?.id {
+                            Divider()
+                                .padding(.leading, 48)
+                        }
+                    }
+                }
+            }
+        }
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+#Preview {
+    BrowserCleanupView()
+        .environmentObject(AppState())
+        .frame(width: 600, height: 500)
+}

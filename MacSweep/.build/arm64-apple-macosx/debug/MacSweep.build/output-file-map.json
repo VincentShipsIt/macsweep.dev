@@ -1,0 +1,327 @@
+{
+  "": {
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/master.swiftdeps"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/App/AppState.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppState.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppState.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppState~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppState.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppState.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/App/MacSweepApp.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MacSweepApp.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MacSweepApp.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MacSweepApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MacSweepApp.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MacSweepApp.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Maintenance/MaintenanceActions.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MaintenanceActions.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MaintenanceActions.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MaintenanceActions~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MaintenanceActions.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MaintenanceActions.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Monitoring/ProcessMonitor.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ProcessMonitor.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ProcessMonitor.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ProcessMonitor~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ProcessMonitor.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ProcessMonitor.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Monitoring/SystemMonitor.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemMonitor.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemMonitor.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemMonitor~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemMonitor.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemMonitor.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Permissions/FullDiskAccess.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/FullDiskAccess.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/FullDiskAccess.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/FullDiskAccess~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/FullDiskAccess.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/FullDiskAccess.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Safety/SafetyChecker.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SafetyChecker.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SafetyChecker.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SafetyChecker~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SafetyChecker.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SafetyChecker.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/AppUninstallerModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/BrowserModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/DevToolsModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/DockerModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DockerModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DockerModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DockerModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DockerModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DockerModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/DuplicateFinderModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DuplicateFinderModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DuplicateFinderModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DuplicateFinderModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DuplicateFinderModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DuplicateFinderModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/LargeFilesModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/MailAttachmentsModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/NetworkModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/PackageManagerModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagerModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagerModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagerModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagerModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagerModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/PrivacyModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/ServiceWorkerModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ServiceWorkerModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ServiceWorkerModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ServiceWorkerModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ServiceWorkerModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ServiceWorkerModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/SystemCacheModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCacheModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCacheModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCacheModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCacheModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCacheModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/Modules/TrashBinsModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/ScanEngine.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanEngine.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanEngine.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanEngine.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanEngine.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Scanning/ScanModule.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanModule.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanModule.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanModule~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanModule.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ScanModule.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Shredder/SecureDelete.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SecureDelete.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SecureDelete.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SecureDelete~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SecureDelete.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SecureDelete.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Core/Storage/DiskAnalyzer.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DiskAnalyzer.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DiskAnalyzer.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DiskAnalyzer~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DiskAnalyzer.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DiskAnalyzer.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/AppUninstaller/AppUninstallerView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/AppUninstallerView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/BrowserCleanup/BrowserCleanupView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserCleanupView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserCleanupView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserCleanupView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserCleanupView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BrowserCleanupView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/ContentView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ContentView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ContentView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ContentView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ContentView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/DashboardView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DashboardView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DashboardView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DashboardView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DashboardView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DashboardView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/BatteryDetailView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BatteryDetailView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BatteryDetailView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BatteryDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BatteryDetailView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/BatteryDetailView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/CPUDetailView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/CPUDetailView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/CPUDetailView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/CPUDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/CPUDetailView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/CPUDetailView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/Components/MetricGraph.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MetricGraph.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MetricGraph.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MetricGraph~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MetricGraph.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MetricGraph.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/MemoryDetailView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MemoryDetailView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MemoryDetailView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MemoryDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MemoryDetailView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MemoryDetailView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/NetworkDetailView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkDetailView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkDetailView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkDetailView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/NetworkDetailView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Dashboard/WidgetDetails/StorageDetailView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/StorageDetailView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/StorageDetailView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/StorageDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/StorageDetailView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/StorageDetailView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/DevTools/DevToolsView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/DevToolsView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/DevTools/PackageManagersView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagersView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagersView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagersView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagersView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PackageManagersView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/LargeFiles/LargeFilesView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/LargeFilesView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/MailAttachments/MailAttachmentsView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MailAttachmentsView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/MenuBar/MenuBarView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MenuBarView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MenuBarView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MenuBarView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MenuBarView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/MenuBarView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Onboarding/OnboardingView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OnboardingView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OnboardingView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OnboardingView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OnboardingView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OnboardingView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Optimization/OptimizationView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OptimizationView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OptimizationView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OptimizationView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OptimizationView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/OptimizationView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Privacy/PrivacyView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/PrivacyView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/Shredder/ShredderView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ShredderView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ShredderView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ShredderView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ShredderView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/ShredderView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/SpaceLens/SpaceLensView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SpaceLensView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SpaceLensView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SpaceLensView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SpaceLensView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SpaceLensView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/SystemCleanup/SystemCleanupView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCleanupView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCleanupView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCleanupView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCleanupView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/SystemCleanupView.dia"
+  },
+  "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/Sources/Features/TrashBins/TrashBinsView.swift": {
+    "dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsView.d",
+    "object": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsView.swift.o",
+    "swiftmodule": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsView.swiftdeps",
+    "diagnostics": "/Users/decod3rs/www/vincentshipsit/macsweep/MacSweep/.build/arm64-apple-macosx/debug/MacSweep.build/TrashBinsView.dia"
+  }
+}

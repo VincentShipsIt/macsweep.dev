@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="100" fill="#1a1a2e"/>
+
+  <!-- Mac Monitor -->
+  <rect x="100" y="100" width="220" height="160" rx="12" fill="#e0e0e0"/>
+
+  <!-- Screen -->
+  <rect x="112" y="112" width="196" height="124" rx="6" fill="#2d3748"/>
+
+  <!-- Monitor chin -->
+  <rect x="100" y="248" width="220" height="24" rx="0" fill="#e0e0e0"/>
+
+  <!-- Chin button -->
+  <circle cx="210" cy="260" r="4" fill="#a0a0a0"/>
+
+  <!-- Stand neck -->
+  <rect x="185" y="272" width="50" height="20" fill="#d0d0d0"/>
+
+  <!-- Stand base -->
+  <ellipse cx="210" cy="300" rx="50" ry="10" fill="#d0d0d0"/>
+
+  <!-- Broom handle -->
+  <rect x="300" y="80" width="14" height="160" rx="4" fill="#8B5A2B" transform="rotate(40, 307, 160)"/>
+
+  <!-- Broom band -->
+  <rect x="300" y="220" width="14" height="10" rx="2" fill="#6B4423" transform="rotate(40, 307, 225)"/>
+
+  <!-- Broom bristles (simple) -->
+  <path d="M340 280 L420 360 L440 340 L380 280 Q360 260 340 280 Z" fill="#4ECDC4"/>
+
+  <!-- Sparkles (simple stars) -->
+  <circle cx="150" cy="150" r="6" fill="#4ECDC4"/>
+  <circle cx="200" cy="180" r="4" fill="#4ECDC4"/>
+  <circle cx="160" cy="200" r="5" fill="#4ECDC4"/>
+
+  <!-- Small dust dots -->
+  <circle cx="420" cy="400" r="8" fill="#4a5568"/>
+  <circle cx="450" cy="420" r="6" fill="#4a5568"/>
+  <circle cx="440" cy="380" r="5" fill="#4a5568"/>
+</svg>
