@@ -1,4 +1,13 @@
-# PRD-001: MacSweep Native macOS App
+## PRD: MacSweep Native macOS App
+
+**ID:** prd-001
+**Title:** MacSweep Native macOS App
+**Status:** Draft
+**Owner:** VincentShipsIt
+**Created:** 2026-01-15
+**Updated:** 2026-01-19
+
+---
 
 ## Overview
 Open-source CleanMyMac replacement built with Swift + SwiftUI. Native macOS system utility for disk cleanup, app management, and system optimization.

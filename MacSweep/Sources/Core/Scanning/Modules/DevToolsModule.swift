@@ -245,6 +245,16 @@ struct DevArtifactPattern {
             directoryName: "venv",
             siblingIndicators: ["requirements.txt", "pyproject.toml", "setup.py"]
         ),
+        DevArtifactPattern(
+            name: "pytest cache",
+            directoryName: ".pytest_cache",
+            siblingIndicators: ["pytest.ini", "pyproject.toml", "setup.py"]
+        ),
+        DevArtifactPattern(
+            name: "mypy cache",
+            directoryName: ".mypy_cache",
+            siblingIndicators: ["myproject.toml", "setup.py"]
+        ),
 
         // Gradle (Android/Java)
         DevArtifactPattern(
@@ -311,6 +321,62 @@ struct DevArtifactPattern {
             directoryName: "node_modules",
             siblingIndicators: ["bun.lockb"]
         ),
+
+        // Next.js
+        DevArtifactPattern(
+            name: "Next.js build",
+            directoryName: ".next",
+            siblingIndicators: ["next.config.js", "next.config.mjs", "next.config.ts"]
+        ),
+
+        // Nuxt.js
+        DevArtifactPattern(
+            name: "Nuxt.js build",
+            directoryName: ".nuxt",
+            siblingIndicators: ["nuxt.config.js", "nuxt.config.ts"]
+        ),
+
+        // Turborepo
+        DevArtifactPattern(
+            name: "Turbo cache",
+            directoryName: ".turbo",
+            siblingIndicators: ["turbo.json"]
+        ),
+
+        // General dist/build output
+        DevArtifactPattern(
+            name: "dist folder",
+            directoryName: "dist",
+            siblingIndicators: ["package.json", "tsconfig.json"]
+        ),
+
+        // Parcel
+        DevArtifactPattern(
+            name: "Parcel cache",
+            directoryName: ".parcel-cache",
+            siblingIndicators: ["package.json"]
+        ),
+
+        // Vite
+        DevArtifactPattern(
+            name: "Vite cache",
+            directoryName: ".vite",
+            siblingIndicators: ["vite.config.js", "vite.config.ts"]
+        ),
+
+        // ESLint
+        DevArtifactPattern(
+            name: "ESLint cache",
+            directoryName: ".eslintcache",
+            siblingIndicators: [".eslintrc.js", ".eslintrc.json", "eslint.config.js"]
+        ),
+
+        // General cache directories
+        DevArtifactPattern(
+            name: "Cache folder",
+            directoryName: ".cache",
+            siblingIndicators: ["package.json"]
+        ),
     ]
 }
 
@@ -322,6 +388,7 @@ struct ProjectInfo: Identifiable {
     let type: ProjectType
     let artifactPaths: [URL]
     var artifactSize: Int64 = 0
+    var lastModified: Date?
 
     var name: String {
         path.lastPathComponent
@@ -329,6 +396,33 @@ struct ProjectInfo: Identifiable {
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: artifactSize, countStyle: .file)
+    }
+
+    /// Whether the project was modified within the last 24 hours
+    var isRecentlyModified: Bool {
+        guard let lastModified = lastModified else { return false }
+        let hoursSinceModified = Date().timeIntervalSince(lastModified) / 3600
+        return hoursSinceModified < 24
+    }
+
+    /// Whether the project was modified within the last 48 hours (warning threshold)
+    var isModifiedRecently: Bool {
+        guard let lastModified = lastModified else { return false }
+        let hoursSinceModified = Date().timeIntervalSince(lastModified) / 3600
+        return hoursSinceModified < 48
+    }
+
+    /// Human-readable time since last modification
+    var timeSinceModified: String? {
+        guard let lastModified = lastModified else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: lastModified, relativeTo: Date())
+    }
+
+    /// Command to regenerate the artifacts
+    var regenerateCommand: String {
+        type.regenerateCommand
     }
 }
 
@@ -358,6 +452,21 @@ enum ProjectType: String, CaseIterable {
         case .dotnet: return "network"
         }
     }
+
+    var regenerateCommand: String {
+        switch self {
+        case .nodejs: return "npm install"
+        case .swift: return "swift build"
+        case .rust: return "cargo build"
+        case .python: return "pip install -r requirements.txt"
+        case .java: return "./gradlew build"
+        case .xcode: return "xcodebuild"
+        case .go: return "go build"
+        case .ruby: return "bundle install"
+        case .php: return "composer install"
+        case .dotnet: return "dotnet build"
+        }
+    }
 }
 
 actor ProjectScanner {
@@ -366,11 +475,11 @@ actor ProjectScanner {
         var projects: [ProjectInfo] = []
 
         let projectIndicators: [(String, ProjectType, [String])] = [
-            ("package.json", .nodejs, ["node_modules"]),
+            ("package.json", .nodejs, ["node_modules", ".next", ".nuxt", ".turbo", "dist", ".cache", ".parcel-cache"]),
             ("Package.swift", .swift, [".build"]),
             ("Cargo.toml", .rust, ["target"]),
-            ("requirements.txt", .python, [".venv", "venv", "__pycache__"]),
-            ("pyproject.toml", .python, [".venv", "venv", "__pycache__"]),
+            ("requirements.txt", .python, [".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache"]),
+            ("pyproject.toml", .python, [".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache"]),
             ("build.gradle", .java, [".gradle", "build"]),
             ("build.gradle.kts", .java, [".gradle", "build"]),
             ("go.mod", .go, ["vendor"]),
@@ -380,7 +489,7 @@ actor ProjectScanner {
 
         guard let enumerator = FileManager.default.enumerator(
             at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
@@ -406,12 +515,27 @@ actor ProjectScanner {
                     // Find artifact directories
                     var artifacts: [URL] = []
                     var totalSize: Int64 = 0
+                    var mostRecentModification: Date?
 
                     for artifactDir in artifactDirs {
                         let artifactPath = projectPath.appending(path: artifactDir)
                         if FileManager.default.fileExists(atPath: artifactPath.path) {
                             artifacts.append(artifactPath)
                             totalSize += (try? await DiskAnalyzer.directorySize(at: artifactPath)) ?? 0
+
+                            // Track most recent modification
+                            if let modDate = try? artifactPath.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                                if mostRecentModification == nil || modDate > mostRecentModification! {
+                                    mostRecentModification = modDate
+                                }
+                            }
+                        }
+                    }
+
+                    // Also check the project indicator file's modification date
+                    if let indicatorModDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                        if mostRecentModification == nil || indicatorModDate > mostRecentModification! {
+                            mostRecentModification = indicatorModDate
                         }
                     }
 
@@ -422,6 +546,7 @@ actor ProjectScanner {
                             artifactPaths: artifacts
                         )
                         project.artifactSize = totalSize
+                        project.lastModified = mostRecentModification
                         projects.append(project)
                     }
 

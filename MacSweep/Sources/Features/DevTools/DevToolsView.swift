@@ -264,9 +264,24 @@ struct BuildArtifactsView: View {
     private var footer: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("\(selectedItems.count) selected")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if recentlyModifiedCount > 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption2)
+                            Text("\(recentlyModifiedCount) active")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.orange.opacity(0.15), in: Capsule())
+                    }
+                }
 
                 Text("Will free \(selectedSize)")
                     .font(.headline)
@@ -280,10 +295,11 @@ struct BuildArtifactsView: View {
             }
             .buttonStyle(.bordered)
 
-            Button("Select Caches Only") {
-                selectCachesOnly()
+            Button("Select Stale Only") {
+                selectStaleOnly()
             }
             .buttonStyle(.bordered)
+            .help("Select only projects not modified in the last 48 hours")
 
             Button("Clean Selected") {
                 showingConfirmation = true
@@ -305,7 +321,11 @@ struct BuildArtifactsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will move \(selectedSize) of developer artifacts to Trash.")
+            if recentlyModifiedCount > 0 {
+                Text("Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move \(selectedSize) of developer artifacts to Trash.")
+            } else {
+                Text("This will move \(selectedSize) of developer artifacts to Trash.")
+            }
         }
     }
 
@@ -346,9 +366,25 @@ struct BuildArtifactsView: View {
         }
     }
 
+    private func selectStaleOnly() {
+        // Select only projects that haven't been modified recently (not in last 48 hours)
+        let staleProjectIds = Set(
+            projects.filter { !$0.isModifiedRecently }.flatMap { project in
+                allCleanupItems.filter { item in
+                    project.artifactPaths.contains(item.path)
+                }.map(\.id)
+            }
+        )
+
+        // Also include system artifacts (DerivedData, etc.) that are safe
+        let systemIds = Set(systemArtifacts.map(\.id))
+
+        selectedItems = staleProjectIds.union(systemIds)
+    }
+
     private func selectCachesOnly() {
         // Select only cache-type artifacts (not source dependencies)
-        let cacheNames = ["DerivedData", "__pycache__", ".gradle", "build", ".build", "target", "bin", "obj"]
+        let cacheNames = ["DerivedData", "__pycache__", ".gradle", "build", ".build", "target", "bin", "obj", ".next", ".nuxt", ".turbo", ".cache"]
         selectedItems = Set(
             allCleanupItems.filter { item in
                 cacheNames.contains(where: { item.path.lastPathComponent.contains($0) || item.moduleName.contains($0) })
@@ -411,6 +447,20 @@ struct BuildArtifactsView: View {
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
     }
 
+    private var recentlyModifiedCount: Int {
+        // Count how many selected items belong to recently modified projects
+        var count = 0
+        for project in projects where project.isModifiedRecently {
+            let hasSelectedArtifact = allCleanupItems.contains { item in
+                project.artifactPaths.contains(item.path) && selectedItems.contains(item.id)
+            }
+            if hasSelectedArtifact {
+                count += 1
+            }
+        }
+        return count
+    }
+
     private func totalSizeForType(_ type: ProjectType) -> String {
         let total = projects.filter { $0.type == type }.reduce(0) { $0 + $1.artifactSize }
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
@@ -423,62 +473,134 @@ struct ProjectRow: View {
     let project: ProjectInfo
     let isSelected: Bool
     let onToggle: () -> Void
+    @State private var showingRegenCommand = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Selection checkbox
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-                .onTapGesture { onToggle() }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                // Selection checkbox
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .onTapGesture { onToggle() }
 
-            // Type icon
-            Image(systemName: project.type.icon)
-                .font(.title2)
-                .frame(width: 32)
-                .foregroundStyle(colorFor(type: project.type))
+                // Type icon
+                Image(systemName: project.type.icon)
+                    .font(.title2)
+                    .frame(width: 32)
+                    .foregroundStyle(colorFor(type: project.type))
 
-            // Project info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(project.name)
-                    .font(.body)
-                    .lineLimit(1)
+                // Project info
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(project.name)
+                            .font(.body)
+                            .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    Text(project.type.rawValue)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(colorFor(type: project.type).opacity(0.2), in: Capsule())
-                        .foregroundStyle(colorFor(type: project.type))
+                        // Recently modified warning
+                        if project.isRecentlyModified {
+                            HStack(spacing: 2) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.caption2)
+                                Text("Active")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.orange.opacity(0.15), in: Capsule())
+                            .help("Modified \(project.timeSinceModified ?? "recently") - this project may be in active development")
+                        } else if project.isModifiedRecently {
+                            HStack(spacing: 2) {
+                                Image(systemName: "clock")
+                                    .font(.caption2)
+                                Text("Recent")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.yellow)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.yellow.opacity(0.15), in: Capsule())
+                            .help("Modified \(project.timeSinceModified ?? "recently")")
+                        }
+                    }
 
-                    Text(project.path.path)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
+                    HStack(spacing: 8) {
+                        Text(project.type.rawValue)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(colorFor(type: project.type).opacity(0.2), in: Capsule())
+                            .foregroundStyle(colorFor(type: project.type))
+
+                        if let timeSince = project.timeSinceModified {
+                            Text(timeSince)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        Text(project.path.path)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
                 }
+
+                Spacer()
+
+                // Artifacts
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(project.formattedSize)
+                        .font(.headline)
+
+                    Text("\(project.artifactPaths.count) artifacts")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Info button for regeneration command
+                Button {
+                    showingRegenCommand.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .popover(isPresented: $showingRegenCommand) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Regenerate with:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Text(project.regenerateCommand)
+                                .font(.system(.caption, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
+
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(project.regenerateCommand, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy to clipboard")
+                        }
+                    }
+                    .padding()
+                }
+
+                // Reveal in Finder
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([project.path])
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-
-            Spacer()
-
-            // Artifacts
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(project.formattedSize)
-                    .font(.headline)
-
-                Text("\(project.artifactPaths.count) artifacts")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Reveal in Finder
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([project.path])
-            } label: {
-                Image(systemName: "folder")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
     }

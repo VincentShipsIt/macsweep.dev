@@ -14,7 +14,10 @@ struct BrowserCleanupView: View {
         FirefoxModule(),
         BraveModule(),
         ArcModule(),
+        EdgeModule(),
     ]
+
+    @State private var showSafariFDAWarning = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,6 +116,11 @@ struct BrowserCleanupView: View {
     private var resultsList: some View {
         ScrollView {
             VStack(spacing: 16) {
+                // Safari FDA Warning
+                if safariNeedsFDA {
+                    SafariFDAWarningBanner()
+                }
+
                 ForEach(browserResults) { result in
                     BrowserResultCard(
                         result: result,
@@ -130,6 +138,12 @@ struct BrowserCleanupView: View {
             }
             .padding()
         }
+    }
+
+    /// Check if Safari is installed but we don't have FDA
+    private var safariNeedsFDA: Bool {
+        let safari = SafariModule()
+        return safari.isInstalled && !safari.hasFullDiskAccess
     }
 
     // MARK: - Footer
@@ -454,6 +468,71 @@ struct ServiceWorkerSection: View {
             }
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Safari FDA Warning Banner
+
+struct SafariFDAWarningBanner: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.title2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Full Disk Access Required for Safari")
+                    .font(.headline)
+
+                Text("MacSweep needs Full Disk Access to clean Safari data. Open System Settings > Privacy & Security > Full Disk Access and enable MacSweep.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Open Settings") {
+                openFDASettings()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private func openFDASettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
+        NSWorkspace.shared.open(url)
+    }
+}
+
+// MARK: - Risk Warning Banner
+
+struct RiskWarningBanner: View {
+    let riskLevel: BrowserDataRiskLevel
+
+    var body: some View {
+        if let message = riskLevel.warningMessage {
+            HStack(spacing: 12) {
+                Image(systemName: riskLevel >= .high ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                    .foregroundStyle(riskLevel >= .high ? .red : .orange)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+            .padding()
+            .background(
+                (riskLevel >= .high ? Color.red : Color.orange).opacity(0.1),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+        }
     }
 }
 

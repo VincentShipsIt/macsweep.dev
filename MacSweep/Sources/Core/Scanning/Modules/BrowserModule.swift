@@ -10,9 +10,20 @@ protocol BrowserModule: ScanModule {
     var isInstalled: Bool { get }
     var isRunning: Bool { get }
 
+    /// Safe to delete - auto regenerated
     var cachePaths: [URL] { get }
+
+    /// Low risk - background scripts
     var serviceWorkerPaths: [URL] { get }
+
+    /// Medium risk - site data, may cause logouts
     var localStoragePaths: [URL] { get }
+
+    /// High risk - will log user out of all sites (opt-in only)
+    var cookiePaths: [URL] { get }
+
+    /// Critical risk - permanent history deletion (opt-in only)
+    var historyPaths: [URL] { get }
 }
 
 extension BrowserModule {
@@ -23,6 +34,31 @@ extension BrowserModule {
     var isRunning: Bool {
         let runningApps = NSWorkspace.shared.runningApplications
         return runningApps.contains { $0.bundleIdentifier == bundleID }
+    }
+
+    // Default empty implementations for opt-in paths
+    var cookiePaths: [URL] { [] }
+    var historyPaths: [URL] { [] }
+
+    /// Get risk level for a given path
+    func riskLevel(for url: URL) -> BrowserDataRiskLevel {
+        let path = url.path
+        if cachePaths.contains(where: { path.hasPrefix($0.path) }) {
+            return .none
+        }
+        if serviceWorkerPaths.contains(where: { path.hasPrefix($0.path) }) {
+            return .low
+        }
+        if localStoragePaths.contains(where: { path.hasPrefix($0.path) }) {
+            return .medium
+        }
+        if cookiePaths.contains(where: { path.hasPrefix($0.path) }) {
+            return .high
+        }
+        if historyPaths.contains(where: { path.hasPrefix($0.path) }) {
+            return .critical
+        }
+        return .none
     }
 }
 
@@ -60,6 +96,14 @@ struct ChromeModule: BrowserModule {
 
     var localStoragePaths: [URL] {
         profiles.map { basePath.appending(path: "\($0)/Local Storage") }
+    }
+
+    var cookiePaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/Cookies") }
+    }
+
+    var historyPaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/History") }
     }
 
     /// Detect all Chrome profiles (Default, Profile 1, Profile 2, etc.)
@@ -185,6 +229,14 @@ struct SafariModule: BrowserModule {
         [basePath.appending(path: "LocalStorage")]
     }
 
+    var cookiePaths: [URL] {
+        [URL.libraryDirectory.appending(path: "Cookies/Cookies.binarycookies")]
+    }
+
+    var historyPaths: [URL] {
+        [basePath.appending(path: "History.db")]
+    }
+
     /// Check if we have Full Disk Access
     var hasFullDiskAccess: Bool {
         // Try to read a protected Safari file
@@ -297,6 +349,14 @@ struct FirefoxModule: BrowserModule {
 
     var localStoragePaths: [URL] {
         profilePaths.map { $0.appending(path: "storage/default") }
+    }
+
+    var cookiePaths: [URL] {
+        profilePaths.map { $0.appending(path: "cookies.sqlite") }
+    }
+
+    var historyPaths: [URL] {
+        profilePaths.map { $0.appending(path: "places.sqlite") }
     }
 
     /// Get all Firefox profile directories
@@ -415,6 +475,14 @@ struct BraveModule: BrowserModule {
         profiles.map { basePath.appending(path: "\($0)/Local Storage") }
     }
 
+    var cookiePaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/Cookies") }
+    }
+
+    var historyPaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/History") }
+    }
+
     private var profiles: [String] {
         var found: [String] = ["Default"]
         guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
@@ -515,21 +583,178 @@ struct ArcModule: BrowserModule {
         URL.libraryDirectory.appending(path: "Application Support/Arc")
     }
 
+    private var userDataPath: URL {
+        basePath.appending(path: "User Data")
+    }
+
     var cachePaths: [URL] {
-        [
-            basePath.appending(path: "User Data/Default/Cache"),
-            basePath.appending(path: "User Data/Default/Code Cache"),
-            basePath.appending(path: "User Data/Default/GPUCache"),
-            basePath.appending(path: "User Data/ShaderCache"),
-        ]
+        var paths: [URL] = []
+        for profile in profiles {
+            paths.append(contentsOf: [
+                userDataPath.appending(path: "\(profile)/Cache"),
+                userDataPath.appending(path: "\(profile)/Code Cache"),
+                userDataPath.appending(path: "\(profile)/GPUCache"),
+            ])
+        }
+        paths.append(userDataPath.appending(path: "ShaderCache"))
+        return paths
     }
 
     var serviceWorkerPaths: [URL] {
-        [basePath.appending(path: "User Data/Default/Service Worker")]
+        profiles.map { userDataPath.appending(path: "\($0)/Service Worker") }
     }
 
     var localStoragePaths: [URL] {
-        [basePath.appending(path: "User Data/Default/Local Storage")]
+        profiles.map { userDataPath.appending(path: "\($0)/Local Storage") }
+    }
+
+    var cookiePaths: [URL] {
+        profiles.map { userDataPath.appending(path: "\($0)/Cookies") }
+    }
+
+    var historyPaths: [URL] {
+        profiles.map { userDataPath.appending(path: "\($0)/History") }
+    }
+
+    /// Detect Arc profiles
+    private var profiles: [String] {
+        var found: [String] = ["Default"]
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: userDataPath.path) else {
+            return found
+        }
+        for item in contents where item.hasPrefix("Profile ") {
+            found.append(item)
+        }
+        return found
+    }
+
+    func scan() async throws -> [CleanupItem] {
+        guard isInstalled else { return [] }
+
+        var items: [CleanupItem] = []
+
+        for cachePath in cachePaths {
+            if let item = await scanPath(cachePath, category: "Cache") {
+                items.append(item)
+            }
+        }
+
+        for swPath in serviceWorkerPaths {
+            if let item = await scanPath(swPath, category: "Service Workers") {
+                items.append(item)
+            }
+        }
+
+        return items
+    }
+
+    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+
+        do {
+            let size = try await DiskAnalyzer.directorySize(at: url)
+            guard size > 1024 else { return nil }
+
+            return CleanupItem(
+                id: UUID(),
+                path: url,
+                size: size,
+                type: .directory,
+                module: id,
+                moduleName: "\(browserName) \(category)",
+                lastModified: nil
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+        if isRunning && !dryRun {
+            throw BrowserCleanupError.browserRunning(browserName)
+        }
+
+        var processed = 0
+        var freed: Int64 = 0
+        var errors: [CleanupError] = []
+
+        for item in items where item.module == id {
+            if dryRun {
+                processed += 1
+                freed += item.size
+            } else {
+                do {
+                    let contents = try FileManager.default.contentsOfDirectory(
+                        at: item.path,
+                        includingPropertiesForKeys: nil
+                    )
+                    for content in contents {
+                        try FileManager.default.removeItem(at: content)
+                    }
+                    processed += 1
+                    freed += item.size
+                } catch {
+                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
+                }
+            }
+        }
+
+        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+    }
+}
+
+// MARK: - Edge Module
+
+struct EdgeModule: BrowserModule {
+    let id = "browser-edge"
+    let name = "Microsoft Edge"
+    let description = "Edge browser caches and service workers"
+    let icon = "globe.americas"
+    let browserName = "Edge"
+    let bundleID = "com.microsoft.edgemac"
+
+    var basePath: URL {
+        URL.libraryDirectory.appending(path: "Application Support/Microsoft Edge")
+    }
+
+    var cachePaths: [URL] {
+        var paths: [URL] = []
+        for profile in profiles {
+            paths.append(contentsOf: [
+                basePath.appending(path: "\(profile)/Cache"),
+                basePath.appending(path: "\(profile)/Code Cache"),
+                basePath.appending(path: "\(profile)/GPUCache"),
+            ])
+        }
+        paths.append(basePath.appending(path: "ShaderCache"))
+        return paths
+    }
+
+    var serviceWorkerPaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/Service Worker") }
+    }
+
+    var localStoragePaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/Local Storage") }
+    }
+
+    var cookiePaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/Cookies") }
+    }
+
+    var historyPaths: [URL] {
+        profiles.map { basePath.appending(path: "\($0)/History") }
+    }
+
+    private var profiles: [String] {
+        var found: [String] = ["Default"]
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
+            return found
+        }
+        for item in contents where item.hasPrefix("Profile ") {
+            found.append(item)
+        }
+        return found
     }
 
     func scan() async throws -> [CleanupItem] {
@@ -612,6 +837,7 @@ struct ArcModule: BrowserModule {
 enum BrowserCleanupError: LocalizedError {
     case browserRunning(String)
     case noAccess(String)
+    case fullDiskAccessRequired
 
     var errorDescription: String? {
         switch self {
@@ -619,6 +845,45 @@ enum BrowserCleanupError: LocalizedError {
             return "Please quit \(name) before cleaning"
         case .noAccess(let path):
             return "Cannot access \(path). Full Disk Access may be required."
+        case .fullDiskAccessRequired:
+            return "Full Disk Access is required to clean Safari data"
+        }
+    }
+}
+
+// MARK: - Data Risk Level
+
+enum BrowserDataRiskLevel: Int, Comparable {
+    case none = 0      // Cache - auto regenerated
+    case low = 1       // Service Workers - background scripts
+    case medium = 2    // LocalStorage - site data
+    case high = 3      // Cookies - session data
+    case critical = 4  // History - browsing history
+
+    static func < (lhs: BrowserDataRiskLevel, rhs: BrowserDataRiskLevel) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    var description: String {
+        switch self {
+        case .none: return "Safe to delete"
+        case .low: return "Low risk"
+        case .medium: return "May log you out of websites"
+        case .high: return "Will log you out of all websites"
+        case .critical: return "Permanently deletes browsing history"
+        }
+    }
+
+    var warningMessage: String? {
+        switch self {
+        case .none, .low:
+            return nil
+        case .medium:
+            return "Deleting LocalStorage may log you out of some websites and reset site preferences."
+        case .high:
+            return "Deleting cookies will log you out of ALL websites. You will need to sign in again."
+        case .critical:
+            return "Deleting browsing history is permanent and cannot be undone."
         }
     }
 }

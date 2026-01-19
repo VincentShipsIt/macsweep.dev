@@ -6,7 +6,7 @@ import SystemConfiguration
 struct NetworkModule: ScanModule {
     let id = "network"
     let name = "Network"
-    let description = "Clean WiFi networks, SSH keys, and network caches"
+    let description = "Clean WiFi networks, SSH keys, DNS cache, and network caches"
     let icon = "network"
 
     func scan() async throws -> [CleanupItem] {
@@ -21,7 +21,33 @@ struct NetworkModule: ScanModule {
         // Bonjour cache
         items.append(contentsOf: await scanBonjourCache())
 
+        // Network service proxy cache
+        items.append(contentsOf: await scanNetworkServiceProxy())
+
         return items.sorted { $0.size > $1.size }
+    }
+
+    // MARK: - Network Service Proxy Cache
+
+    private func scanNetworkServiceProxy() async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+
+        let cacheDir = URL.libraryDirectory.appending(path: "Caches/com.apple.networkserviceproxy")
+        if FileManager.default.fileExists(atPath: cacheDir.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: cacheDir)) ?? 0
+            if size > 1024 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: cacheDir,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Network Service Proxy Cache"
+                ))
+            }
+        }
+
+        return items
     }
 
     // MARK: - SSH
@@ -153,6 +179,11 @@ struct NetworkModule: ScanModule {
 // MARK: - WiFi Network Management
 
 struct WiFiNetworkManager {
+    /// Get the WiFi interface to use
+    private static var wifiInterface: String {
+        WiFiInterfaceManager.primaryInterface()
+    }
+
     /// Get list of saved WiFi networks
     static func savedNetworks() -> [SavedWiFiNetwork] {
         var networks: [SavedWiFiNetwork] = []
@@ -162,7 +193,7 @@ struct WiFiNetworkManager {
         let pipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        process.arguments = ["-listpreferredwirelessnetworks", "en0"]
+        process.arguments = ["-listpreferredwirelessnetworks", wifiInterface]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
 
@@ -201,17 +232,73 @@ struct WiFiNetworkManager {
         return networks
     }
 
+    /// Get list of saved WiFi networks for a specific interface
+    static func savedNetworks(interface: String) -> [SavedWiFiNetwork] {
+        var networks: [SavedWiFiNetwork] = []
+
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        process.arguments = ["-listpreferredwirelessnetworks", interface]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return [] }
+
+            let lines = output.split(separator: "\n").dropFirst()
+            for line in lines {
+                let name = line.trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty {
+                    networks.append(SavedWiFiNetwork(
+                        ssid: name,
+                        isCurrentlyConnected: false
+                    ))
+                }
+            }
+        } catch {
+            // Ignore
+        }
+
+        if let currentSSID = getCurrentSSID() {
+            for i in networks.indices {
+                if networks[i].ssid == currentSSID {
+                    networks[i].isCurrentlyConnected = true
+                    break
+                }
+            }
+        }
+
+        return networks
+    }
+
     /// Get currently connected WiFi SSID
     static func getCurrentSSID() -> String? {
         guard let interface = CWWiFiClient.shared().interface() else { return nil }
         return interface.ssid()
     }
 
+    /// Get current connection security type
+    static func getCurrentSecurityType() -> String? {
+        guard let interface = CWWiFiClient.shared().interface() else { return nil }
+        return interface.security().description
+    }
+
     /// Remove a saved WiFi network
     static func removeNetwork(_ ssid: String) throws {
+        try removeNetwork(ssid, interface: wifiInterface)
+    }
+
+    /// Remove a saved WiFi network from a specific interface
+    static func removeNetwork(_ ssid: String, interface: String) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        process.arguments = ["-removepreferredwirelessnetwork", "en0", ssid]
+        process.arguments = ["-removepreferredwirelessnetwork", interface, ssid]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
@@ -223,13 +310,20 @@ struct WiFiNetworkManager {
         }
     }
 
-    /// Remove all saved networks except current
-    static func removeAllExceptCurrent() throws {
+    /// Remove multiple networks
+    static func removeNetworks(_ ssids: [String]) throws {
+        for ssid in ssids {
+            try removeNetwork(ssid)
+        }
+    }
+
+    /// Remove all saved networks except current and protected
+    static func removeAllExceptCurrent(protectedSSIDs: Set<String> = []) throws {
         let current = getCurrentSSID()
         let networks = savedNetworks()
 
         for network in networks {
-            if network.ssid != current {
+            if network.ssid != current && !protectedSSIDs.contains(network.ssid) {
                 try? removeNetwork(network.ssid)
             }
         }
@@ -330,4 +424,175 @@ struct SSHKnownHost: Identifiable {
     let rawLine: String
     let algorithm: String
     let isHashed: Bool
+}
+
+// MARK: - DNS Cache Manager
+
+struct DNSCacheManager {
+    /// Check if we can flush DNS (requires admin privileges)
+    static var canFlush: Bool {
+        // Check if running as root or has admin access
+        // In practice, this will almost always require password prompt
+        return true  // We'll handle the permission at flush time
+    }
+
+    /// Flush the DNS cache
+    /// Requires admin privileges - will prompt for password via AppleScript
+    static func flush() async throws {
+        // Use AppleScript to run with admin privileges
+        let script = """
+        do shell script "dscacheutil -flushcache; killall -HUP mDNSResponder" with administrator privileges
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 {
+            throw DNSError.flushFailed
+        }
+    }
+
+    /// Flush DNS without admin prompt (may fail without privileges)
+    static func flushWithoutAdmin() async throws {
+        let dscacheutil = Process()
+        dscacheutil.executableURL = URL(fileURLWithPath: "/usr/bin/dscacheutil")
+        dscacheutil.arguments = ["-flushcache"]
+        dscacheutil.standardOutput = FileHandle.nullDevice
+        dscacheutil.standardError = FileHandle.nullDevice
+
+        try dscacheutil.run()
+        dscacheutil.waitUntilExit()
+
+        // Note: killall mDNSResponder requires root, so we skip it here
+    }
+}
+
+enum DNSError: LocalizedError {
+    case flushFailed
+    case requiresAdmin
+
+    var errorDescription: String? {
+        switch self {
+        case .flushFailed:
+            return "Failed to flush DNS cache. Administrator privileges may be required."
+        case .requiresAdmin:
+            return "Flushing DNS cache requires administrator privileges."
+        }
+    }
+}
+
+// MARK: - WiFi Interface Manager
+
+struct WiFiInterfaceManager {
+    /// Get all available WiFi interfaces
+    static func availableInterfaces() -> [String] {
+        var interfaces: [String] = []
+
+        // Use networksetup to list hardware ports
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+        process.arguments = ["-listallhardwareports"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return ["en0"] }
+
+            // Parse output to find WiFi interfaces
+            let lines = output.split(separator: "\n")
+            var isWiFi = false
+
+            for line in lines {
+                let lineStr = String(line)
+                if lineStr.contains("Wi-Fi") || lineStr.contains("AirPort") {
+                    isWiFi = true
+                } else if isWiFi && lineStr.hasPrefix("Device:") {
+                    let device = lineStr.replacingOccurrences(of: "Device: ", with: "").trimmingCharacters(in: .whitespaces)
+                    interfaces.append(device)
+                    isWiFi = false
+                } else if lineStr.hasPrefix("Hardware Port:") {
+                    isWiFi = false
+                }
+            }
+        } catch {
+            // Default to en0 if detection fails
+        }
+
+        return interfaces.isEmpty ? ["en0"] : interfaces
+    }
+
+    /// Get the primary WiFi interface
+    static func primaryInterface() -> String {
+        // Try CoreWLAN first
+        if let interface = CWWiFiClient.shared().interface() {
+            return interface.interfaceName ?? "en0"
+        }
+
+        // Fall back to first available
+        return availableInterfaces().first ?? "en0"
+    }
+
+    /// Check if WiFi is enabled
+    static var isWiFiEnabled: Bool {
+        guard let interface = CWWiFiClient.shared().interface() else { return false }
+        return interface.powerOn()
+    }
+
+    /// Get current WiFi info
+    static func currentNetworkInfo() -> (ssid: String?, bssid: String?, rssi: Int?) {
+        guard let interface = CWWiFiClient.shared().interface() else {
+            return (nil, nil, nil)
+        }
+        return (interface.ssid(), interface.bssid(), interface.rssiValue())
+    }
+}
+
+// MARK: - Network Cleanup Summary
+
+struct NetworkCleanupSummary {
+    var savedNetworks: Int = 0
+    var knownHosts: Int = 0
+    var cacheSize: Int64 = 0
+    var canFlushDNS: Bool = true
+
+    var formattedCacheSize: String {
+        ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file)
+    }
+
+    static func current() async -> NetworkCleanupSummary {
+        var summary = NetworkCleanupSummary()
+
+        // Count saved WiFi networks
+        summary.savedNetworks = WiFiNetworkManager.savedNetworks().count
+
+        // Count SSH known hosts
+        summary.knownHosts = SSHKnownHostsManager.getKnownHosts().count
+
+        // Calculate total cache size
+        let networkCachePaths: [URL] = [
+            URL.libraryDirectory.appending(path: "Caches/com.apple.networkserviceproxy"),
+            URL.libraryDirectory.appending(path: "Preferences/com.apple.networkextension.cache.plist")
+        ]
+
+        for path in networkCachePaths {
+            if FileManager.default.fileExists(atPath: path.path) {
+                let size = (try? await DiskAnalyzer.size(of: path)) ?? 0
+                summary.cacheSize += size
+            }
+        }
+
+        return summary
+    }
 }

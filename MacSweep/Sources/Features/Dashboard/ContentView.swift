@@ -61,6 +61,8 @@ struct ContentView: View {
             TrashBinsView()
         case .devTools:
             DevToolsView()
+        case .networkCleanup:
+            NetworkCleanupView()
 
         // Protection
         case .malwareRemoval:

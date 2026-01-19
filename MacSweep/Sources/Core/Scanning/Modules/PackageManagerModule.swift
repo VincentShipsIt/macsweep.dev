@@ -22,6 +22,7 @@ struct PackageManagerModule: ScanModule {
         items.append(contentsOf: await scanComposer())
         items.append(contentsOf: await scanGem())
         items.append(contentsOf: await scanCocoaPods())
+        items.append(contentsOf: await scanCarthage())
         items.append(contentsOf: await scanGradle())
         items.append(contentsOf: await scanMaven())
 
@@ -417,6 +418,31 @@ struct PackageManagerModule: ScanModule {
         return items
     }
 
+    // MARK: - Carthage
+
+    private func scanCarthage() async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+
+        let carthageCache = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Caches/org.carthage.CarthageKit")
+
+        if FileManager.default.fileExists(atPath: carthageCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: carthageCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: carthageCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Carthage Cache"
+                ))
+            }
+        }
+
+        return items
+    }
+
     // MARK: - Gradle
 
     private func scanGradle() async -> [CleanupItem] {
@@ -539,6 +565,7 @@ struct PackageManagerInfo: Identifiable {
         PackageManagerInfo(id: "composer", name: "Composer", icon: "music.note", color: "brown"),
         PackageManagerInfo(id: "gem", name: "RubyGems", icon: "diamond", color: "red"),
         PackageManagerInfo(id: "cocoapods", name: "CocoaPods", icon: "leaf", color: "red"),
+        PackageManagerInfo(id: "carthage", name: "Carthage", icon: "cart", color: "blue"),
         PackageManagerInfo(id: "gradle", name: "Gradle", icon: "elephant", color: "green"),
         PackageManagerInfo(id: "maven", name: "Maven", icon: "m.circle", color: "red"),
     ]

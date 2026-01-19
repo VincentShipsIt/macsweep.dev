@@ -366,6 +366,7 @@ struct PackageManagerCard: View {
         case "composer": return "music.note"
         case "rubygems": return "diamond"
         case "cocoapods": return "leaf"
+        case "carthage": return "cart"
         case "gradle": return "elephant"
         case "maven": return "m.circle"
         default: return "shippingbox"
@@ -384,6 +385,7 @@ struct PackageManagerCard: View {
         case "go": return .cyan
         case "rubygems": return .red
         case "cocoapods": return .red
+        case "carthage": return .blue
         case "gradle": return .green
         case "maven": return .red
         default: return .gray
