@@ -118,8 +118,15 @@ final class SystemMonitor: ObservableObject {
 
     /// Free up memory by purging inactive memory
     func freeUpMemory() async throws {
+        let purgePath = "/usr/sbin/purge"
+        guard FileManager.default.fileExists(atPath: purgePath) else {
+            // purge not available - refresh anyway
+            memoryUsage = await fetchMemoryUsage()
+            return
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/purge")
+        process.executableURL = URL(fileURLWithPath: purgePath)
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 

@@ -178,8 +178,9 @@ struct OptimizationView: View {
                         Text(order.rawValue).tag(order)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .frame(width: 220)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -241,15 +242,20 @@ struct OptimizationView: View {
     private func freeUpRAM() async {
         isFreezingRAM = true
 
-        // Run purge command (requires sudo, may not work without privileges)
+        // Run purge command (requires admin privileges)
+        let purgePath = "/usr/sbin/purge"
+        guard FileManager.default.fileExists(atPath: purgePath) else {
+            return
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/purge")
+        process.executableURL = URL(fileURLWithPath: purgePath)
 
         do {
             try process.run()
             process.waitUntilExit()
         } catch {
-            print("Purge failed: \(error)")
+            // purge may fail without admin privileges
         }
 
         // Refresh after a moment

@@ -67,6 +67,7 @@ struct SpaceLensView: View {
                             .tag(mode)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 200)
 

@@ -68,6 +68,7 @@ struct AppUninstallerView: View {
                         Text(order.rawValue).tag(order)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
             }
             .padding()

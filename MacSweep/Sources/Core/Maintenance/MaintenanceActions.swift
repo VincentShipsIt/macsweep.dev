@@ -9,9 +9,15 @@ actor MaintenanceActions {
     static func freeUpRAM() async throws -> MaintenanceResult {
         let startMemory = await getAvailableMemory()
 
-        // Use purge command
+        // Use purge command (located at /usr/sbin/purge on macOS)
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/purge")
+        let purgePath = "/usr/sbin/purge"
+
+        guard FileManager.default.fileExists(atPath: purgePath) else {
+            throw MaintenanceError.commandFailed("purge", "The purge command is not available on this system")
+        }
+
+        process.executableURL = URL(fileURLWithPath: purgePath)
 
         do {
             try process.run()
@@ -292,9 +298,16 @@ actor MaintenanceActions {
 
     /// Rebuild the Launch Services database
     static func rebuildLaunchServices() async throws -> MaintenanceResult {
+        let lsregisterPath = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+        guard FileManager.default.fileExists(atPath: lsregisterPath) else {
+            throw MaintenanceError.commandFailed("lsregister", "Launch Services tool not found at expected location")
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
-        process.arguments = ["-kill", "-r", "-domain", "local", "-domain", "system", "-domain", "user"]
+        process.executableURL = URL(fileURLWithPath: lsregisterPath)
+        // Use only user domain for sandboxed apps (system/local require elevated privileges)
+        process.arguments = ["-kill", "-r", "-domain", "user"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
@@ -304,7 +317,7 @@ actor MaintenanceActions {
 
             return MaintenanceResult(
                 success: process.terminationStatus == 0,
-                message: process.terminationStatus == 0 ? "Launch Services database rebuilt" : "Failed to rebuild Launch Services"
+                message: process.terminationStatus == 0 ? "Launch Services database rebuilt" : "Failed to rebuild Launch Services (may require elevated privileges)"
             )
         } catch {
             throw MaintenanceError.commandFailed("lsregister", error.localizedDescription)

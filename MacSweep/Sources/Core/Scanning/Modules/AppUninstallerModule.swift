@@ -307,6 +307,15 @@ struct AppUninstaller {
             throw UninstallError.appRunning(app.name)
         }
 
+        // Check if app is in system Applications (requires elevated privileges)
+        let systemAppsPath = "/Applications"
+        if app.bundlePath.path.hasPrefix(systemAppsPath) {
+            // Check if we can write to this location
+            if !FileManager.default.isWritableFile(atPath: app.bundlePath.path) {
+                throw UninstallError.insufficientPermissions(app.name)
+            }
+        }
+
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
@@ -344,6 +353,7 @@ struct AppUninstaller {
 enum UninstallError: LocalizedError {
     case appRunning(String)
     case cannotRemoveApp(String, Error)
+    case insufficientPermissions(String)
 
     var errorDescription: String? {
         switch self {
@@ -351,6 +361,8 @@ enum UninstallError: LocalizedError {
             return "Please quit \(name) before uninstalling"
         case .cannotRemoveApp(let name, let error):
             return "Could not uninstall \(name): \(error.localizedDescription)"
+        case .insufficientPermissions(let name):
+            return "Cannot uninstall \(name): Administrator privileges required for apps in /Applications"
         }
     }
 }

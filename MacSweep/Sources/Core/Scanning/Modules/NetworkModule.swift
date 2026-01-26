@@ -286,7 +286,29 @@ struct WiFiNetworkManager {
     /// Get current connection security type
     static func getCurrentSecurityType() -> String? {
         guard let interface = CWWiFiClient.shared().interface() else { return nil }
-        return interface.security().description
+        return securityTypeString(interface.security())
+    }
+
+    /// Convert CWSecurity enum to readable string
+    private static func securityTypeString(_ security: CWSecurity) -> String {
+        switch security {
+        case .none: return "None"
+        case .WEP: return "WEP"
+        case .wpaPersonal: return "WPA Personal"
+        case .wpaPersonalMixed: return "WPA Personal Mixed"
+        case .wpa2Personal: return "WPA2 Personal"
+        case .personal: return "Personal"
+        case .dynamicWEP: return "Dynamic WEP"
+        case .wpaEnterprise: return "WPA Enterprise"
+        case .wpaEnterpriseMixed: return "WPA Enterprise Mixed"
+        case .wpa2Enterprise: return "WPA2 Enterprise"
+        case .enterprise: return "Enterprise"
+        case .wpa3Personal: return "WPA3 Personal"
+        case .wpa3Enterprise: return "WPA3 Enterprise"
+        case .wpa3Transition: return "WPA3 Transition"
+        case .unknown: return "Unknown"
+        @unknown default: return "Unknown"
+        }
     }
 
     /// Remove a saved WiFi network
@@ -429,17 +451,41 @@ struct SSHKnownHost: Identifiable {
 // MARK: - DNS Cache Manager
 
 struct DNSCacheManager {
-    /// Check if we can flush DNS (requires admin privileges)
+    /// Check if we can flush DNS
     static var canFlush: Bool {
-        // Check if running as root or has admin access
-        // In practice, this will almost always require password prompt
-        return true  // We'll handle the permission at flush time
+        return FileManager.default.fileExists(atPath: "/usr/bin/dscacheutil")
     }
 
     /// Flush the DNS cache
-    /// Requires admin privileges - will prompt for password via AppleScript
+    /// Note: Full DNS flush (mDNSResponder restart) requires admin privileges.
+    /// This method performs a partial flush that doesn't require elevation.
     static func flush() async throws {
-        // Use AppleScript to run with admin privileges
+        // First, try dscacheutil which doesn't require admin
+        let dscacheutil = Process()
+        dscacheutil.executableURL = URL(fileURLWithPath: "/usr/bin/dscacheutil")
+        dscacheutil.arguments = ["-flushcache"]
+        dscacheutil.standardOutput = FileHandle.nullDevice
+        dscacheutil.standardError = FileHandle.nullDevice
+
+        do {
+            try dscacheutil.run()
+            dscacheutil.waitUntilExit()
+
+            if dscacheutil.terminationStatus != 0 {
+                throw DNSError.flushFailed
+            }
+        } catch {
+            throw DNSError.flushFailed
+        }
+
+        // Note: killall -HUP mDNSResponder requires root/admin privileges
+        // and cannot be done from a sandboxed app without user elevation.
+        // The dscacheutil flush above handles most DNS cache clearing needs.
+    }
+
+    /// Flush DNS with admin privileges (prompts user)
+    /// Note: May not work in sandboxed apps
+    static func flushWithAdmin() async throws {
         let script = """
         do shell script "dscacheutil -flushcache; killall -HUP mDNSResponder" with administrator privileges
         """
@@ -450,39 +496,26 @@ struct DNSCacheManager {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
-        try process.run()
-        process.waitUntilExit()
+        do {
+            try process.run()
+            process.waitUntilExit()
 
-        if process.terminationStatus != 0 {
+            if process.terminationStatus != 0 {
+                throw DNSError.flushFailed
+            }
+        } catch {
             throw DNSError.flushFailed
         }
-    }
-
-    /// Flush DNS without admin prompt (may fail without privileges)
-    static func flushWithoutAdmin() async throws {
-        let dscacheutil = Process()
-        dscacheutil.executableURL = URL(fileURLWithPath: "/usr/bin/dscacheutil")
-        dscacheutil.arguments = ["-flushcache"]
-        dscacheutil.standardOutput = FileHandle.nullDevice
-        dscacheutil.standardError = FileHandle.nullDevice
-
-        try dscacheutil.run()
-        dscacheutil.waitUntilExit()
-
-        // Note: killall mDNSResponder requires root, so we skip it here
     }
 }
 
 enum DNSError: LocalizedError {
     case flushFailed
-    case requiresAdmin
 
     var errorDescription: String? {
         switch self {
         case .flushFailed:
-            return "Failed to flush DNS cache. Administrator privileges may be required."
-        case .requiresAdmin:
-            return "Flushing DNS cache requires administrator privileges."
+            return "Failed to flush DNS cache"
         }
     }
 }

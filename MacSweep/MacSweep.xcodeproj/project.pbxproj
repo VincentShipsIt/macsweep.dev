@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -36,6 +36,7 @@
 		8D463547995A1A0177954D13 /* NetworkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1165CC0384EBFF4A498CA /* NetworkModule.swift */; };
 		9138F8092A3E62D3331C93ED /* BrowserCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D288FAF0D38DB382FC4445F7 /* BrowserCleanupView.swift */; };
 		95A148F295CED3AA97945847 /* SystemCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086C609B2DA745F6E4298C91 /* SystemCleanupView.swift */; };
+		A1B2C3D4E5F6071829304152 /* NetworkCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6071829304152A1 /* NetworkCleanupView.swift */; };
 		A64DF5C20B8630AFC4AE6036 /* PrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4367DF34D86285178F78DE /* PrivacyView.swift */; };
 		AAA622E347D8FDE0D29A3FD1 /* AppUninstallerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D84379389201D29482A9C3 /* AppUninstallerModule.swift */; };
 		AD090D8CC2C8AE1904655263 /* PackageManagerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E48AAFBFB4ABFE894F0494 /* PackageManagerModule.swift */; };
@@ -89,6 +90,7 @@
 		A3279030532A2A61732FAA14 /* MaintenanceActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintenanceActions.swift; sourceTree = "<group>"; };
 		AAE6C103D0CF9B6E7717CCE0 /* DiskAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskAnalyzer.swift; sourceTree = "<group>"; };
 		AFE4FDD7AF6AD8B35EE7A522 /* ServiceWorkerModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceWorkerModule.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6071829304152A1 /* NetworkCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkCleanupView.swift; sourceTree = "<group>"; };
 		B64AD2211FAD97A32B224C24 /* NetworkDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkDetailView.swift; sourceTree = "<group>"; };
 		BD994F92B30FF1E02748EECA /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		C3D9FCF62504AE9F0A3DA90C /* SystemCacheModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemCacheModule.swift; sourceTree = "<group>"; };
@@ -249,6 +251,7 @@
 				259BB620912E2E71042FB8C9 /* LargeFiles */,
 				96AE7E55C9809B377A21AE76 /* MailAttachments */,
 				295026EDC041B2F109CA4E61 /* MenuBar */,
+				C3D4E5F6071829304152A1B2 /* NetworkCleanup */,
 				E00954D0906AF077CDACC675 /* Onboarding */,
 				D8B3B857C7949CAE8C3B8E15 /* Optimization */,
 				2B4334BDE208CCD3208B7F89 /* Privacy */,
@@ -317,6 +320,14 @@
 				9B846033CE3DB0C7DECFEDD6 /* SpaceLensView.swift */,
 			);
 			path = SpaceLens;
+			sourceTree = "<group>";
+		};
+		C3D4E5F6071829304152A1B2 /* NetworkCleanup */ = {
+			isa = PBXGroup;
+			children = (
+				B2C3D4E5F6071829304152A1 /* NetworkCleanupView.swift */,
+			);
+			path = NetworkCleanup;
 			sourceTree = "<group>";
 		};
 		C5EB2394C8E6771356D95724 /* Sources */ = {
@@ -446,7 +457,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					3A489B5429A55015C32FF518 = {
 						DevelopmentTeam = "";
@@ -464,7 +475,6 @@
 			);
 			mainGroup = D05E3FC297D4EE417D466CE9;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -514,6 +524,7 @@
 				D45B839C2D74B08EAD3408B5 /* MenuBarView.swift in Sources */,
 				DFF8B727F944B0C2B6F689F8 /* MetricGraph.swift in Sources */,
 				FB0478BC1F158E80DA723158 /* NetworkDetailView.swift in Sources */,
+				A1B2C3D4E5F6071829304152 /* NetworkCleanupView.swift in Sources */,
 				8D463547995A1A0177954D13 /* NetworkModule.swift in Sources */,
 				CF98A4DC66159FD58D613133 /* OnboardingView.swift in Sources */,
 				36FE4752AA53E323DB35936B /* OptimizationView.swift in Sources */,
@@ -578,11 +589,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -604,6 +617,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -647,11 +661,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -666,6 +682,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -676,10 +693,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = MacSweep.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				ENABLE_APP_SANDBOX = NO;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_CFBundleDisplayName = MacSweep;
@@ -700,10 +720,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				AUTOMATION_APPLE_EVENTS = YES;
 				CODE_SIGN_ENTITLEMENTS = MacSweep.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				ENABLE_APP_SANDBOX = NO;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_CFBundleDisplayName = MacSweep;
