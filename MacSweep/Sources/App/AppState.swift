@@ -129,11 +129,11 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .cleanup:
             return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup]
         case .protection:
-            return [.malwareRemoval, .privacy]
+            return [.privacy]  // malwareRemoval hidden until implemented
         case .speed:
             return [.optimization, .maintenance]
         case .applications:
-            return [.uninstaller, .updater, .extensions]
+            return [.uninstaller]  // updater, extensions hidden until implemented
         case .files:
             return [.spaceLens, .largeOldFiles, .shredder]
         }

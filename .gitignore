@@ -1,59 +1,32 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+# Xcode
+.build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xcworkspace
+!default.xcworkspace
 
-# Virtual environments
-.venv/
-venv/
-ENV/
+# Swift Package Manager
+.swiftpm/
+Package.resolved
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.DS_Store
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Type checking
-.mypy_cache/
-
-# Distribution
-*.tar.gz
-*.whl
-
-# Ruff
-.ruff_cache/
-
-# Agent sessions (keep structure, ignore content)
-.agent/SESSIONS/*.md
-!.agent/SESSIONS/.gitkeep
-.agent/TASKS/*.md
-!.agent/TASKS/.gitkeep
 
 # macOS
 .DS_Store
@@ -61,6 +34,18 @@ htmlcov/
 .LSOverride
 ._*
 
+# Agent sessions (keep structure, ignore content)
+.agent/SESSIONS/*.md
+!.agent/SESSIONS/.gitkeep
+.agent/TASKS/*.md
+!.agent/TASKS/.gitkeep
+
 # Logs
 *.log
 logs/
+
+# Build artifacts
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM

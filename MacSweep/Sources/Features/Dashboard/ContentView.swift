@@ -553,14 +553,14 @@ struct AboutView: View {
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
-            Text("Version 1.0.0")
+            Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                 .foregroundStyle(.secondary)
 
             Text("Open-source macOS system cleaner")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Link("View on GitHub", destination: URL(string: "https://github.com/yourusername/macsweep")!)
+            Link("View on GitHub", destination: URL(string: "https://github.com/VincentShipsIt/macsweep")!)
                 .font(.caption)
         }
         .padding()
