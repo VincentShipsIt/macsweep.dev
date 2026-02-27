@@ -49,3 +49,4 @@ logs/
 *.ipa
 *.dSYM.zip
 *.dSYM
+MacSweep/.build/
