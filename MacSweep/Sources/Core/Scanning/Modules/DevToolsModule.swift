@@ -73,6 +73,118 @@ struct DevToolsModule: ScanModule {
             }
         }
 
+        // Add global npm cache
+        let npmCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".npm")
+        if FileManager.default.fileExists(atPath: npmCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: npmCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: npmCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "npm Global Cache"
+                ))
+            }
+        }
+
+        // Add global pnpm store
+        let pnpmStore = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/pnpm/store")
+        if FileManager.default.fileExists(atPath: pnpmStore.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: pnpmStore)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: pnpmStore,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "pnpm Global Store"
+                ))
+            }
+        }
+
+        // Add Bun install cache
+        let bunCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".bun/install/cache")
+        if FileManager.default.fileExists(atPath: bunCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: bunCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: bunCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Bun Install Cache"
+                ))
+            }
+        }
+
+        // Add pip cache
+        let pipCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/pip")
+        if FileManager.default.fileExists(atPath: pipCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: pipCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: pipCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "pip Cache"
+                ))
+            }
+        }
+
+        // Add cargo cache
+        let cargoCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".cargo/registry")
+        if FileManager.default.fileExists(atPath: cargoCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: cargoCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: cargoCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Cargo Registry Cache"
+                ))
+            }
+        }
+
+        // Add Homebrew cache
+        let brewCache = URL.libraryDirectory.appending(path: "Caches/Homebrew")
+        if FileManager.default.fileExists(atPath: brewCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: brewCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: brewCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Homebrew Cache"
+                ))
+            }
+        }
+
+        // Add Playwright browsers
+        let playwrightBrowsers = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/ms-playwright")
+        if FileManager.default.fileExists(atPath: playwrightBrowsers.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: playwrightBrowsers)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: playwrightBrowsers,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Playwright Browsers"
+                ))
+            }
+        }
+
         // Add CoreSimulator (fixed location)
         let simulators = URL.libraryDirectory.appending(path: "Developer/CoreSimulator/Devices")
         if FileManager.default.fileExists(atPath: simulators.path) {
@@ -377,6 +489,88 @@ struct DevArtifactPattern {
             directoryName: ".cache",
             siblingIndicators: ["package.json"]
         ),
+
+        // Bun
+        DevArtifactPattern(
+            name: "Bun cache",
+            directoryName: ".bun",
+            siblingIndicators: ["bun.lockb", "bun.lock"]
+        ),
+
+        // pnpm
+        DevArtifactPattern(
+            name: "pnpm store",
+            directoryName: ".pnpm-store",
+            siblingIndicators: []
+        ),
+        DevArtifactPattern(
+            name: "pnpm virtual store",
+            directoryName: ".pnpm",
+            siblingIndicators: ["pnpm-lock.yaml"]
+        ),
+
+        // Playwright browsers
+        DevArtifactPattern(
+            name: "Playwright browsers",
+            directoryName: "ms-playwright",
+            siblingIndicators: []
+        ),
+
+        // Cypress
+        DevArtifactPattern(
+            name: "Cypress cache",
+            directoryName: ".cypress",
+            siblingIndicators: ["cypress.config.js", "cypress.config.ts"]
+        ),
+
+        // Biome
+        DevArtifactPattern(
+            name: "Biome cache",
+            directoryName: ".biome",
+            siblingIndicators: ["biome.json", "biome.jsonc"]
+        ),
+
+        // Webpack
+        DevArtifactPattern(
+            name: "Webpack cache",
+            directoryName: ".webpack",
+            siblingIndicators: ["webpack.config.js", "webpack.config.ts"]
+        ),
+
+        // Storybook
+        DevArtifactPattern(
+            name: "Storybook cache",
+            directoryName: ".storybook-cache",
+            siblingIndicators: [".storybook"]
+        ),
+
+        // Angular
+        DevArtifactPattern(
+            name: "Angular cache",
+            directoryName: ".angular",
+            siblingIndicators: ["angular.json"]
+        ),
+
+        // Nx
+        DevArtifactPattern(
+            name: "Nx cache",
+            directoryName: ".nx",
+            siblingIndicators: ["nx.json"]
+        ),
+
+        // Yarn
+        DevArtifactPattern(
+            name: "Yarn cache",
+            directoryName: ".yarn",
+            siblingIndicators: [".yarnrc.yml"]
+        ),
+
+        // Coverage reports
+        DevArtifactPattern(
+            name: "Coverage reports",
+            directoryName: "coverage",
+            siblingIndicators: ["package.json", "vitest.config.ts", "jest.config.js"]
+        ),
     ]
 }
 
@@ -475,7 +669,7 @@ actor ProjectScanner {
         var projects: [ProjectInfo] = []
 
         let projectIndicators: [(String, ProjectType, [String])] = [
-            ("package.json", .nodejs, ["node_modules", ".next", ".nuxt", ".turbo", "dist", ".cache", ".parcel-cache"]),
+            ("package.json", .nodejs, ["node_modules", ".next", ".nuxt", ".turbo", "dist", ".cache", ".parcel-cache", ".bun"]),
             ("Package.swift", .swift, [".build"]),
             ("Cargo.toml", .rust, ["target"]),
             ("requirements.txt", .python, [".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache"]),
