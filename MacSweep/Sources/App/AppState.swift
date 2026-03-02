@@ -129,11 +129,11 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .cleanup:
             return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup]
         case .protection:
-            return [.privacy]  // malwareRemoval hidden until implemented
+            return [.malwareRemoval, .privacy]
         case .speed:
             return [.optimization, .maintenance]
         case .applications:
-            return [.uninstaller]  // updater, extensions hidden until implemented
+            return [.uninstaller, .homebrewUpdater]  // extensions hidden until implemented
         case .files:
             return [.spaceLens, .largeOldFiles, .shredder]
         }
@@ -162,6 +162,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     // Applications
     case uninstaller = "Uninstaller"
+    case homebrewUpdater = "Homebrew Updater"
     case updater = "Updater"
     case extensions = "Extensions"
 
@@ -185,7 +186,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .networkCleanup: return "network"
 
         // Protection
-        case .malwareRemoval: return "ladybug"
+        case .malwareRemoval: return "shield.slash"
         case .privacy: return "hand.raised"
         case .loginItems: return "shield.lefthalf.filled"
 
@@ -195,6 +196,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
         // Applications
         case .uninstaller: return "xmark.app"
+        case .homebrewUpdater: return "arrow.up.circle"
         case .updater: return "arrow.clockwise.circle"
         case .extensions: return "puzzlepiece.extension"
 
@@ -211,7 +213,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .maintenance: return .speed
-        case .uninstaller, .updater, .extensions: return .applications
+        case .uninstaller, .homebrewUpdater, .updater, .extensions: return .applications
         case .spaceLens, .largeOldFiles, .shredder: return .files
         }
     }
