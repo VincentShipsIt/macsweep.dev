@@ -79,6 +79,8 @@ struct ContentView: View {
         // Applications
         case .uninstaller:
             AppUninstallerView()
+        case .homebrewUpdater:
+            HomebrewUpdaterView()
         case .updater:
             PlaceholderFeatureView(feature: .updater)
         case .extensions:
