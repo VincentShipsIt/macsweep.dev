@@ -68,7 +68,7 @@ struct ContentView: View {
 
         // Protection
         case .malwareRemoval:
-            PlaceholderFeatureView(feature: .malwareRemoval)
+            MalwareScannerView()
         case .privacy:
             PrivacyView()
         case .loginItems:
@@ -83,6 +83,8 @@ struct ContentView: View {
         // Applications
         case .uninstaller:
             AppUninstallerView()
+        case .homebrewUpdater:
+            HomebrewUpdaterView()
         case .updater:
             PlaceholderFeatureView(feature: .updater)
         case .extensions:
