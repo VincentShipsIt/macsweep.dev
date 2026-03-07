@@ -155,6 +155,7 @@ enum Feature: String, CaseIterable, Identifiable {
     // Protection
     case malwareRemoval = "Malware Removal"
     case privacy = "Privacy"
+    case loginItems = "Login Items"
 
     // Speed
     case optimization = "Optimization"
@@ -188,6 +189,7 @@ enum Feature: String, CaseIterable, Identifiable {
         // Protection
         case .malwareRemoval: return "ladybug"
         case .privacy: return "hand.raised"
+        case .loginItems: return "shield.lefthalf.filled"
 
         // Speed
         case .optimization: return "slider.horizontal.3"
@@ -209,7 +211,7 @@ enum Feature: String, CaseIterable, Identifiable {
         switch self {
         case .smartScan: return .main
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup: return .cleanup
-        case .malwareRemoval, .privacy: return .protection
+        case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .maintenance: return .speed
         case .uninstaller, .updater, .extensions: return .applications
         case .spaceLens, .largeOldFiles, .shredder: return .files

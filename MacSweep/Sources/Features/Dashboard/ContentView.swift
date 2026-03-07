@@ -71,6 +71,8 @@ struct ContentView: View {
             PlaceholderFeatureView(feature: .malwareRemoval)
         case .privacy:
             PrivacyView()
+        case .loginItems:
+            LoginItemsView()
 
         // Speed
         case .optimization:
