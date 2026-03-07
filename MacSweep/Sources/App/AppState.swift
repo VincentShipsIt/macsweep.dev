@@ -127,7 +127,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup]
         case .protection:
             return [.privacy]  // malwareRemoval hidden until implemented
         case .speed:
@@ -149,6 +149,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case mailAttachments = "Mail Attachments"
     case trashBins = "Trash Bins"
     case devTools = "Developer Tools"
+    case aiAnalysis = "AI Analysis"
     case networkCleanup = "Network Cleanup"
 
     // Protection
@@ -181,6 +182,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .mailAttachments: return "envelope"
         case .trashBins: return "trash"
         case .devTools: return "hammer"
+        case .aiAnalysis: return "brain.head.profile"
         case .networkCleanup: return "network"
 
         // Protection
@@ -206,7 +208,7 @@ enum Feature: String, CaseIterable, Identifiable {
     var section: FeatureSection {
         switch self {
         case .smartScan: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup: return .cleanup
+        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup: return .cleanup
         case .malwareRemoval, .privacy: return .protection
         case .optimization, .maintenance: return .speed
         case .uninstaller, .updater, .extensions: return .applications
