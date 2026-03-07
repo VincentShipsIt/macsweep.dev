@@ -133,7 +133,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .speed:
             return [.optimization, .maintenance]
         case .applications:
-            return [.uninstaller, .homebrewUpdater]  // extensions hidden until implemented
+            return [.uninstaller, .homebrewUpdater]  // updater, extensions hidden until implemented
         case .files:
             return [.spaceLens, .largeOldFiles, .shredder]
         }
