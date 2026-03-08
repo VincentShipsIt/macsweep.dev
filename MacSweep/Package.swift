@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "MacSweep",
-            path: "Sources"
+            path: "Sources",
+            resources: [
+                .process("Info.plist")
+            ]
         ),
         .testTarget(
             name: "MacSweepTests",
