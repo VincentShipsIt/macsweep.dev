@@ -183,7 +183,7 @@ extension SystemMonitor {
         var usage = CPUUsage()
 
         // Parse: CPU usage: X% user, Y% sys, Z% idle
-        if let match = output.firstMatch(of: /CPU usage: ([\d.]+)% user, ([\d.]+)% sys, ([\d.]+)% idle/) {
+        if let match = output.firstMatch(of: #/CPU usage: ([0-9.]+)% user, ([0-9.]+)% sys, ([0-9.]+)% idle/#) {
             usage.user = Double(match.1) ?? 0
             usage.system = Double(match.2) ?? 0
             usage.idle = Double(match.3) ?? 0
@@ -202,13 +202,13 @@ extension SystemMonitor {
 
         // Check if osx-cpu-temp is available
         let tempOutput = await runCommand("/usr/local/bin/osx-cpu-temp", arguments: [])
-        if let match = tempOutput.firstMatch(of: /([\d.]+)°C/) {
+        if let match = tempOutput.firstMatch(of: #/([0-9.]+)°C/#) {
             return Double(match.1)
         }
 
         // Try Homebrew ARM path
         let tempOutputARM = await runCommand("/opt/homebrew/bin/osx-cpu-temp", arguments: [])
-        if let match = tempOutputARM.firstMatch(of: /([\d.]+)°C/) {
+        if let match = tempOutputARM.firstMatch(of: #/([0-9.]+)°C/#) {
             return Double(match.1)
         }
 
@@ -394,10 +394,10 @@ extension SystemMonitor {
 
         // Get cycle count from system_profiler
         let profilerOutput = await runCommand("/usr/sbin/system_profiler", arguments: ["SPPowerDataType"])
-        if let match = profilerOutput.firstMatch(of: /Cycle Count: (\d+)/) {
+        if let match = profilerOutput.firstMatch(of: #/Cycle Count: ([0-9]+)/#) {
             info.cycleCount = Int(match.1)
         }
-        if let match = profilerOutput.firstMatch(of: /Condition: (\w+)/) {
+        if let match = profilerOutput.firstMatch(of: #/Condition: ([A-Za-z ]+)/#) {
             let condition = String(match.1)
             info.health = condition == "Normal" ? 100 : (condition == "Replace Soon" ? 50 : 25)
         }
@@ -480,7 +480,7 @@ extension SystemMonitor {
 
         // Get Wi-Fi SSID
         let airportOutput = await runCommand("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", arguments: ["-I"])
-        if let match = airportOutput.firstMatch(of: /\s+SSID: (.+)/) {
+        if let match = airportOutput.firstMatch(of: #/\s+SSID: (.+)/#) {
             usage.ssid = String(match.1).trimmingCharacters(in: .whitespaces)
         }
 

@@ -173,8 +173,8 @@ struct StorageDetailView: View {
 
             CleanupSuggestionRow(
                 icon: "doc.badge.clock",
-                title: "Large Files",
-                description: "Find space hogs",
+                title: "Large Items",
+                description: "Find big files and folders",
                 color: .purple
             ) {
                 appState.selectedFeature = .largeOldFiles

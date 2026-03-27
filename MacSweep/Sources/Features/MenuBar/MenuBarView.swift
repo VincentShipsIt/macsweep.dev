@@ -6,31 +6,53 @@ struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
     @Environment(\.openWindow) private var openWindow
+    @State private var expandedWidget: WidgetType?
+
+    private let shortcutFeatures: [Feature] = [
+        .systemJunk,
+        .trashBins,
+        .devTools,
+        .privacy,
+        .optimization,
+        .uninstaller,
+        .spaceLens,
+        .largeOldFiles,
+    ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            header
+        ScrollView {
+            VStack(spacing: 0) {
+                header
 
-            Divider()
-                .padding(.vertical, 8)
+                Divider()
+                    .padding(.vertical, 8)
 
-            // System Overview Grid
-            systemOverviewGrid
+                systemOverviewGrid
 
-            Divider()
-                .padding(.vertical, 8)
+                if expandedWidget != nil {
+                    Divider()
+                        .padding(.vertical, 8)
 
-            // Quick Actions
-            quickActions
+                    expandedDetailPanel
+                }
 
-            Divider()
-                .padding(.vertical, 8)
+                Divider()
+                    .padding(.vertical, 8)
 
-            // Footer
-            footer
+                quickActions
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                moduleShortcuts
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                footer
+            }
+            .padding(16)
         }
-        .padding(16)
         .frame(width: 320)
     }
 
@@ -67,7 +89,7 @@ struct MenuBarView: View {
                 title: "Macintosh HD",
                 subtitle: "Available: \(monitor.diskUsage?.formattedFree ?? "...")",
                 accentColor: .blue,
-                onTap: { navigateToFeature(.spaceLens) }
+                onTap: { toggleWidget(.storage) }
             )
 
             // Memory
@@ -82,7 +104,7 @@ struct MenuBarView: View {
                         try? await monitor.freeUpMemory()
                     }
                 },
-                onTap: { navigateToFeature(.optimization) }
+                onTap: { toggleWidget(.memory) }
             )
 
             // Battery
@@ -92,7 +114,7 @@ struct MenuBarView: View {
                 subtitle: monitor.batteryInfo.statusText,
                 value: "\(monitor.batteryInfo.percentage)%",
                 accentColor: batteryColor,
-                onTap: { navigateToFeature(.maintenance) }
+                onTap: { toggleWidget(.battery) }
             )
 
             // CPU
@@ -103,7 +125,7 @@ struct MenuBarView: View {
                 value: monitor.cpuUsage.formattedTemperature,
                 valueColor: cpuTempColor,
                 accentColor: .orange,
-                onTap: { navigateToFeature(.optimization) }
+                onTap: { toggleWidget(.cpu) }
             )
 
             // Wi-Fi
@@ -113,7 +135,7 @@ struct MenuBarView: View {
                 subtitle: "↓ \(monitor.networkUsage.formattedDownload)",
                 secondarySubtitle: "↑ \(monitor.networkUsage.formattedUpload)",
                 accentColor: .green,
-                onTap: { navigateToFeature(.privacy) }
+                onTap: { toggleWidget(.network) }
             )
 
             // Quick Scan
@@ -131,6 +153,55 @@ struct MenuBarView: View {
                 onTap: { navigateToFeature(.smartScan) }
             )
         }
+    }
+
+    private var expandedDetailPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(detailTitle(for: expandedWidget))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                if let widget = expandedWidget {
+                    Button("Open Full View") {
+                        navigateToFeature(feature(for: widget))
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+                }
+            }
+
+            Group {
+                switch expandedWidget {
+                case .storage:
+                    StorageDetailView(monitor: monitor)
+                        .environmentObject(appState)
+                        .frame(height: 290)
+                case .memory:
+                    MemoryDetailView(monitor: monitor)
+                        .frame(height: 340)
+                case .battery:
+                    BatteryDetailView(monitor: monitor)
+                        .frame(height: 320)
+                case .cpu:
+                    CPUDetailView(monitor: monitor)
+                        .frame(height: 320)
+                case .network:
+                    NetworkDetailView(monitor: monitor)
+                        .frame(height: 280)
+                case .system, .none:
+                    EmptyView()
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .clipped()
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     // MARK: - Quick Actions
@@ -168,6 +239,37 @@ struct MenuBarView: View {
         }
     }
 
+    private var moduleShortcuts: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Modules")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("Smart Scan") {
+                    navigateToFeature(.smartScan)
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.blue)
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 8) {
+                ForEach(shortcutFeatures, id: \.self) { feature in
+                    ModuleShortcutButton(feature: feature) {
+                        navigateToFeature(feature)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Footer
 
     private var footer: some View {
@@ -193,9 +295,49 @@ struct MenuBarView: View {
 
     // MARK: - Helpers
 
+    private func toggleWidget(_ widget: WidgetType) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            expandedWidget = expandedWidget == widget ? nil : widget
+        }
+    }
+
     private func navigateToFeature(_ feature: Feature) {
         appState.selectedFeature = feature
         openMainWindow()
+    }
+
+    private func feature(for widget: WidgetType) -> Feature {
+        switch widget {
+        case .storage:
+            return .spaceLens
+        case .memory, .cpu:
+            return .optimization
+        case .battery:
+            return .maintenance
+        case .network:
+            return .networkCleanup
+        case .system:
+            return .smartScan
+        }
+    }
+
+    private func detailTitle(for widget: WidgetType?) -> String {
+        switch widget {
+        case .storage:
+            return "Macintosh HD"
+        case .memory:
+            return "Memory"
+        case .battery:
+            return "Battery"
+        case .cpu:
+            return "CPU"
+        case .network:
+            return monitor.networkUsage.ssid ?? "Wi-Fi"
+        case .system:
+            return "System"
+        case .none:
+            return ""
+        }
     }
 
     private func openMainWindow() {
@@ -303,6 +445,33 @@ struct SystemStatCard: View {
         .onTapGesture {
             onTap?()
         }
+    }
+}
+
+struct ModuleShortcutButton: View {
+    let feature: Feature
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: feature.icon)
+                    .font(.caption)
+                    .frame(width: 14)
+                    .foregroundStyle(.blue)
+
+                Text(feature.rawValue)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 }
 

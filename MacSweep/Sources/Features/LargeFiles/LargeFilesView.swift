@@ -5,12 +5,13 @@ import AppKit
 struct LargeFilesView: View {
     @EnvironmentObject var appState: AppState
     @State private var isScanning = false
-    @State private var largeFiles: [CleanupItem] = []
+    @State private var largeItems: [CleanupItem] = []
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
 
     // Filters
     @State private var sizeThreshold: Double = 100  // MB
+    @State private var scanKind: LargeFilesModule.ScanKind = .both
     @State private var selectedCategory: String? = nil
     @State private var sortOrder: SortOrder = .sizeDesc
 
@@ -22,7 +23,7 @@ struct LargeFilesView: View {
         case nameAsc = "Name A-Z"
     }
 
-    private let categories = ["All", "Video", "Image", "Audio", "Archive", "Disk Image", "Document", "Other"]
+    private let categories = ["All", "Folder", "Video", "Image", "Audio", "Archive", "Disk Image", "Document", "Code", "Application", "Other"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,13 +34,13 @@ struct LargeFilesView: View {
 
             if isScanning {
                 scanningView
-            } else if largeFiles.isEmpty {
+            } else if largeItems.isEmpty {
                 emptyState
             } else {
-                filesList
+                itemsList
             }
 
-            if !filteredFiles.isEmpty && !isScanning {
+            if !filteredItems.isEmpty && !isScanning {
                 Divider()
                 footer
             }
@@ -55,7 +56,7 @@ struct LargeFilesView: View {
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("Find files consuming disk space")
+                Text("Find large files and folders by size and recent activity")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -96,6 +97,20 @@ struct LargeFilesView: View {
                 .frame(width: 100)
             }
 
+            HStack {
+                Text("Show:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $scanKind) {
+                    ForEach(LargeFilesModule.ScanKind.allCases, id: \.self) { kind in
+                        Text(kind.rawValue).tag(kind)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+            }
+
             // Category filter
             HStack {
                 Text("Type:")
@@ -129,7 +144,7 @@ struct LargeFilesView: View {
 
             Spacer()
 
-            Text("\(filteredFiles.count) files • \(totalSize)")
+            Text("\(filteredItems.count) items • \(totalSize)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -162,10 +177,10 @@ struct LargeFilesView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.secondary)
 
-            Text("No large files found")
+            Text("No large items found")
                 .font(.headline)
 
-            Text("Run a scan to find files over \(Int(sizeThreshold)) MB")
+            Text("Run a scan to find items over \(Int(sizeThreshold)) MB")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -181,15 +196,18 @@ struct LargeFilesView: View {
 
     // MARK: - Files List
 
-    private var filesList: some View {
+    private var itemsList: some View {
         List(selection: $selectedItems) {
-            ForEach(filteredFiles) { item in
+            ForEach(filteredItems) { item in
                 LargeFileRow(
                     item: item,
                     isSelected: selectedItems.contains(item.id),
-                    onPreview: {
-                        // Open in Finder for preview
-                        NSWorkspace.shared.activateFileViewerSelecting([item.path])
+                    onOpen: {
+                        if item.type == .directory {
+                            NSWorkspace.shared.open(item.path)
+                        } else {
+                            NSWorkspace.shared.activateFileViewerSelecting([item.path])
+                        }
                     }
                 )
                 .tag(item.id)
@@ -214,7 +232,7 @@ struct LargeFilesView: View {
             Spacer()
 
             Button("Select All") {
-                selectedItems = Set(filteredFiles.map(\.id))
+                selectedItems = Set(filteredItems.map(\.id))
             }
             .buttonStyle(.bordered)
 
@@ -227,7 +245,7 @@ struct LargeFilesView: View {
         }
         .padding()
         .confirmationDialog(
-            "Move \(selectedItems.count) files to Trash?",
+            "Move \(selectedItems.count) items to Trash?",
             isPresented: $showingConfirmation,
             titleVisibility: .visible
         ) {
@@ -238,7 +256,7 @@ struct LargeFilesView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will move \(selectedSize) of files to Trash. You can restore them from Trash if needed.")
+            Text("This will move \(selectedSize) of files and folders to Trash. You can restore them from Trash if needed.")
         }
     }
 
@@ -246,70 +264,82 @@ struct LargeFilesView: View {
 
     private func scanLargeFiles() async {
         isScanning = true
-        largeFiles = []
+        largeItems = []
         selectedItems = []
 
         defer { isScanning = false }
 
         var module = LargeFilesModule()
         module.threshold = Int64(sizeThreshold * 1_048_576)  // Convert MB to bytes
+        module.scanKind = scanKind
 
         do {
-            largeFiles = try await module.scan()
+            largeItems = try await module.scan()
         } catch {
             print("Scan error: \(error)")
         }
     }
 
     private func deleteSelected() async {
-        let itemsToDelete = filteredFiles.filter { selectedItems.contains($0.id) }
-        let module = LargeFilesModule()
+        let itemsToDelete = filteredItems.filter { selectedItems.contains($0.id) }
+        var module = LargeFilesModule()
+        module.scanKind = scanKind
 
         _ = try? await module.clean(items: itemsToDelete, dryRun: false)
 
         // Remove deleted items from list
-        largeFiles.removeAll { selectedItems.contains($0.id) }
+        largeItems.removeAll { selectedItems.contains($0.id) }
         selectedItems.removeAll()
     }
 
     // MARK: - Computed
 
-    private var filteredFiles: [CleanupItem] {
-        var files = largeFiles
+    private var filteredItems: [CleanupItem] {
+        var items = largeItems
 
         // Filter by size
         let thresholdBytes = Int64(sizeThreshold * 1_048_576)
-        files = files.filter { $0.size >= thresholdBytes }
+        items = items.filter { $0.size >= thresholdBytes }
+
+        // Filter by scan kind
+        switch scanKind {
+        case .files:
+            items = items.filter { $0.type == .file }
+        case .folders:
+            items = items.filter { $0.type == .directory }
+        case .both:
+            break
+        }
 
         // Filter by category
         if let category = selectedCategory {
-            files = files.filter { $0.moduleName == category }
+            items = items.filter { $0.moduleName == category }
         }
 
         // Sort
         switch sortOrder {
         case .sizeDesc:
-            files.sort { $0.size > $1.size }
+            items.sort { $0.size > $1.size }
         case .sizeAsc:
-            files.sort { $0.size < $1.size }
+            items.sort { $0.size < $1.size }
         case .dateDesc:
-            files.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
+            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
         case .dateAsc:
-            files.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
+            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
         case .nameAsc:
-            files.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
         }
 
-        return files
+        return items
     }
 
     private var totalSize: String {
-        let total = filteredFiles.reduce(0) { $0 + $1.size }
+        let total = filteredItems.reduce(0) { $0 + $1.size }
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
     }
 
     private var selectedSize: String {
-        let total = filteredFiles
+        let total = filteredItems
             .filter { selectedItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
@@ -321,7 +351,7 @@ struct LargeFilesView: View {
 struct LargeFileRow: View {
     let item: CleanupItem
     let isSelected: Bool
-    let onPreview: () -> Void
+    let onOpen: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -363,17 +393,17 @@ struct LargeFileRow: View {
                     .font(.headline)
 
                 if let date = item.lastModified {
-                    Text(date, style: .date)
+                    Text(date, style: .relative)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Preview button
+            // Open button
             Button {
-                onPreview()
+                onOpen()
             } label: {
-                Image(systemName: "eye")
+                Image(systemName: item.type == .directory ? "arrow.up.forward.app" : "eye")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -392,12 +422,15 @@ struct LargeFileRow: View {
 
     private var categoryColor: Color {
         switch item.moduleName {
+        case "Folder": return .blue
         case "Video": return .purple
         case "Image": return .green
         case "Audio": return .orange
         case "Archive": return .yellow
         case "Disk Image": return .blue
         case "Document": return .red
+        case "Code": return .cyan
+        case "Application": return .pink
         default: return .gray
         }
     }

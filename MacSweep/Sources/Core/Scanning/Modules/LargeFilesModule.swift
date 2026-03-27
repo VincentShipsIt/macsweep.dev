@@ -5,14 +5,34 @@ import UniformTypeIdentifiers
 struct LargeFilesModule: ScanModule {
     let id = "large-files"
     let name = "Large Files"
-    let description = "Find files over the size threshold"
+    let description = "Find large files and folders over the size threshold"
     let icon = "doc.badge.ellipsis"
+
+    enum ScanKind: String, CaseIterable {
+        case files = "Files"
+        case folders = "Folders"
+        case both = "Files & Folders"
+
+        var includesFiles: Bool {
+            self == .files || self == .both
+        }
+
+        var includesFolders: Bool {
+            self == .folders || self == .both
+        }
+    }
 
     /// Minimum file size to report (default 100MB)
     var threshold: Int64 = 104_857_600
 
     /// Maximum number of results to return
     var maxResults: Int = 500
+
+    /// What kind of large items to scan for
+    var scanKind: ScanKind = .both
+
+    /// Prevent expensive repeated sizing of deeply nested folders
+    var maxDirectoryDepth: Int = 3
 
     /// Paths to search
     var searchPaths: [URL] = [
@@ -39,6 +59,7 @@ struct LargeFilesModule: ScanModule {
             .isDirectoryKey,
             .isSymbolicLinkKey,
             .contentModificationDateKey,
+            .contentAccessDateKey,
             .contentTypeKey
         ]
 
@@ -63,18 +84,52 @@ struct LargeFilesModule: ScanModule {
                 do {
                     let values = try url.resourceValues(forKeys: resourceKeys)
 
-                    // Skip directories and symlinks
-                    guard values.isDirectory == false,
-                          values.isSymbolicLink == false
-                    else { continue }
+                    // Skip symlinks
+                    guard values.isSymbolicLink == false else { continue }
+
+                    let checker = SafetyChecker()
+                    guard checker.validate(url).isSafe else { continue }
+
+                    let activityDate = values.contentAccessDate ?? values.contentModificationDate
+
+                    if values.isDirectory == true {
+                        guard scanKind.includesFolders else { continue }
+
+                        let depth = max(0, relativePath.split(separator: "/").count - 1)
+                        guard depth <= maxDirectoryDepth else {
+                            enumerator.skipDescendants()
+                            continue
+                        }
+
+                        let size = try await DiskAnalyzer.directorySize(at: url)
+                        guard size >= threshold else { continue }
+
+                        items.append(CleanupItem(
+                            id: UUID(),
+                            path: url,
+                            size: size,
+                            type: .directory,
+                            module: id,
+                            moduleName: "Folder",
+                            lastModified: activityDate
+                        ))
+
+                        if depth >= maxDirectoryDepth {
+                            enumerator.skipDescendants()
+                        }
+
+                        if items.count >= maxResults {
+                            break
+                        }
+
+                        continue
+                    }
+
+                    guard scanKind.includesFiles else { continue }
 
                     // Get file size
                     let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
                     guard size >= threshold else { continue }
-
-                    // Safety check
-                    let checker = SafetyChecker()
-                    guard checker.validate(url).isSafe else { continue }
 
                     items.append(CleanupItem(
                         id: UUID(),
@@ -83,7 +138,7 @@ struct LargeFilesModule: ScanModule {
                         type: .file,
                         module: id,
                         moduleName: fileCategory(for: values.contentType),
-                        lastModified: values.contentModificationDate
+                        lastModified: activityDate
                     ))
 
                     // Limit results
