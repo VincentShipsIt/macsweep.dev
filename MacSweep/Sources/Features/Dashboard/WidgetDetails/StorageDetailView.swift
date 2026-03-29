@@ -253,8 +253,11 @@ struct CleanupSuggestionRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     StorageDetailView(monitor: SystemMonitor())
         .environmentObject(AppState())
         .frame(width: 380, height: 450)
 }
+
+#endif

@@ -318,8 +318,11 @@ struct TrashItemRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     TrashBinsView()
         .environmentObject(AppState())
         .frame(width: 700, height: 500)
 }
+
+#endif

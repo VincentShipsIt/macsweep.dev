@@ -6,16 +6,25 @@ struct SafetyChecker: Sendable {
     // MARK: - Validation
 
     func validate(_ url: URL) -> ValidationResult {
+        validateForCleanup(url)
+    }
+
+    func validateForScan(_ url: URL, moduleID: String? = nil) -> ValidationResult {
+        validate(url, context: .scan(moduleID: moduleID, itemType: nil))
+    }
+
+    func validateForCleanup(
+        _ url: URL,
+        moduleID: String? = nil,
+        itemType: CleanupItem.ItemType? = nil
+    ) -> ValidationResult {
+        validate(url, context: .cleanup(moduleID: moduleID, itemType: itemType))
+    }
+
+    private func validate(_ url: URL, context: ValidationContext) -> ValidationResult {
         let path = url.path
         let expandedPath = (path as NSString).expandingTildeInPath
-
-        // Check never-delete paths
-        for protectedPath in ProtectedPaths.neverDelete {
-            let expanded = (protectedPath as NSString).expandingTildeInPath
-            if expandedPath.hasPrefix(expanded) || expandedPath == expanded {
-                return .protected(reason: "System or user critical path")
-            }
-        }
+        let profile = ModuleSafetyProfile(moduleID: context.moduleID)
 
         // Check sensitive file patterns
         let filename = url.lastPathComponent.lowercased()
@@ -32,9 +41,59 @@ struct SafetyChecker: Sendable {
             }
         }
 
+        if ProtectedPaths.safeCacheRoots.contains(where: { expandedPath.hasPrefix(expandedPathValue(for: $0)) }) {
+            return .safe
+        }
+
+        let pathComponents = Set(url.pathComponents)
+        let containsSafeDirectoryName = !ProtectedPaths.safeDirectoryNames.isDisjoint(with: pathComponents)
+        if containsSafeDirectoryName && profile.allowsSafeDirectoryCleanup {
+            return .safe
+        }
+
+        let isUserManagedPath = ProtectedPaths.userManagedRoots.contains(where: {
+            let root = expandedPathValue(for: $0)
+            return expandedPath.hasPrefix(root + "/") || expandedPath == root
+        })
+
+        if isUserManagedPath {
+            switch context.mode {
+            case .scan where profile.allowsUserManagedScan:
+                return .safe
+            case .cleanup where profile.allowsUserManagedCleanup:
+                return .safe
+            default:
+                break
+            }
+        }
+
+        let isCloudPath = ProtectedPaths.cloudRoots.contains(where: {
+            let root = expandedPathValue(for: $0)
+            return expandedPath.hasPrefix(root + "/") || expandedPath == root
+        })
+
+        if isCloudPath {
+            switch context.mode {
+            case .scan where profile.allowsCloudScan:
+                return .safe
+            case .cleanup where profile.allowsCloudCleanup:
+                return .safe
+            default:
+                break
+            }
+        }
+
+        // Check never-delete paths after module-aware overrides.
+        for protectedPath in ProtectedPaths.neverDelete {
+            let expanded = expandedPathValue(for: protectedPath)
+            if expandedPath.hasPrefix(expanded) || expandedPath == expanded {
+                return .protected(reason: "System or user critical path")
+            }
+        }
+
         // Check if within safe cache roots
         for safeRoot in ProtectedPaths.safeCacheRoots {
-            let expanded = (safeRoot as NSString).expandingTildeInPath
+            let expanded = expandedPathValue(for: safeRoot)
             if expandedPath.hasPrefix(expanded) {
                 return .safe
             }
@@ -55,12 +114,16 @@ struct SafetyChecker: Sendable {
     func validateBatch(_ urls: [URL]) -> [URL: ValidationResult] {
         var results: [URL: ValidationResult] = [:]
         for url in urls {
-            results[url] = validate(url)
+            results[url] = validate(url, context: .cleanup(moduleID: nil, itemType: nil))
         }
         return results
     }
 
     // MARK: - Helpers
+
+    private func expandedPathValue(for protectedPath: String) -> String {
+        (protectedPath as NSString).expandingTildeInPath
+    }
 
     private func matchesPattern(_ filename: String, pattern: String) -> Bool {
         if pattern.hasPrefix("*") {
@@ -84,6 +147,68 @@ struct SafetyChecker: Sendable {
 
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return targetURL.path.hasPrefix(home)
+    }
+}
+
+private struct ValidationContext {
+    enum Mode {
+        case scan
+        case cleanup
+    }
+
+    let mode: Mode
+    let moduleID: String?
+    let itemType: CleanupItem.ItemType?
+
+    static func scan(moduleID: String?, itemType: CleanupItem.ItemType?) -> ValidationContext {
+        ValidationContext(mode: .scan, moduleID: moduleID, itemType: itemType)
+    }
+
+    static func cleanup(moduleID: String?, itemType: CleanupItem.ItemType?) -> ValidationContext {
+        ValidationContext(mode: .cleanup, moduleID: moduleID, itemType: itemType)
+    }
+}
+
+private struct ModuleSafetyProfile {
+    let allowsUserManagedScan: Bool
+    let allowsUserManagedCleanup: Bool
+    let allowsCloudScan: Bool
+    let allowsCloudCleanup: Bool
+    let allowsSafeDirectoryCleanup: Bool
+
+    init(moduleID: String?) {
+        switch moduleID {
+        case "large-files":
+            allowsUserManagedScan = true
+            allowsUserManagedCleanup = false
+            allowsCloudScan = false
+            allowsCloudCleanup = false
+            allowsSafeDirectoryCleanup = true
+        case "duplicates", "similar-photos":
+            allowsUserManagedScan = true
+            allowsUserManagedCleanup = true
+            allowsCloudScan = false
+            allowsCloudCleanup = false
+            allowsSafeDirectoryCleanup = true
+        case "cloud-cleanup":
+            allowsUserManagedScan = false
+            allowsUserManagedCleanup = false
+            allowsCloudScan = true
+            allowsCloudCleanup = true
+            allowsSafeDirectoryCleanup = true
+        case "dev-tools", "package-managers":
+            allowsUserManagedScan = false
+            allowsUserManagedCleanup = false
+            allowsCloudScan = false
+            allowsCloudCleanup = false
+            allowsSafeDirectoryCleanup = true
+        default:
+            allowsUserManagedScan = false
+            allowsUserManagedCleanup = false
+            allowsCloudScan = false
+            allowsCloudCleanup = false
+            allowsSafeDirectoryCleanup = false
+        }
     }
 }
 
@@ -177,6 +302,24 @@ struct ProtectedPaths {
         "~/.gitconfig",
         "~/.npmrc",
         "~/.pypirc",
+    ]
+
+    static let userManagedRoots: Set<String> = [
+        "~/Documents",
+        "~/Desktop",
+        "~/Pictures",
+        "~/Movies",
+        "~/Music",
+        "~/Downloads",
+    ]
+
+    static let cloudRoots: Set<String> = [
+        "~/Library/Mobile Documents",
+        "~/Library/CloudStorage",
+        "~/iCloud Drive",
+        "~/Dropbox",
+        "~/Google Drive",
+        "~/OneDrive",
     ]
 
     /// File patterns that indicate sensitive data

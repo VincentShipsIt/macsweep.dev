@@ -819,8 +819,11 @@ struct NetworkCacheRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     NetworkCleanupView()
         .environmentObject(AppState())
         .frame(width: 700, height: 600)
 }
+
+#endif

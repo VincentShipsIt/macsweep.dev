@@ -9,14 +9,19 @@ struct MenuBarView: View {
     @State private var expandedWidget: WidgetType?
 
     private let shortcutFeatures: [Feature] = [
+        .assistant,
         .systemJunk,
         .trashBins,
         .devTools,
         .privacy,
         .optimization,
+        .batteryMonitor,
+        .cloudCleanup,
         .uninstaller,
         .spaceLens,
         .largeOldFiles,
+        .duplicateFiles,
+        .similarPhotos,
     ]
 
     var body: some View {
@@ -141,8 +146,8 @@ struct MenuBarView: View {
             // Quick Scan
             SystemStatCard(
                 icon: "magnifyingglass",
-                title: "Quick Scan",
-                subtitle: appState.isScanning ? "Scanning..." : "Find junk files",
+                title: "Smart Care",
+                subtitle: appState.isScanning ? "Scanning..." : "Run one-click cleanup",
                 accentColor: .purple,
                 actionLabel: appState.isScanning ? nil : "Scan",
                 action: {
@@ -249,7 +254,7 @@ struct MenuBarView: View {
 
                 Spacer()
 
-                Button("Smart Scan") {
+                Button("Smart Care") {
                     navigateToFeature(.smartScan)
                 }
                 .buttonStyle(.plain)
@@ -313,7 +318,7 @@ struct MenuBarView: View {
         case .memory, .cpu:
             return .optimization
         case .battery:
-            return .maintenance
+            return .batteryMonitor
         case .network:
             return .networkCleanup
         case .system:
@@ -475,7 +480,10 @@ struct ModuleShortcutButton: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     MenuBarView()
         .environmentObject(AppState())
 }
+
+#endif

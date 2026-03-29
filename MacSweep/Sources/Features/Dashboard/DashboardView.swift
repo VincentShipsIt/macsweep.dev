@@ -21,6 +21,8 @@ struct DashboardView: View {
                     fdaBanner
                 }
 
+                smartCareSection
+
                 // Recommendations Section
                 recommendationsSection
 
@@ -85,6 +87,113 @@ struct DashboardView: View {
 
     // MARK: - Recommendations Section
 
+    private var smartCareSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Smart Care")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            HStack(alignment: .top, spacing: 20) {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.secondary.opacity(0.16), lineWidth: 12)
+                        Circle()
+                            .trim(from: 0, to: Double((appState.smartCareSummary?.score ?? 100)) / 100)
+                            .stroke(smartCareScoreColor.gradient, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+
+                        VStack(spacing: 2) {
+                            Text("\(appState.smartCareSummary?.score ?? 100)")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                            Text("Score")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: 120, height: 120)
+
+                    if let summary = appState.smartCareSummary {
+                        Text("\(summary.formattedBytes) reclaimable")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(smartCareHeadline)
+                        .font(.headline)
+
+                    Text(smartCareDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 10) {
+                        Button {
+                            Task {
+                                await appState.quickScan()
+                            }
+                        } label: {
+                            Label(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan", systemImage: "sparkles")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(appState.isScanning)
+
+                        Button {
+                            Task {
+                                _ = try? await appState.deleteSelected()
+                            }
+                        } label: {
+                            Label("Clean Recommended", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(appState.selectedItems.isEmpty || appState.isScanning)
+                    }
+
+                    if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(summary.findings.prefix(4)) { finding in
+                                Button {
+                                    if let feature = appState.feature(for: finding.moduleID) {
+                                        appState.selectedFeature = feature
+                                    }
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(finding.title)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(.primary)
+                                            Text("\(finding.itemCount) items • \(finding.formattedBytes)")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        if finding.autoCleanRecommended {
+                                            Text("Recommended")
+                                                .font(.caption2)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(.green.opacity(0.12), in: Capsule())
+                                                .foregroundStyle(.green)
+                                        }
+                                    }
+                                    .padding(12)
+                                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
     private var recommendationsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Recommendations")
@@ -135,10 +244,71 @@ struct DashboardView: View {
                     ) {
                         appState.selectedFeature = .devTools
                     }
+
+                    RecommendationCard(
+                        icon: "doc.on.doc.fill",
+                        iconColor: .pink,
+                        title: "Duplicate Files",
+                        description: "Find redundant copies and recover wasted storage",
+                        buttonTitle: "Review Duplicates"
+                    ) {
+                        appState.selectedFeature = .duplicateFiles
+                    }
+
+                    RecommendationCard(
+                        icon: "battery.100.circle.fill",
+                        iconColor: .green,
+                        title: "Battery Monitor",
+                        description: "Track health, cycle count, and current charge behavior",
+                        buttonTitle: "Open Battery"
+                    ) {
+                        appState.selectedFeature = .batteryMonitor
+                    }
+
+                    RecommendationCard(
+                        icon: "photo.stack.fill",
+                        iconColor: .mint,
+                        title: "Similar Photos",
+                        description: "Review visually similar images and keep the best shots",
+                        buttonTitle: "Review Photos"
+                    ) {
+                        appState.selectedFeature = .similarPhotos
+                    }
+
+                    RecommendationCard(
+                        icon: "icloud.fill",
+                        iconColor: .cyan,
+                        title: "Cloud Cleanup",
+                        description: "Reclaim local storage from stale cloud copies and caches",
+                        buttonTitle: "Open Cloud"
+                    ) {
+                        appState.selectedFeature = .cloudCleanup
+                    }
                 }
                 .padding(.horizontal, 2)
             }
         }
+    }
+
+    private var smartCareScoreColor: Color {
+        let score = appState.smartCareSummary?.score ?? 100
+        if score >= 85 { return .green }
+        if score >= 65 { return .orange }
+        return .red
+    }
+
+    private var smartCareHeadline: String {
+        if let summary = appState.smartCareSummary {
+            return summary.score >= 85 ? "Your Mac is in good shape." : "Your Mac has cleanup opportunities."
+        }
+        return "Run Smart Care to inspect the highest-impact cleanup categories."
+    }
+
+    private var smartCareDescription: String {
+        if let summary = appState.smartCareSummary {
+            return "\(summary.issueCount) items found across \(summary.findings.count) categories. Recommended items are preselected for a safer one-click cleanup."
+        }
+        return "MacSweep will scan junk, large files, duplicates, similar photos, developer artifacts, and cloud storage waste, then preselect the safest items to clean."
     }
 
     // MARK: - Mac Overview Section
@@ -514,8 +684,11 @@ struct OverviewCard: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     DashboardView()
         .environmentObject(AppState())
         .frame(width: 800, height: 600)
 }
+
+#endif

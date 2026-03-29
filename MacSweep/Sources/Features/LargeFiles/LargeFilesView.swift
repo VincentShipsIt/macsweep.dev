@@ -448,8 +448,11 @@ struct FileIconView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     LargeFilesView()
         .environmentObject(AppState())
         .frame(width: 700, height: 500)
 }
+
+#endif

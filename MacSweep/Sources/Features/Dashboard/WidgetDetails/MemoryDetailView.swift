@@ -241,7 +241,10 @@ struct MemoryBar: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     MemoryDetailView(monitor: SystemMonitor())
         .frame(width: 380, height: 500)
 }
+
+#endif

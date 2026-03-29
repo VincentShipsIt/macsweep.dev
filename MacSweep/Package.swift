@@ -7,16 +7,27 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "MacSweep", targets: ["MacSweep"])
+        .library(name: "MacSweepCore", targets: ["MacSweepCore"]),
+        .executable(name: "macsweep", targets: ["MacSweepCLI"])
     ],
     targets: [
+        .target(
+            name: "MacSweepCore",
+            path: "Sources/Core"
+        ),
+        .target(
+            name: "MacSweepCLIKit",
+            dependencies: ["MacSweepCore"],
+            path: "Sources/CLIKit"
+        ),
         .executableTarget(
-            name: "MacSweep",
-            path: "Sources"
+            name: "MacSweepCLI",
+            dependencies: ["MacSweepCLIKit"],
+            path: "Sources/CLI"
         ),
         .testTarget(
             name: "MacSweepTests",
-            dependencies: ["MacSweep"],
+            dependencies: ["MacSweepCore", "MacSweepCLIKit"],
             path: "Tests"
         )
     ]

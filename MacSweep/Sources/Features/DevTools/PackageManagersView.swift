@@ -545,8 +545,11 @@ struct DockerActionButton: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     PackageManagersView()
         .environmentObject(AppState())
         .frame(width: 700, height: 600)
 }
+
+#endif

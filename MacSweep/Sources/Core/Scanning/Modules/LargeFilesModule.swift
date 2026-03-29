@@ -88,7 +88,7 @@ struct LargeFilesModule: ScanModule {
                     guard values.isSymbolicLink == false else { continue }
 
                     let checker = SafetyChecker()
-                    guard checker.validate(url).isSafe else { continue }
+                    guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
                     let activityDate = values.contentAccessDate ?? values.contentModificationDate
 

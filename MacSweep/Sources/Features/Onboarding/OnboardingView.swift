@@ -310,6 +310,9 @@ struct OnboardingPageView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     OnboardingView(isPresented: .constant(true))
 }
+
+#endif

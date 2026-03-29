@@ -236,7 +236,7 @@ struct DevToolsModule: ScanModule {
                 if pattern.matches(url) {
                     // Safety check
                     let checker = SafetyChecker()
-                    guard checker.validate(url).isSafe else { continue }
+                    guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
                     let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
                     guard size > 1_048_576 else { continue }  // Skip if < 1MB

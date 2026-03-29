@@ -78,7 +78,7 @@ struct DuplicateFinderModule: ScanModule {
 
                 // Skip protected paths
                 let checker = SafetyChecker()
-                guard checker.validate(url).isSafe else { continue }
+                guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
                 sizeGroups[size64, default: []].append(url)
             } catch {

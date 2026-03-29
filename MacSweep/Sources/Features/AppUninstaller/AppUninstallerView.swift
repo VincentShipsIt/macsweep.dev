@@ -454,8 +454,11 @@ struct LeftoverRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     AppUninstallerView()
         .environmentObject(AppState())
         .frame(width: 800, height: 600)
 }
+
+#endif

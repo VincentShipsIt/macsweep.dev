@@ -1,0 +1,304 @@
+import SwiftUI
+import AppKit
+
+/// View for finding visually similar photos.
+struct SimilarPhotosView: View {
+    @State private var isScanning = false
+    @State private var photoItems: [CleanupItem] = []
+    @State private var selectedItems: Set<UUID> = []
+    @State private var showingConfirmation = false
+    @State private var sortOrder: SortOrder = .sizeDesc
+
+    enum SortOrder: String, CaseIterable {
+        case sizeDesc = "Largest First"
+        case dateAsc = "Oldest First"
+        case dateDesc = "Newest First"
+        case nameAsc = "Name A-Z"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            filterBar
+            Divider()
+
+            if isScanning {
+                scanningView
+            } else if photoItems.isEmpty {
+                emptyState
+            } else {
+                itemsList
+            }
+
+            if !sortedItems.isEmpty && !isScanning {
+                Divider()
+                footer
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Similar Photos")
+                    .font(.title)
+                    .fontWeight(.bold)
+
+                Text("Detect visually similar images and keep the strongest shot or oldest original.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                Task { await scanPhotos() }
+            } label: {
+                Label("Scan", systemImage: "photo.stack")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isScanning)
+        }
+        .padding()
+    }
+
+    private var filterBar: some View {
+        HStack {
+            HStack {
+                Text("Sort:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $sortOrder) {
+                    ForEach(SortOrder.allCases, id: \.self) { order in
+                        Text(order.rawValue).tag(order)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+            }
+
+            Spacer()
+
+            Text("\(sortedItems.count) photos • \(totalSize) recoverable")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private var scanningView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+
+            Text("Scanning photos...")
+                .font(.headline)
+
+            Text("Comparing photo fingerprints to detect visually similar shots")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 64))
+                .foregroundStyle(.secondary)
+
+            Text("No similar photos found")
+                .font(.headline)
+
+            Text("Run a scan to review visually similar images across your photo folders.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Start Scan") {
+                Task { await scanPhotos() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var itemsList: some View {
+        List(selection: $selectedItems) {
+            ForEach(sortedItems) { item in
+                SimilarPhotoRow(item: item, isSelected: selectedItems.contains(item.id))
+                    .tag(item.id)
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    private var footer: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(selectedItems.count) selected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Will recover \(selectedSize)")
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            Button("Select All") {
+                selectedItems = Set(sortedItems.map(\.id))
+            }
+            .buttonStyle(.bordered)
+
+            Button("Move to Trash") {
+                showingConfirmation = true
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .disabled(selectedItems.isEmpty)
+        }
+        .padding()
+        .confirmationDialog(
+            "Move \(selectedItems.count) similar photos to Trash?",
+            isPresented: $showingConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                Task { await cleanSelected() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The selected similar photos will be moved to Trash so you can restore them if needed.")
+        }
+    }
+
+    private func scanPhotos() async {
+        isScanning = true
+        photoItems = []
+        selectedItems = []
+        defer { isScanning = false }
+
+        do {
+            let module = SimilarPhotosModule()
+            photoItems = try await module.scan()
+            selectedItems = Set(photoItems.map(\.id))
+        } catch {
+            print("Similar photo scan error: \(error)")
+        }
+    }
+
+    private func cleanSelected() async {
+        let module = SimilarPhotosModule()
+        let itemsToClean = sortedItems.filter { selectedItems.contains($0.id) }
+
+        _ = try? await module.clean(items: itemsToClean, dryRun: false)
+        photoItems.removeAll { selectedItems.contains($0.id) }
+        selectedItems.removeAll()
+    }
+
+    private var sortedItems: [CleanupItem] {
+        var items = photoItems
+
+        switch sortOrder {
+        case .sizeDesc:
+            items.sort { $0.size > $1.size }
+        case .dateAsc:
+            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
+        case .dateDesc:
+            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
+        case .nameAsc:
+            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+        }
+
+        return items
+    }
+
+    private var totalSize: String {
+        ByteCountFormatter.string(fromByteCount: sortedItems.reduce(0) { $0 + $1.size }, countStyle: .file)
+    }
+
+    private var selectedSize: String {
+        ByteCountFormatter.string(
+            fromByteCount: sortedItems.filter { selectedItems.contains($0.id) }.reduce(0) { $0 + $1.size },
+            countStyle: .file
+        )
+    }
+}
+
+private struct SimilarPhotoRow: View {
+    let item: CleanupItem
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isSelected ? .blue : .secondary)
+
+            SimilarPhotoThumbnail(url: item.path)
+                .frame(width: 44, height: 44)
+                .clipShape(.rect(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.displayName)
+                    .lineLimit(1)
+
+                Text(item.moduleName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(item.path.deletingLastPathComponent().path)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(item.formattedSize)
+                    .font(.headline)
+
+                if let date = item.lastModified {
+                    Text(date, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([item.path])
+            } label: {
+                Image(systemName: "folder")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct SimilarPhotoThumbnail: View {
+    let url: URL
+
+    var body: some View {
+        if let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            FileIconView(url: url)
+        }
+    }
+}
+
+#if !SWIFT_PACKAGE
+#Preview {
+    SimilarPhotosView()
+        .frame(width: 760, height: 540)
+}
+
+#endif
