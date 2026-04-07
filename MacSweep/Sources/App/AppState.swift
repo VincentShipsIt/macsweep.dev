@@ -193,13 +193,13 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup, .cloudCleanup]
         case .protection:
-            return [.privacy]  // malwareRemoval hidden until implemented
+            return [.malwareRemoval, .privacy]
         case .speed:
             return [.optimization, .batteryMonitor, .maintenance]
         case .applications:
-            return [.uninstaller]  // updater, extensions hidden until implemented
+            return [.uninstaller, .homebrewUpdater]  // updater, extensions hidden until implemented
         case .files:
             return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         }
@@ -216,12 +216,14 @@ enum Feature: String, CaseIterable, Identifiable {
     case mailAttachments = "Mail Attachments"
     case trashBins = "Trash Bins"
     case devTools = "Developer Tools"
+    case aiAnalysis = "AI Analysis"
     case networkCleanup = "Network Cleanup"
     case cloudCleanup = "Cloud Cleanup"
 
     // Protection
     case malwareRemoval = "Malware Removal"
     case privacy = "Privacy"
+    case loginItems = "Login Items"
 
     // Speed
     case optimization = "Optimization"
@@ -230,6 +232,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     // Applications
     case uninstaller = "Uninstaller"
+    case homebrewUpdater = "Homebrew Updater"
     case updater = "Updater"
     case extensions = "Extensions"
 
@@ -253,12 +256,14 @@ enum Feature: String, CaseIterable, Identifiable {
         case .mailAttachments: return "envelope"
         case .trashBins: return "trash"
         case .devTools: return "hammer"
+        case .aiAnalysis: return "brain.head.profile"
         case .networkCleanup: return "network"
         case .cloudCleanup: return "icloud"
 
         // Protection
-        case .malwareRemoval: return "ladybug"
+        case .malwareRemoval: return "shield.slash"
         case .privacy: return "hand.raised"
+        case .loginItems: return "shield.lefthalf.filled"
 
         // Speed
         case .optimization: return "slider.horizontal.3"
@@ -267,6 +272,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
         // Applications
         case .uninstaller: return "xmark.app"
+        case .homebrewUpdater: return "arrow.up.circle"
         case .updater: return "arrow.clockwise.circle"
         case .extensions: return "puzzlepiece.extension"
 
@@ -282,10 +288,10 @@ enum Feature: String, CaseIterable, Identifiable {
     var section: FeatureSection {
         switch self {
         case .smartScan, .assistant: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup: return .cleanup
-        case .malwareRemoval, .privacy: return .protection
+        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup, .cloudCleanup: return .cleanup
+        case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .batteryMonitor, .maintenance: return .speed
-        case .uninstaller, .updater, .extensions: return .applications
+        case .uninstaller, .homebrewUpdater, .updater, .extensions: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }
     }

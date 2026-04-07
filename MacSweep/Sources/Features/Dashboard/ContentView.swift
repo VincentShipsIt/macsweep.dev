@@ -63,6 +63,8 @@ struct ContentView: View {
             TrashBinsView()
         case .devTools:
             DevToolsView()
+        case .aiAnalysis:
+            AIAnalysisView()
         case .networkCleanup:
             NetworkCleanupView()
         case .cloudCleanup:
@@ -70,9 +72,11 @@ struct ContentView: View {
 
         // Protection
         case .malwareRemoval:
-            PlaceholderFeatureView(feature: .malwareRemoval)
+            MalwareScannerView()
         case .privacy:
             PrivacyView()
+        case .loginItems:
+            LoginItemsView()
 
         // Speed
         case .optimization:
@@ -85,6 +89,8 @@ struct ContentView: View {
         // Applications
         case .uninstaller:
             AppUninstallerView()
+        case .homebrewUpdater:
+            HomebrewUpdaterView()
         case .updater:
             PlaceholderFeatureView(feature: .updater)
         case .extensions:
