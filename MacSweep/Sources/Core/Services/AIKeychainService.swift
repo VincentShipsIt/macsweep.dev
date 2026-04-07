@@ -6,10 +6,11 @@ final class AIKeychainService {
     static let shared = AIKeychainService()
     private init() {}
 
-    private let service = "dev.shipshit.macsweep"
-    private let account = "anthropic-api-key"
+    private let service = "com.vincentshipsit.macsweep"
+    private let account = "ai-api-key"
 
-    func saveKey(_ key: String) {
+    @discardableResult
+    func saveKey(_ key: String) -> Bool {
         let data = Data(key.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -18,7 +19,7 @@ final class AIKeychainService {
             kSecValueData as String: data
         ]
         SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
     func loadKey() -> String? {
