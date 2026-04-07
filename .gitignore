@@ -35,10 +35,10 @@ Package.resolved
 ._*
 
 # Agent sessions (keep structure, ignore content)
-.agent/SESSIONS/*.md
-!.agent/SESSIONS/.gitkeep
-.agent/TASKS/*.md
-!.agent/TASKS/.gitkeep
+.agents/SESSIONS/*.md
+!.agents/SESSIONS/.gitkeep
+.agents/TASKS/*.md
+!.agents/TASKS/.gitkeep
 
 # Logs
 *.log

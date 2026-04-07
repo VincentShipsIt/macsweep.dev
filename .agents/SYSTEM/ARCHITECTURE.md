@@ -1,43 +1,57 @@
 # MacSweep Architecture
 
 ## Tech Stack
-- **Python 3.11+** - Core language
-- **Typer** - CLI framework
-- **Textual** - TUI framework
-- **Rich** - Terminal formatting
+- **Swift 5.9+** - Core language
+- **SwiftUI** - Declarative UI framework
+- **Combine** - Reactive state management
+- **Swift Concurrency** - Async/await for scanning
 
 ## Module System
 
-All cleanup modules inherit from `CleanupModule` base class:
+All cleanup modules conform to the `ScanModule` protocol:
 
-```python
-class CleanupModule(ABC):
-    name: str
-    description: str
-    category: str
+```swift
+protocol ScanModule {
+    var id: String { get }
+    var name: String { get }
+    var description: String { get }
+    var icon: String { get }
 
-    async def scan(self) -> AsyncIterator[CleanupItem]: ...
-    async def clean(self, items, dry_run=True) -> int: ...
+    func scan() async throws -> [CleanupItem]
+    func clean(_ items: [CleanupItem], dryRun: Bool) async throws -> Int
+}
 ```
 
 ## Directory Structure
 ```
-src/macsweep/
-├── cli.py              # Typer CLI commands
-├── tui/                # Textual TUI
-├── modules/            # Cleanup modules
-│   ├── base.py         # Base class
-│   ├── service_workers/
-│   ├── browsers/
-│   └── system/
-├── analyzers/          # Large files, unused apps
-├── monitors/           # RAM/CPU monitoring
-├── core/               # Safety, config
-└── utils/              # Helpers
+MacSweep/
+├── Sources/
+│   ├── App/                    # App entry point, AppState
+│   ├── Core/
+│   │   ├── Scanning/
+│   │   │   ├── ScanEngine.swift
+│   │   │   └── Modules/       # SystemCache, Browser, DevTools, etc.
+│   │   ├── Safety/            # SafetyChecker, protected paths
+│   │   ├── Storage/           # DiskAnalyzer
+│   │   ├── Services/          # AI, Keychain, Homebrew services
+│   │   ├── Monitoring/        # SystemMonitor (CPU, RAM, disk)
+│   │   ├── Permissions/       # Full Disk Access management
+│   │   ├── Shredder/          # Secure file deletion
+│   │   └── Headless/          # Headless service mode
+│   └── Features/
+│       ├── Dashboard/         # ContentView, main navigation
+│       ├── BrowserCleanup/    # Browser cleanup UI
+│       ├── DevTools/          # Developer tools cleanup UI
+│       ├── NetworkCleanup/    # WiFi, SSH, DNS cleanup UI
+│       └── ...                # Other feature views
+├── Tests/                     # Unit tests
+├── Package.swift              # SPM configuration
+└── MacSweep.xcodeproj         # Xcode project
 ```
 
 ## Safety
 - Dry-run by default
-- Protected paths list
+- Protected paths list (Documents, Desktop, .ssh, .aws, etc.)
 - Size limit warnings
 - Confirmation prompts
+- Per-module safety filtering (isProtected)

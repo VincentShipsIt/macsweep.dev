@@ -5,31 +5,22 @@
 - [Cleanup Targets](./SYSTEM/CLEANUP_TARGETS.md)
 
 ## Project Overview
-MacSweep is a macOS system cleaner with CLI and TUI interfaces. Built with Python, Typer, Textual, and Rich.
+MacSweep is a native macOS system cleaner built with Swift and SwiftUI. It provides disk cleanup, app management, and system optimization through a modern declarative UI.
 
-## Commands
+## Build & Test
 ```bash
-source .venv/bin/activate
-macsweep scan                  # Scan for cleanup opportunities
-macsweep clean --execute       # Clean (use --dry-run first)
-macsweep service-workers       # Clean browser service workers
-macsweep large-files           # Find large files
-macsweep unused-apps           # Find unused applications
-macsweep monitor               # Real-time system monitor
-macsweep tui                   # Interactive TUI
+cd MacSweep
+swift build              # Build the project
+swift test               # Run tests
+swift build -c release   # Release build
 ```
 
-## Development
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-ruff check src/                # Lint
-ruff format src/               # Format
-```
+Or open `MacSweep.xcodeproj` in Xcode and build.
 
 ## Key Files
-- `src/macsweep/cli.py` - CLI entry point
-- `src/macsweep/tui/app.py` - TUI application
-- `src/macsweep/modules/` - Cleanup modules
-- `src/macsweep/core/safety.py` - Safety mechanisms
+- `MacSweep/Sources/App/` - App entry point and state
+- `MacSweep/Sources/Core/Scanning/` - Cleanup scan modules
+- `MacSweep/Sources/Core/Safety/` - Safety mechanisms
+- `MacSweep/Sources/Core/Storage/` - Disk analysis
+- `MacSweep/Sources/Features/` - SwiftUI feature views
+- `MacSweep/Tests/` - Unit tests

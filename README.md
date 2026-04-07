@@ -1,5 +1,10 @@
 # MacSweep
 
+> [!WARNING]
+> This project is under active development and is a work in progress.
+> Features may be incomplete, APIs may change, and there may be bugs.
+> Contributions and feedback welcome!
+
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![macOS 14+](https://img.shields.io/badge/macOS-14+-blue.svg)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -52,6 +57,17 @@ MacSweep is designed with safety in mind:
   - `/System`, `/Applications`
 - **Confirmation prompts** - Large deletions require explicit confirmation
 - **Size limits** - Configurable max delete size (default 10GB)
+
+## Privacy & Network
+
+MacSweep includes an optional AI Analysis feature that can send directory metadata
+(names and sizes, not file contents) to the Anthropic API for intelligent cache
+identification. This feature:
+
+- Is **opt-in** — requires you to provide your own API key
+- Never sends file contents, only directory names and sizes
+- Can be used without AI (deterministic scan works without an API key)
+- API key is stored in your macOS Keychain, never in plaintext
 
 ## Tech Stack
 
