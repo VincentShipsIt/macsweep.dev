@@ -5,10 +5,10 @@
     <key>CFBundleName</key>
     <string>MacSweep</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.shipshit.macsweep</string>
+    <string>com.vincentshipsit.macsweep</string>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>dev.shipshit.macsweep.weeklyscan</string>
+        <string>com.vincentshipsit.macsweep.weeklyscan</string>
     </array>
     <key>NSUserNotificationAlertStyle</key>
     <string>alert</string>

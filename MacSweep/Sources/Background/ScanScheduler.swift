@@ -5,7 +5,7 @@ import Foundation
 
 class ScanScheduler {
     static let shared = ScanScheduler()
-    static let taskIdentifier = "dev.shipshit.macsweep.weeklyscan"
+    static let taskIdentifier = "com.vincentshipsit.macsweep.weeklyscan"
 
     private let scanIntervalSeconds: TimeInterval = 7 * 24 * 60 * 60 // 7 days
     private var timer: Timer?
