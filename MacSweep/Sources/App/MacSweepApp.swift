@@ -32,6 +32,11 @@ struct MacSweepApp: App {
                     // Show dock icon when main window appears
                     AppDelegate.showDockIcon()
                 }
+                .task {
+                    // Register and schedule weekly background scan
+                    ScanScheduler.shared.register()
+                    NotificationManager.shared.requestPermission()
+                }
                 .onChange(of: showingOnboarding) { newValue in
                     if !newValue {
                         hasCompletedOnboarding = true

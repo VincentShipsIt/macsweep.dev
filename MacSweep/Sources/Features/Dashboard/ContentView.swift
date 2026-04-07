@@ -527,12 +527,30 @@ struct GeneralSettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @AppStorage("dryRunDefault") private var dryRunDefault = true
+    @AppStorage("backgroundScanEnabled") private var backgroundScanEnabled = true
 
     var body: some View {
         Form {
             Toggle("Launch at login", isOn: $launchAtLogin)
             Toggle("Show menu bar icon", isOn: $showMenuBarIcon)
             Toggle("Dry-run by default (preview before delete)", isOn: $dryRunDefault)
+
+            Divider()
+
+            Toggle("Weekly background scan", isOn: $backgroundScanEnabled)
+                .onChange(of: backgroundScanEnabled) { enabled in
+                    if enabled {
+                        ScanScheduler.shared.scheduleWeeklyScan()
+                    } else {
+                        ScanScheduler.shared.cancelScheduledScan()
+                    }
+                }
+
+            if let lastScan = LastScanStore.shared.lastScan {
+                Text("Last scan: \(lastScan.date.formatted(.relative(presentation: .named)))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .padding()
     }
