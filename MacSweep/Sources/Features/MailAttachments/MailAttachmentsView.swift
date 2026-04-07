@@ -378,8 +378,11 @@ struct AttachmentRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     MailAttachmentsView()
         .environmentObject(AppState())
         .frame(width: 700, height: 500)
 }
+
+#endif

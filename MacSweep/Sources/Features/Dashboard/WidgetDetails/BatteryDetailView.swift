@@ -276,7 +276,10 @@ struct DetailBox: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     BatteryDetailView(monitor: SystemMonitor())
         .frame(width: 380, height: 450)
 }
+
+#endif

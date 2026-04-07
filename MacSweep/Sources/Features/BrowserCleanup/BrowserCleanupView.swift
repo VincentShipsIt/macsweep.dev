@@ -536,8 +536,11 @@ struct RiskWarningBanner: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     BrowserCleanupView()
         .environmentObject(AppState())
         .frame(width: 600, height: 500)
 }
+
+#endif

@@ -686,8 +686,11 @@ struct FilterChip: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     DevToolsView()
         .environmentObject(AppState())
         .frame(width: 800, height: 600)
 }
+
+#endif

@@ -50,7 +50,9 @@ struct ContentView: View {
         switch appState.selectedFeature {
         // Main
         case .smartScan:
-            SmartScanView()
+            DashboardView()
+        case .assistant:
+            AssistantView()
 
         // Cleanup
         case .systemJunk:
@@ -63,6 +65,8 @@ struct ContentView: View {
             DevToolsView()
         case .networkCleanup:
             NetworkCleanupView()
+        case .cloudCleanup:
+            CloudCleanupView()
 
         // Protection
         case .malwareRemoval:
@@ -73,6 +77,8 @@ struct ContentView: View {
         // Speed
         case .optimization:
             OptimizationView()
+        case .batteryMonitor:
+            BatteryMonitorView()
         case .maintenance:
             MaintenanceView()
 
@@ -89,6 +95,10 @@ struct ContentView: View {
             SpaceLensView()
         case .largeOldFiles:
             LargeFilesView()
+        case .duplicateFiles:
+            DuplicateFinderView()
+        case .similarPhotos:
+            SimilarPhotosView()
         case .shredder:
             ShredderView()
         }
@@ -567,8 +577,11 @@ struct AboutView: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     ContentView()
         .environmentObject(AppState())
         .frame(width: 900, height: 600)
 }
+
+#endif

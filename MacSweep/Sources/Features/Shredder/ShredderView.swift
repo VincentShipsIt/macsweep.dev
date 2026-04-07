@@ -423,8 +423,11 @@ struct InfoBadge: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     ShredderView()
         .environmentObject(AppState())
         .frame(width: 600, height: 700)
 }
+
+#endif

@@ -1,5 +1,5 @@
 import XCTest
-@testable import MacSweep
+@testable import MacSweepCore
 
 final class SystemCacheModuleTests: XCTestCase {
 

@@ -229,7 +229,10 @@ struct SpeedMeter: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     NetworkDetailView(monitor: SystemMonitor())
         .frame(width: 380, height: 450)
 }
+
+#endif

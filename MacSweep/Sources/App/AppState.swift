@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
     @Published var currentScanModule: String?
     @Published var scanResults: [CleanupItem] = []
     @Published var selectedItems: Set<CleanupItem.ID> = []
+    @Published var smartCareSummary: SmartCareSummary?
 
     // MARK: - Disk Usage
     @Published var diskUsage: DiskUsage?
@@ -35,6 +36,7 @@ final class AppState: ObservableObject {
     // MARK: - Engines
     let scanEngine = ScanEngine()
     let safetyChecker = SafetyChecker()
+    let assistant = AssistantCoordinator()
 
     // MARK: - Initialization
     init() {
@@ -46,33 +48,19 @@ final class AppState: ObservableObject {
     // MARK: - Actions
 
     func quickScan() async {
-        isScanning = true
-        scanProgress = 0
-        scanResults = []
-
-        defer { isScanning = false }
-
-        do {
-            let items = try await scanEngine.scan()
-            scanResults = items
-        } catch {
-            print("Scan failed: \(error)")
-        }
+        await performScan(
+            moduleScan: { try await self.scanEngine.smartCareScan() },
+            modules: SmartCareDefaults.moduleIDs,
+            assistantTargets: assistant.enabledTargets
+        )
     }
 
     func scan(modules: [String]? = nil) async {
-        isScanning = true
-        scanProgress = 0
-        scanResults = []
-
-        defer { isScanning = false }
-
-        do {
-            let items = try await scanEngine.scan(modules: modules)
-            scanResults = items.sorted { $0.size > $1.size }
-        } catch {
-            print("Scan failed: \(error)")
-        }
+        await performScan(
+            moduleScan: { try await self.scanEngine.scan(modules: modules) },
+            modules: modules,
+            assistantTargets: modules == nil ? assistant.enabledTargets : []
+        )
     }
 
     func deleteSelected(dryRun: Bool = false) async throws -> CleanupResult {
@@ -85,6 +73,9 @@ final class AppState: ObservableObject {
             // Remove deleted items from results
             scanResults.removeAll { selectedItems.contains($0.id) }
             selectedItems.removeAll()
+            smartCareSummary = scanResults.isEmpty
+                ? nil
+                : SmartCareAnalyzer().summarize(items: scanResults, diskUsage: diskUsage)
             await refreshDiskUsage()
         }
 
@@ -108,6 +99,81 @@ final class AppState: ObservableObject {
             .filter { selectedItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
     }
+
+    func feature(for moduleID: String) -> Feature? {
+        switch moduleID {
+        case AssistantWatchlistModule.moduleID: return .assistant
+        case "system-cache": return .systemJunk
+        case "mail-attachments": return .mailAttachments
+        case "trash-bins": return .trashBins
+        case "dev-tools", "package-managers", "docker": return .devTools
+        case "network": return .networkCleanup
+        case "privacy", "browser-chrome", "browser-safari", "browser-firefox", "browser-brave", "browser-arc", "service-workers":
+            return .privacy
+        case "large-files": return .largeOldFiles
+        case "duplicates": return .duplicateFiles
+        case "similar-photos": return .similarPhotos
+        case "cloud-cleanup": return .cloudCleanup
+        default: return nil
+        }
+    }
+
+    func runAssistantPlan(_ plan: AssistantScanPlan) async {
+        await performScan(
+            moduleScan: { [scanEngine] in
+                guard !plan.modules.isEmpty else { return [] }
+                return try await scanEngine.scan(modules: plan.modules)
+            },
+            modules: plan.modules,
+            assistantTargets: plan.customTargets
+        )
+    }
+
+    private func applyScanResults(_ items: [CleanupItem], modules: [String]?) {
+        scanResults = items.sorted { $0.size > $1.size }
+
+        let summary = SmartCareAnalyzer().summarize(items: scanResults, diskUsage: diskUsage)
+        smartCareSummary = summary
+
+        if modules == nil || Set(modules ?? []).isSuperset(of: SmartCareDefaults.moduleIDs) {
+            selectedItems = summary.recommendedCleanupItemIDs
+        } else {
+            selectedItems = Set(scanResults.map(\.id))
+        }
+    }
+
+    private func performScan(
+        moduleScan: @escaping () async throws -> [CleanupItem],
+        modules: [String]?,
+        assistantTargets: [AssistantScanTarget]
+    ) async {
+        isScanning = true
+        scanProgress = 0
+        scanResults = []
+        selectedItems = []
+        smartCareSummary = nil
+
+        defer { isScanning = false }
+
+        do {
+            async let primaryItems = moduleScan()
+            async let watchlistItems = scanEngine.scanAssistantTargets(assistantTargets)
+            let scannedItems = try await primaryItems
+            let persistentItems = try await watchlistItems
+            let combined = deduplicated(items: scannedItems + persistentItems)
+            applyScanResults(combined, modules: modules)
+        } catch {
+            print("Scan failed: \(error)")
+        }
+    }
+
+    private func deduplicated(items: [CleanupItem]) -> [CleanupItem] {
+        var seen = Set<String>()
+        return items.filter { item in
+            let key = "\(item.module)|\(item.path.path)"
+            return seen.insert(key).inserted
+        }
+    }
 }
 
 // MARK: - Feature Navigation (CleanMyMac-style structure)
@@ -125,24 +191,25 @@ enum FeatureSection: String, CaseIterable, Identifiable {
     var features: [Feature] {
         switch self {
         case .main:
-            return [.smartScan]
+            return [.smartScan, .assistant]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
         case .protection:
             return [.privacy]  // malwareRemoval hidden until implemented
         case .speed:
-            return [.optimization, .maintenance]
+            return [.optimization, .batteryMonitor, .maintenance]
         case .applications:
             return [.uninstaller]  // updater, extensions hidden until implemented
         case .files:
-            return [.spaceLens, .largeOldFiles, .shredder]
+            return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         }
     }
 }
 
 enum Feature: String, CaseIterable, Identifiable {
     // Main
-    case smartScan = "Smart Scan"
+    case smartScan = "Smart Care"
+    case assistant = "Assistant"
 
     // Cleanup
     case systemJunk = "System Junk"
@@ -150,6 +217,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case trashBins = "Trash Bins"
     case devTools = "Developer Tools"
     case networkCleanup = "Network Cleanup"
+    case cloudCleanup = "Cloud Cleanup"
 
     // Protection
     case malwareRemoval = "Malware Removal"
@@ -157,6 +225,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     // Speed
     case optimization = "Optimization"
+    case batteryMonitor = "Battery Monitor"
     case maintenance = "Maintenance"
 
     // Applications
@@ -167,6 +236,8 @@ enum Feature: String, CaseIterable, Identifiable {
     // Files
     case spaceLens = "Space Lens"
     case largeOldFiles = "Large & Old Files"
+    case duplicateFiles = "Duplicate Files"
+    case similarPhotos = "Similar Photos"
     case shredder = "Shredder"
 
     var id: String { rawValue }
@@ -175,6 +246,7 @@ enum Feature: String, CaseIterable, Identifiable {
         switch self {
         // Main
         case .smartScan: return "sparkles.rectangle.stack"
+        case .assistant: return "bubble.left.and.sparkles"
 
         // Cleanup
         case .systemJunk: return "gearshape.2"
@@ -182,6 +254,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .trashBins: return "trash"
         case .devTools: return "hammer"
         case .networkCleanup: return "network"
+        case .cloudCleanup: return "icloud"
 
         // Protection
         case .malwareRemoval: return "ladybug"
@@ -189,6 +262,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
         // Speed
         case .optimization: return "slider.horizontal.3"
+        case .batteryMonitor: return "battery.100"
         case .maintenance: return "wrench.and.screwdriver"
 
         // Applications
@@ -199,18 +273,20 @@ enum Feature: String, CaseIterable, Identifiable {
         // Files
         case .spaceLens: return "chart.pie"
         case .largeOldFiles: return "doc.badge.clock"
+        case .duplicateFiles: return "doc.on.doc"
+        case .similarPhotos: return "photo.stack"
         case .shredder: return "scissors"
         }
     }
 
     var section: FeatureSection {
         switch self {
-        case .smartScan: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup: return .cleanup
+        case .smartScan, .assistant: return .main
+        case .systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy: return .protection
-        case .optimization, .maintenance: return .speed
+        case .optimization, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .updater, .extensions: return .applications
-        case .spaceLens, .largeOldFiles, .shredder: return .files
+        case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }
     }
 }

@@ -226,6 +226,7 @@ struct MetricThresholds {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     VStack(spacing: 20) {
         MetricGraph(
@@ -248,3 +249,5 @@ struct MetricThresholds {
     }
     .padding()
 }
+
+#endif

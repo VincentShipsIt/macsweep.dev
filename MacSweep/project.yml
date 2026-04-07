@@ -23,6 +23,8 @@ targets:
       - path: Sources
         excludes:
           - "**/.DS_Store"
+          - "CLI/**"
+          - "CLIKit/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.app
@@ -45,6 +47,32 @@ targets:
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.automation.apple-events: true
 
+  MacSweepCore:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.core
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+  MacSweepCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/CLI
+      - path: Sources/CLIKit
+    dependencies:
+      - target: MacSweepCore
+    settings:
+      base:
+        PRODUCT_NAME: macsweep
+        PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.cli
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+
 schemes:
   MacSweep:
     build:
@@ -56,3 +84,10 @@ schemes:
       config: Release
     archive:
       config: Release
+
+  MacSweepCLI:
+    build:
+      targets:
+        MacSweepCLI: all
+    run:
+      config: Debug

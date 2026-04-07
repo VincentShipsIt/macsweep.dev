@@ -4,13 +4,39 @@ import Foundation
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
+    private static let cleanupPriority: [String] = [
+        "trash-bins",
+        "system-cache",
+        "cloud-cleanup",
+        "mail-attachments",
+        "dev-tools",
+        "package-managers",
+        "docker",
+        "network",
+        "duplicates",
+        "similar-photos",
+        "large-files",
+        "privacy",
+        "browser-safari",
+        "browser-chrome",
+        "browser-firefox",
+        "browser-brave",
+        "browser-arc",
+        "service-workers",
+    ]
 
-    init() {
-        // Modules are registered inline
-        modules = [
+    init(modules: [any ScanModule]? = nil) {
+        self.modules = modules ?? Self.defaultModules()
+    }
+
+    private static func defaultModules() -> [any ScanModule] {
+        [
             // Cleanup
             SystemCacheModule(),
             DuplicateFinderModule(),
+            SimilarPhotosModule(),
+            CloudCleanupModule(),
+            AssistantWatchlistModule(),
 
             // Browsers
             ChromeModule(),
@@ -36,7 +62,6 @@ actor ScanEngine {
         ]
     }
 
-
     /// Register a custom module
     func register(_ module: any ScanModule) {
         modules.append(module)
@@ -45,6 +70,21 @@ actor ScanEngine {
     /// Get all registered modules
     func registeredModules() -> [any ScanModule] {
         modules
+    }
+
+    func scanAssistantTargets(_ targets: [AssistantScanTarget]) async throws -> [CleanupItem] {
+        guard !targets.isEmpty else { return [] }
+
+        let module = AssistantWatchlistModule(targets: targets)
+        let items = try await module.scan()
+
+        return items.filter { item in
+            safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
+        }
+    }
+
+    func smartCareScan() async throws -> [CleanupItem] {
+        try await scan(modules: SmartCareDefaults.moduleIDs)
     }
 
     /// Scan all modules or specific ones
@@ -65,7 +105,7 @@ actor ScanEngine {
                         let items = try await module.scan()
                         // Filter through safety checker
                         return items.filter { item in
-                            self.safetyChecker.validate(item.path).isSafe
+                            self.safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
                         }
                     } catch {
                         print("Module \(module.id) scan failed: \(error)")
@@ -87,34 +127,51 @@ actor ScanEngine {
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
+        let groupedItems = Dictionary(grouping: items, by: \.module)
+        let modulesByID = Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
+        let orderedModuleIDs = groupedItems.keys.sorted { lhs, rhs in
+            let lhsPriority = Self.cleanupPriority.firstIndex(of: lhs) ?? .max
+            let rhsPriority = Self.cleanupPriority.firstIndex(of: rhs) ?? .max
 
-        for item in items {
-            // Double-check safety
-            let validation = safetyChecker.validate(item.path)
-            guard validation.isSafe else {
-                errors.append(CleanupError(
-                    path: item.path,
-                    message: "Safety check failed: \(validation.reason ?? "protected")"
-                ))
+            if lhsPriority == rhsPriority {
+                return lhs < rhs
+            }
+
+            return lhsPriority < rhsPriority
+        }
+
+        for moduleID in orderedModuleIDs {
+            guard let moduleItems = groupedItems[moduleID] else { continue }
+            guard let module = modulesByID[moduleID] else {
+                errors.append(contentsOf: moduleItems.map {
+                    CleanupError(path: $0.path, message: "No cleanup module registered for \(moduleID)")
+                })
                 continue
             }
 
-            if dryRun {
-                processedCount += 1
-                bytesFreed += item.size
-            } else {
-                do {
-                    try FileManager.default.removeItem(at: item.path)
-                    processedCount += 1
-                    bytesFreed += item.size
-                } catch {
+            let safeItems = moduleItems.filter { item in
+                let validation = safetyChecker.validateForCleanup(
+                    item.path,
+                    moduleID: item.module,
+                    itemType: item.type
+                )
+
+                if !validation.isSafe {
                     errors.append(CleanupError(
                         path: item.path,
-                        message: "Failed to delete",
-                        underlyingError: error
+                        message: "Safety check failed: \(validation.reason ?? "protected")"
                     ))
                 }
+
+                return validation.isSafe
             }
+
+            guard !safeItems.isEmpty else { continue }
+
+            let result = try await module.clean(items: safeItems, dryRun: dryRun)
+            processedCount += result.itemsProcessed
+            bytesFreed += result.bytesFreed
+            errors.append(contentsOf: result.errors)
         }
 
         return CleanupResult(

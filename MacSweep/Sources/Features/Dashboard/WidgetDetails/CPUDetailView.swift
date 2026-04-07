@@ -237,7 +237,10 @@ struct ProcessConsumerRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     CPUDetailView(monitor: SystemMonitor())
         .frame(width: 380, height: 450)
 }
+
+#endif

@@ -17,6 +17,7 @@ A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with 
 - **System Cleanup** - Remove caches, logs, and temporary files
 - **Browser Cleanup** - Clean browser caches and service workers
 - **Developer Tools** - Clean node_modules, DerivedData, Docker, and more
+- **AI Assistant** - Use Codex or Claude locally to plan scans and maintain persistent watchlists
 - **Large File Finder** - Discover files taking up the most space
 - **Space Lens** - Visualize disk usage with an interactive chart
 - **App Uninstaller** - Completely remove apps and their leftovers
@@ -57,6 +58,17 @@ MacSweep is designed with safety in mind:
   - `/System`, `/Applications`
 - **Confirmation prompts** - Large deletions require explicit confirmation
 - **Size limits** - Configurable max delete size (default 10GB)
+- **Assistant guardrails** - AI-planned scans still pass through MacSweep safety checks before cleanup
+
+## Assistant Config
+
+MacSweep seeds persistent assistant config under:
+
+- `~/Library/Application Support/MacSweep/assistant/providers.toml`
+- `~/Library/Application Support/MacSweep/watchlists/watchlists.toml`
+- `~/Library/Application Support/MacSweep/watchlists/README.md`
+
+The TOML files are the source of truth for provider defaults and saved watchlists. The markdown file explains the watchlist format and safety boundaries.
 
 ## Privacy & Network
 

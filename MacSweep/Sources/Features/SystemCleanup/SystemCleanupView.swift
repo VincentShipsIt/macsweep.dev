@@ -237,8 +237,11 @@ struct CleanupItemRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     SystemCleanupView()
         .environmentObject(AppState())
         .frame(width: 700, height: 500)
 }
+
+#endif

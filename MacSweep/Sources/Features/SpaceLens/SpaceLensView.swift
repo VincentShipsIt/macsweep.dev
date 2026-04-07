@@ -823,8 +823,11 @@ struct LegendRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     SpaceLensView()
         .environmentObject(AppState())
         .frame(width: 900, height: 600)
 }
+
+#endif
