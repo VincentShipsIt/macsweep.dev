@@ -6,8 +6,12 @@
 #
 # Install:
 #   brew tap VincentShipsIt/macsweep https://github.com/VincentShipsIt/macsweep
-#   brew install VincentShipsIt/macsweep/macsweep        # pinned stable release
-#   brew install --HEAD VincentShipsIt/macsweep/macsweep # bleeding-edge from master
+#   brew trust --formula vincentshipsit/macsweep/macsweep # required on recent Homebrew (3rd-party tap)
+#   brew install VincentShipsIt/macsweep/macsweep         # pinned stable release
+#   brew install --HEAD VincentShipsIt/macsweep/macsweep  # bleeding-edge from master
+#
+# Recent Homebrew gates non-official taps behind a trust check; without the
+# `brew trust` line above the install aborts with "tap trust is required".
 #
 # RELEASE CHECKLIST — when cutting the next tag (vX.Y.Z): bump
 # MacSweepVersion.current / MARKETING_VERSION to match, push the tag, then update
