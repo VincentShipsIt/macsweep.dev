@@ -9,6 +9,7 @@ struct AssistantWatchlistModule: ScanModule {
     let icon = "bubble.left.and.sparkles"
 
     private let targets: [AssistantScanTarget]
+    private let checker = SafetyChecker()
 
     init(targets: [AssistantScanTarget] = []) {
         self.targets = targets
@@ -59,12 +60,17 @@ struct AssistantWatchlistModule: ScanModule {
                 )
 
                 if children.isEmpty {
+                    // Watchlist targets are arbitrary agent-supplied paths, so the
+                    // default-deny safety gate is the backstop against a target
+                    // pointing at ~/Documents, ~/.ssh, or any other protected root.
+                    guard checker.validateForScan(rootURL, moduleID: id).isSafe else { return [] }
                     let size = try await DiskAnalyzer.directorySize(at: rootURL)
                     return size > 1024 ? [makeItem(url: rootURL, label: label, size: size, lastModified: values.contentModificationDate)] : []
                 }
 
                 var items: [CleanupItem] = []
                 for child in children where !excludedRoots.contains(where: { child.path.hasPrefix($0) }) {
+                    guard checker.validateForScan(child, moduleID: id).isSafe else { continue }
                     do {
                         let childValues = try child.resourceValues(forKeys: resourceKeys)
                         let size: Int64
@@ -84,6 +90,7 @@ struct AssistantWatchlistModule: ScanModule {
                 return items
             }
 
+            guard checker.validateForScan(rootURL, moduleID: id).isSafe else { return [] }
             let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
             guard size > 1024 else { return [] }
             return [makeItem(url: rootURL, label: label, size: size, lastModified: values.contentModificationDate)]
@@ -124,14 +131,24 @@ struct AssistantWatchlistModule: ScanModule {
                 continue
             }
 
+            // Re-validate at cleanup time: the watchlist holds arbitrary paths,
+            // so nothing is deleted unless it still passes the default-deny gate.
+            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Blocked by safety checks"
+                ))
+                continue
+            }
+
             do {
                 if item.type == .directory {
                     let contents = try FileManager.default.contentsOfDirectory(at: item.path, includingPropertiesForKeys: nil)
                     for content in contents {
-                        try FileManager.default.removeItem(at: content)
+                        try CleanupFileRemover.recoverable(content)
                     }
                 } else {
-                    try FileManager.default.removeItem(at: item.path)
+                    try CleanupFileRemover.recoverable(item.path)
                 }
 
                 processedCount += 1

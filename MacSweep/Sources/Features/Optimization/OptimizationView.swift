@@ -282,7 +282,13 @@ struct OptimizationView: View {
     }
 
     private func forceQuitSelectedProcesses() {
+        let ownPID = getpid()
         for pid in selectedProcesses {
+            // Never SIGKILL pid<=1 (launchd / kernel), ourselves, or a pid no
+            // longer in the monitored list — selection can outlive a process and
+            // pids are recycled, so a stale kill could land on an unrelated one.
+            guard pid > 1, pid != ownPID,
+                  processMonitor.processes.contains(where: { $0.pid == pid }) else { continue }
             kill(pid, SIGKILL)
         }
         selectedProcesses.removeAll()

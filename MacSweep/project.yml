@@ -1,6 +1,6 @@
 name: MacSweep
 options:
-  bundleIdPrefix: com.macsweep
+  bundleIdPrefix: com.vincentshipsit
   deploymentTarget:
     macOS: "13.0"
   createIntermediateGroups: true
@@ -27,11 +27,11 @@ targets:
           - "CLIKit/**"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep
         INFOPLIST_GENERATION_MODE: GeneratedFile
         INFOPLIST_KEY_CFBundleDisplayName: MacSweep
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2025 MacSweep. All rights reserved."
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 MacSweep. All rights reserved."
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
@@ -54,7 +54,7 @@ targets:
       - path: Sources/Core
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.core
+        PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep.core
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "13.0"
 
@@ -69,7 +69,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: macsweep
-        PRODUCT_BUNDLE_IDENTIFIER: com.macsweep.cli
+        PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep.cli
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "13.0"
 

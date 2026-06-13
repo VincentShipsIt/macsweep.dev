@@ -1,9 +1,23 @@
 import Foundation
 
 /// Orchestrates scanning across all modules
+/// Errors raised by the scan/clean orchestration layer.
+enum ScanEngineError: Error, LocalizedError, Equatable {
+    /// The aggregate deletion size exceeded the hard guard limit.
+    case deletionBlocked(reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .deletionBlocked(let reason):
+            return reason
+        }
+    }
+}
+
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
+    private let deletionGuard = DeletionGuard()
     private static let cleanupPriority: [String] = [
         "trash-bins",
         "system-cache",
@@ -140,6 +154,10 @@ actor ScanEngine {
             return lhsPriority < rhsPriority
         }
 
+        // First pass: resolve modules and filter each group through the safety
+        // checker, recording per-item safety failures. Nothing is deleted yet so
+        // the deletion guard can veto the whole operation below.
+        var plan: [(module: any ScanModule, items: [CleanupItem])] = []
         for moduleID in orderedModuleIDs {
             guard let moduleItems = groupedItems[moduleID] else { continue }
             guard let module = modulesByID[moduleID] else {
@@ -167,8 +185,23 @@ actor ScanEngine {
             }
 
             guard !safeItems.isEmpty else { continue }
+            plan.append((module, safeItems))
+        }
 
-            let result = try await module.clean(items: safeItems, dryRun: dryRun)
+        // Deletion guard: a hard backstop against runaway deletes. Enforced only
+        // for real deletions — a dry run touches nothing, so previews of any size
+        // are always permitted. Confirmation-threshold gating is the caller's
+        // responsibility (CLI --yes / GUI prompt) before invoking with dryRun:false.
+        if !dryRun {
+            let aggregate = plan.flatMap { $0.items }
+            if case .blocked(let reason) = deletionGuard.preflightCheck(items: aggregate) {
+                throw ScanEngineError.deletionBlocked(reason: reason)
+            }
+        }
+
+        // Second pass: execute cleanup in priority order.
+        for entry in plan {
+            let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
             processedCount += result.itemsProcessed
             bytesFreed += result.bytesFreed
             errors.append(contentsOf: result.errors)

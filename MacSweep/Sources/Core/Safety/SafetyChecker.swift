@@ -1,7 +1,26 @@
 import Foundation
 
-/// Safety validation to prevent accidental deletion of critical files
+/// Safety validation to prevent accidental deletion of critical files.
+///
+/// Design: **default-deny**. A path is only ever cleaned if it positively
+/// matches a known-safe zone. Anything unrecognized resolves to `.unknown`,
+/// which `isSafe` treats as *unsafe*. The validation order is deliberate:
+///
+///   1. Standardize the URL (collapses `..`/`.`) — closes path-traversal escapes.
+///   2. Sensitive filename patterns (keys, creds, db files) — always block.
+///   3. Symlinks pointing outside home — always block.
+///   4. Module-scoped carve-outs for user-managed and cloud roots (profile-gated).
+///   5. Longest-prefix arbitration between `neverDelete` and `safeCacheRoots`
+///      (the more-specific path wins, so `/var/folders` beats `/var`).
+///   6. Explicit module allow-zones (package-manager caches, trash, privacy).
+///   7. Generic safe directory names (Cache/node_modules/DerivedData/…).
+///   8. Default: `.unknown` (denied).
 struct SafetyChecker: Sendable {
+
+    // Module IDs that own explicit allow-zones below.
+    private static let trashModuleID = "trash-bins"
+    private static let privacyModuleID = "privacy"
+    private static let packageManagerModuleIDs: Set<String> = ["package-managers", "dev-tools"]
 
     // MARK: - Validation
 
@@ -21,100 +40,146 @@ struct SafetyChecker: Sendable {
         validate(url, context: .cleanup(moduleID: moduleID, itemType: itemType))
     }
 
+    /// Validate a path the user has *explicitly* selected for secure shredding.
+    ///
+    /// Unlike `validateForCleanup`, this is a **blocklist**, not a default-deny
+    /// allowlist. The shredder's whole purpose is destroying arbitrary
+    /// user-chosen files — including documents and the very credential files a
+    /// user most wants gone — so an unrecognized path is *allowed*. We still
+    /// refuse the catastrophic targets:
+    ///   • symlinks (overwriting follows the link and destroys its target);
+    ///   • the home directory or filesystem root themselves;
+    ///   • an entire user document root (e.g. all of ~/Documents);
+    ///   • the system / app-data / credential / cloud roots in `neverDelete`.
+    /// Files *inside* the user document roots stay shreddable.
+    func validateForShred(_ url: URL) -> ValidationResult {
+        let standardized = url.standardized
+        let path = standardized.path
+
+        // Never follow a symlink: FileHandle(forWritingTo:) opens through it and
+        // would overwrite the link target's bytes, not the link the user dropped.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            return .symlink(reason: "Symlink — shredding would destroy the link target, not the link")
+        }
+
+        // Refuse the filesystem root and the home directory itself.
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardized.path
+        if path == "/" || path == home {
+            return .protected(reason: "Refusing to shred the home directory or filesystem root")
+        }
+
+        // Carve out the user document roots so files *inside* them shred, but
+        // refuse a request to shred a whole root folder (e.g. all of ~/Documents).
+        for root in ProtectedPaths.userManagedRoots where path == expandedPathValue(for: root) {
+            return .protected(reason: "Refusing to shred an entire user folder")
+        }
+        if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
+            return .safe
+        }
+
+        // Everything else in neverDelete (system dirs, app data, credential
+        // dirs, cloud roots) is off-limits even for explicit shredding.
+        if isUnder(path, anyOf: ProtectedPaths.neverDelete) {
+            return .protected(reason: "System, application-data, or credential path")
+        }
+
+        // Arbitrary user-selected file outside every protected root: shreddable.
+        return .safe
+    }
+
     private func validate(_ url: URL, context: ValidationContext) -> ValidationResult {
-        let path = url.path
-        let expandedPath = (path as NSString).expandingTildeInPath
+        // 1. Standardize first. This collapses `..`/`.` segments so that a path
+        //    like `~/Library/Caches/../../Documents/secret.txt` is evaluated as
+        //    `~/Documents/secret.txt` and cannot escape into a protected root.
+        let standardized = url.standardized
+        let path = standardized.path
+        let components = standardized.pathComponents
         let profile = ModuleSafetyProfile(moduleID: context.moduleID)
 
-        // Check sensitive file patterns
-        let filename = url.lastPathComponent.lowercased()
+        // 2. Sensitive file patterns (keys, credentials, databases) — block always,
+        //    regardless of module or location.
+        let filename = standardized.lastPathComponent.lowercased()
         for pattern in ProtectedPaths.sensitivePatterns {
             if matchesPattern(filename, pattern: pattern) {
                 return .sensitive(pattern: pattern)
             }
         }
 
-        // Check if it's a symlink pointing outside home
-        if let _ = try? FileManager.default.destinationOfSymbolicLink(atPath: path) {
-            if !isSymlinkSafe(url) {
+        // 3. Symlink escaping the home directory — block always.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            if !isSymlinkSafe(standardized) {
                 return .symlink(reason: "Points outside home directory")
             }
         }
 
-        if ProtectedPaths.safeCacheRoots.contains(where: { expandedPath.hasPrefix(expandedPathValue(for: $0)) }) {
+        // 4. Module-scoped carve-outs for user-managed roots (~/Documents, ~/Pictures…)
+        //    and cloud roots. Checked BEFORE neverDelete because these roots also
+        //    appear in neverDelete; only an explicitly opted-in module may proceed.
+        if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
+            switch context.mode {
+            case .scan where profile.allowsUserManagedScan: return .safe
+            case .cleanup where profile.allowsUserManagedCleanup: return .safe
+            default: break
+            }
+        }
+
+        if isUnder(path, anyOf: ProtectedPaths.cloudRoots) {
+            switch context.mode {
+            case .scan where profile.allowsCloudScan: return .safe
+            case .cleanup where profile.allowsCloudCleanup: return .safe
+            default: break
+            }
+        }
+
+        // 5. Longest-prefix arbitration: a path may sit under both a protected root
+        //    and a safe-cache root (e.g. /private/var/folders is inside /private).
+        //    The more-specific (longer) match wins. Protected wins ties.
+        let protectedLen = longestPrefixLength(path, in: ProtectedPaths.neverDelete)
+        let safeCacheLen = longestPrefixLength(path, in: ProtectedPaths.safeCacheRoots)
+        if safeCacheLen > protectedLen {
+            return .safe
+        }
+        if protectedLen >= 0 {
+            return .protected(reason: "System or user critical path")
+        }
+
+        // 6. Explicit module allow-zones (only reached when NOT under any protected
+        //    root, so these cannot be abused to escape neverDelete).
+
+        // 6a. Package-manager caches that live outside ~/Library/Caches
+        //     (~/.npm/_cacache, ~/Library/pnpm/store, ~/.m2/repository, …).
+        if let moduleID = context.moduleID,
+           Self.packageManagerModuleIDs.contains(moduleID),
+           isUnder(path, anyOf: ProtectedPaths.packageManagerCacheRoots) {
             return .safe
         }
 
-        let pathComponents = Set(url.pathComponents)
-        let containsSafeDirectoryName = !ProtectedPaths.safeDirectoryNames.isDisjoint(with: pathComponents)
-        if containsSafeDirectoryName && profile.allowsSafeDirectoryCleanup {
+        // 6b. Trash bins — only the trash module may empty them.
+        if context.moduleID == Self.trashModuleID,
+           components.contains(".Trash") || components.contains(".Trashes") {
             return .safe
         }
 
-        let isUserManagedPath = ProtectedPaths.userManagedRoots.contains(where: {
-            let root = expandedPathValue(for: $0)
-            return expandedPath.hasPrefix(root + "/") || expandedPath == root
-        })
-
-        if isUserManagedPath {
-            switch context.mode {
-            case .scan where profile.allowsUserManagedScan:
-                return .safe
-            case .cleanup where profile.allowsUserManagedCleanup:
-                return .safe
-            default:
-                break
-            }
+        // 6c. Privacy artifacts — recent-file lists and Safari download history.
+        if context.moduleID == Self.privacyModuleID, isPrivacyArtifact(path) {
+            return .safe
         }
 
-        let isCloudPath = ProtectedPaths.cloudRoots.contains(where: {
-            let root = expandedPathValue(for: $0)
-            return expandedPath.hasPrefix(root + "/") || expandedPath == root
-        })
-
-        if isCloudPath {
-            switch context.mode {
-            case .scan where profile.allowsCloudScan:
-                return .safe
-            case .cleanup where profile.allowsCloudCleanup:
-                return .safe
-            default:
-                break
-            }
+        // 7. Generic safe directory names (Cache/GPUCache/node_modules/DerivedData…).
+        //    Safe here because any path under a protected root already returned at
+        //    step 5; this only matches caches in non-protected locations.
+        if !ProtectedPaths.safeDirectoryNames.isDisjoint(with: Set(components)) {
+            return .safe
         }
 
-        // Check never-delete paths after module-aware overrides.
-        for protectedPath in ProtectedPaths.neverDelete {
-            let expanded = expandedPathValue(for: protectedPath)
-            if expandedPath.hasPrefix(expanded) || expandedPath == expanded {
-                return .protected(reason: "System or user critical path")
-            }
-        }
-
-        // Check if within safe cache roots
-        for safeRoot in ProtectedPaths.safeCacheRoots {
-            let expanded = expandedPathValue(for: safeRoot)
-            if expandedPath.hasPrefix(expanded) {
-                return .safe
-            }
-        }
-
-        // Check if within safe directory names
-        let components = url.pathComponents
-        for safeName in ProtectedPaths.safeDirectoryNames {
-            if components.contains(safeName) {
-                return .safe
-            }
-        }
-
-        // Default: not explicitly safe or protected
+        // 8. Default-deny.
         return .unknown(reason: "Path not in known safe or protected lists")
     }
 
-    func validateBatch(_ urls: [URL]) -> [URL: ValidationResult] {
+    func validateBatch(_ urls: [URL], moduleID: String? = nil) -> [URL: ValidationResult] {
         var results: [URL: ValidationResult] = [:]
         for url in urls {
-            results[url] = validate(url, context: .cleanup(moduleID: nil, itemType: nil))
+            results[url] = validate(url, context: .cleanup(moduleID: moduleID, itemType: nil))
         }
         return results
     }
@@ -123,6 +188,33 @@ struct SafetyChecker: Sendable {
 
     private func expandedPathValue(for protectedPath: String) -> String {
         (protectedPath as NSString).expandingTildeInPath
+    }
+
+    /// Length (in characters) of the longest entry in `roots` that is a path-boundary
+    /// prefix of `path`, or -1 if none match. Boundary-safe: `/var` matches
+    /// `/var/folders` but not `/variable`.
+    private func longestPrefixLength(_ path: String, in roots: Set<String>) -> Int {
+        var best = -1
+        for entry in roots {
+            let root = expandedPathValue(for: entry)
+            if path == root || path.hasPrefix(root + "/") {
+                if root.count > best { best = root.count }
+            }
+        }
+        return best
+    }
+
+    private func isUnder(_ path: String, anyOf roots: Set<String>) -> Bool {
+        longestPrefixLength(path, in: roots) >= 0
+    }
+
+    private func isPrivacyArtifact(_ path: String) -> Bool {
+        let sharedFileList = expandedPathValue(for: "~/Library/Application Support/com.apple.sharedfilelist")
+        if path == sharedFileList || path.hasPrefix(sharedFileList + "/") {
+            return true
+        }
+        let safariDownloads = expandedPathValue(for: "~/Library/Safari/Downloads.plist")
+        return path == safariDownloads
     }
 
     private func matchesPattern(_ filename: String, pattern: String) -> Bool {
@@ -146,7 +238,7 @@ struct SafetyChecker: Sendable {
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return targetURL.path.hasPrefix(home)
+        return targetURL.standardized.path.hasPrefix(home)
     }
 }
 
@@ -174,7 +266,6 @@ private struct ModuleSafetyProfile {
     let allowsUserManagedCleanup: Bool
     let allowsCloudScan: Bool
     let allowsCloudCleanup: Bool
-    let allowsSafeDirectoryCleanup: Bool
 
     init(moduleID: String?) {
         switch moduleID {
@@ -183,31 +274,21 @@ private struct ModuleSafetyProfile {
             allowsUserManagedCleanup = false
             allowsCloudScan = false
             allowsCloudCleanup = false
-            allowsSafeDirectoryCleanup = true
         case "duplicates", "similar-photos":
             allowsUserManagedScan = true
             allowsUserManagedCleanup = true
             allowsCloudScan = false
             allowsCloudCleanup = false
-            allowsSafeDirectoryCleanup = true
         case "cloud-cleanup":
             allowsUserManagedScan = false
             allowsUserManagedCleanup = false
             allowsCloudScan = true
             allowsCloudCleanup = true
-            allowsSafeDirectoryCleanup = true
-        case "dev-tools", "package-managers":
-            allowsUserManagedScan = false
-            allowsUserManagedCleanup = false
-            allowsCloudScan = false
-            allowsCloudCleanup = false
-            allowsSafeDirectoryCleanup = true
         default:
             allowsUserManagedScan = false
             allowsUserManagedCleanup = false
             allowsCloudScan = false
             allowsCloudCleanup = false
-            allowsSafeDirectoryCleanup = false
         }
     }
 }
@@ -221,11 +302,13 @@ enum ValidationResult: Sendable {
     case symlink(reason: String)
     case unknown(reason: String)
 
+    /// Default-deny: only `.safe` is safe. `.unknown` is treated as unsafe so that
+    /// any path we do not positively recognize is left untouched.
     var isSafe: Bool {
         switch self {
-        case .safe, .unknown:
+        case .safe:
             return true
-        case .protected, .sensitive, .symlink:
+        case .protected, .sensitive, .symlink, .unknown:
             return false
         }
     }
@@ -361,13 +444,37 @@ struct ProtectedPaths {
         "*.sqlite3",
     ]
 
-    /// Directories that are safe to clean (whitelist approach)
+    /// Directories that are safe to clean (whitelist approach).
+    /// Both `/var/folders` and `/private/var/folders` are listed because the
+    /// system temp dir surfaces as `/var/folders/...` (a symlink) but may also be
+    /// reported in its resolved `/private/var/folders/...` form.
     static let safeCacheRoots: Set<String> = [
         "~/Library/Caches",
         "~/Library/Logs",
         "~/Library/Application Support/CrashReporter",
         "~/Library/Saved Application State",
+        "/var/folders",
         "/private/var/folders",
+    ]
+
+    /// Package-manager cache roots that live OUTSIDE ~/Library/Caches and so are
+    /// not covered by `safeCacheRoots`. Only the package-manager / dev-tools
+    /// modules may clean these. None overlap a `neverDelete` root.
+    static let packageManagerCacheRoots: Set<String> = [
+        "~/.npm/_cacache",
+        "~/.npm/_logs",
+        "~/.yarn/cache",
+        "~/Library/pnpm/store",
+        "~/.bun/install/cache",
+        "~/.local/pipx/.cache",
+        "~/.cargo/registry/cache",
+        "~/.cargo/git/checkouts",
+        "~/go/pkg/mod/cache",
+        "~/.composer/cache",
+        "~/.gem/cache",
+        "~/.gradle/caches",
+        "~/.gradle/wrapper/dists",
+        "~/.m2/repository",
     ]
 
     /// Directory names that are generally safe to delete
@@ -424,7 +531,7 @@ struct DeletionGuard {
     }
 }
 
-enum PreflightResult {
+enum PreflightResult: Sendable, Equatable {
     case allowed
     case requiresConfirmation(size: Int64)
     case blocked(reason: String)

@@ -522,7 +522,7 @@ struct PackageManagerModule: ScanModule {
                 freed += item.size
             } else {
                 do {
-                    try FileManager.default.removeItem(at: item.path)
+                    try CleanupFileRemover.recoverable(item.path)
                     processed += 1
                     freed += item.size
                 } catch {

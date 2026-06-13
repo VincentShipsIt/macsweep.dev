@@ -232,10 +232,195 @@ public final class HeadlessPreparedCleanupPlan: @unchecked Sendable {
     }
 }
 
+// MARK: - Disk Usage
+
+public struct HeadlessDiskUsage: Codable, Sendable {
+    public let totalBytes: Int64
+    public let usedBytes: Int64
+    public let freeBytes: Int64
+    public let usedPercentage: Double
+    public let freePercentage: Double
+
+    public init(
+        totalBytes: Int64,
+        usedBytes: Int64,
+        freeBytes: Int64,
+        usedPercentage: Double,
+        freePercentage: Double
+    ) {
+        self.totalBytes = totalBytes
+        self.usedBytes = usedBytes
+        self.freeBytes = freeBytes
+        self.usedPercentage = usedPercentage
+        self.freePercentage = freePercentage
+    }
+}
+
+// MARK: - Login Items
+
+public enum HeadlessLoginItemKind: String, Codable, Sendable {
+    case appService
+    case launchAgent
+    case launchDaemon
+}
+
+public struct HeadlessLoginItem: Codable, Sendable {
+    public let name: String
+    public let path: String
+    public let kind: HeadlessLoginItemKind
+    public let bundleIdentifier: String?
+    public let enabled: Bool
+
+    public init(
+        name: String,
+        path: String,
+        kind: HeadlessLoginItemKind,
+        bundleIdentifier: String?,
+        enabled: Bool
+    ) {
+        self.name = name
+        self.path = path
+        self.kind = kind
+        self.bundleIdentifier = bundleIdentifier
+        self.enabled = enabled
+    }
+}
+
+public struct HeadlessLoginItemsReport: Codable, Sendable {
+    public let totalItems: Int
+    public let items: [HeadlessLoginItem]
+
+    public init(totalItems: Int, items: [HeadlessLoginItem]) {
+        self.totalItems = totalItems
+        self.items = items
+    }
+}
+
+// MARK: - Malware Scan
+
+public struct HeadlessThreatFinding: Codable, Sendable {
+    public let path: String
+    public let category: String
+    public let threatLevel: String
+    public let description: String
+    public let aiExplanation: String?
+    public let remediation: String?
+
+    public init(
+        path: String,
+        category: String,
+        threatLevel: String,
+        description: String,
+        aiExplanation: String?,
+        remediation: String?
+    ) {
+        self.path = path
+        self.category = category
+        self.threatLevel = threatLevel
+        self.description = description
+        self.aiExplanation = aiExplanation
+        self.remediation = remediation
+    }
+}
+
+public struct HeadlessMalwareScanReport: Codable, Sendable {
+    public let scannedAt: Date
+    public let totalScanned: Int
+    public let isClean: Bool
+    public let xprotectStatus: String
+    public let aiAnalysisRequested: Bool
+    public let findings: [HeadlessThreatFinding]
+
+    public init(
+        scannedAt: Date,
+        totalScanned: Int,
+        isClean: Bool,
+        xprotectStatus: String,
+        aiAnalysisRequested: Bool,
+        findings: [HeadlessThreatFinding]
+    ) {
+        self.scannedAt = scannedAt
+        self.totalScanned = totalScanned
+        self.isClean = isClean
+        self.xprotectStatus = xprotectStatus
+        self.aiAnalysisRequested = aiAnalysisRequested
+        self.findings = findings
+    }
+}
+
+// MARK: - Homebrew
+
+public struct HeadlessBrewPackage: Codable, Sendable {
+    public let name: String
+    public let currentVersion: String
+    public let latestVersion: String
+
+    public init(name: String, currentVersion: String, latestVersion: String) {
+        self.name = name
+        self.currentVersion = currentVersion
+        self.latestVersion = latestVersion
+    }
+}
+
+public struct HeadlessHomebrewReport: Codable, Sendable {
+    public let outdatedCount: Int
+    public let packages: [HeadlessBrewPackage]
+
+    public init(outdatedCount: Int, packages: [HeadlessBrewPackage]) {
+        self.outdatedCount = outdatedCount
+        self.packages = packages
+    }
+}
+
+public struct HeadlessHomebrewUpgradeResult: Codable, Sendable {
+    public let upgraded: Bool
+    public let log: String
+    public let remainingOutdated: [HeadlessBrewPackage]
+
+    public init(upgraded: Bool, log: String, remainingOutdated: [HeadlessBrewPackage]) {
+        self.upgraded = upgraded
+        self.log = log
+        self.remainingOutdated = remainingOutdated
+    }
+}
+
+// MARK: - Shred
+
+public struct HeadlessShredResult: Codable, Sendable {
+    public let path: String
+    public let level: String
+    public let isDirectory: Bool
+    public let filesShredded: Int
+    public let bytesShredded: Int64
+    public let success: Bool
+    public let errors: [String]
+
+    public init(
+        path: String,
+        level: String,
+        isDirectory: Bool,
+        filesShredded: Int,
+        bytesShredded: Int64,
+        success: Bool,
+        errors: [String]
+    ) {
+        self.path = path
+        self.level = level
+        self.isDirectory = isDirectory
+        self.filesShredded = filesShredded
+        self.bytesShredded = bytesShredded
+        self.success = success
+        self.errors = errors
+    }
+}
+
 public enum HeadlessServiceError: Error, LocalizedError, Sendable {
     case conflictingSelection
     case invalidModules([String])
     case unknownMaintenanceAction(String)
+    case pathNotFound(String)
+    case shredRefused(String)
+    case homebrewNotInstalled
 
     public var errorDescription: String? {
         switch self {
@@ -245,6 +430,12 @@ public enum HeadlessServiceError: Error, LocalizedError, Sendable {
             return "Unknown modules: \(modules.joined(separator: ", "))."
         case .unknownMaintenanceAction(let action):
             return "Unknown maintenance action: \(action)."
+        case .pathNotFound(let path):
+            return "Path not found: \(path)."
+        case .shredRefused(let reason):
+            return "Refusing to shred: \(reason)."
+        case .homebrewNotInstalled:
+            return "Homebrew is not installed (no brew binary at /opt/homebrew or /usr/local)."
         }
     }
 }

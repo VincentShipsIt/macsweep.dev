@@ -1,5 +1,22 @@
 import Foundation
 
+/// Resolves the `docker` CLI across install layouts. The old code hardcoded
+/// `/usr/local/bin/docker` (Intel Homebrew) in several spots, so disk-usage and
+/// `docker info` probes silently no-op'd on Apple Silicon, where Homebrew lives
+/// at `/opt/homebrew`. Checks each candidate for existence and returns the first.
+enum DockerCLI {
+    static let candidatePaths = [
+        "/usr/local/bin/docker",                                   // Intel Homebrew
+        "/opt/homebrew/bin/docker",                                // Apple Silicon Homebrew
+        "/Applications/Docker.app/Contents/Resources/bin/docker",  // Docker Desktop bundle
+    ]
+
+    /// First docker binary that actually exists, or nil if none is installed.
+    static var path: String? {
+        candidatePaths.first { FileManager.default.fileExists(atPath: $0) }
+    }
+}
+
 /// Module for cleaning Docker resources
 struct DockerModule: ScanModule {
     let id = "docker"
@@ -41,16 +58,17 @@ struct DockerModule: ScanModule {
     }
 
     private func isDockerInstalled() -> Bool {
-        FileManager.default.fileExists(atPath: "/usr/local/bin/docker") ||
-        FileManager.default.fileExists(atPath: "/opt/homebrew/bin/docker") ||
+        DockerCLI.path != nil ||
         FileManager.default.fileExists(atPath: "/Applications/Docker.app")
     }
 
     private func getDockerDiskUsage() async -> [CleanupItem]? {
+        guard let dockerPath = DockerCLI.path else { return nil }
+
         let process = Process()
         let pipe = Pipe()
 
-        process.executableURL = URL(fileURLWithPath: "/usr/local/bin/docker")
+        process.executableURL = URL(fileURLWithPath: dockerPath)
         process.arguments = ["system", "df", "-v", "--format", "{{json .}}"]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -172,13 +190,10 @@ struct DockerModule: ScanModule {
     }
 
     private func runDockerCommand(_ args: [String]) async -> (success: Bool, bytesFreed: Int64) {
+        guard let dockerPath = DockerCLI.path else { return (false, 0) }
+
         let process = Process()
         let pipe = Pipe()
-
-        // Find docker executable
-        let dockerPath = FileManager.default.fileExists(atPath: "/usr/local/bin/docker")
-            ? "/usr/local/bin/docker"
-            : "/opt/homebrew/bin/docker"
 
         process.executableURL = URL(fileURLWithPath: dockerPath)
         process.arguments = args
@@ -241,14 +256,12 @@ struct DockerInfo {
         var info = DockerInfo()
 
         // Check if Docker is installed
-        info.isInstalled = FileManager.default.fileExists(atPath: "/usr/local/bin/docker") ||
-                          FileManager.default.fileExists(atPath: "/opt/homebrew/bin/docker")
-
-        guard info.isInstalled else { return info }
+        guard let dockerPath = DockerCLI.path else { return info }
+        info.isInstalled = true
 
         // Check if Docker is running
         let pingProcess = Process()
-        pingProcess.executableURL = URL(fileURLWithPath: "/usr/local/bin/docker")
+        pingProcess.executableURL = URL(fileURLWithPath: dockerPath)
         pingProcess.arguments = ["info"]
         pingProcess.standardOutput = FileHandle.nullDevice
         pingProcess.standardError = FileHandle.nullDevice
@@ -272,12 +285,10 @@ struct DockerInfo {
     }
 
     private static func getDockerCount(_ args: String...) async -> Int {
+        guard let dockerPath = DockerCLI.path else { return 0 }
+
         let process = Process()
         let pipe = Pipe()
-
-        let dockerPath = FileManager.default.fileExists(atPath: "/usr/local/bin/docker")
-            ? "/usr/local/bin/docker"
-            : "/opt/homebrew/bin/docker"
 
         process.executableURL = URL(fileURLWithPath: dockerPath)
         process.arguments = Array(args)
@@ -356,12 +367,10 @@ struct DockerCleanupActions {
     }
 
     private static func runDocker(_ args: [String]) async -> (success: Bool, bytesFreed: Int64) {
+        guard let dockerPath = DockerCLI.path else { return (false, 0) }
+
         let process = Process()
         let pipe = Pipe()
-
-        let dockerPath = FileManager.default.fileExists(atPath: "/usr/local/bin/docker")
-            ? "/usr/local/bin/docker"
-            : "/opt/homebrew/bin/docker"
 
         process.executableURL = URL(fileURLWithPath: dockerPath)
         process.arguments = args

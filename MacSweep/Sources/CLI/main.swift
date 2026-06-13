@@ -10,8 +10,11 @@ struct MacSweepCLIEntryPoint {
             exit(status)
         } catch {
             fputs("\(error.localizedDescription)\n", stderr)
-            fputs("\(CLIHelp.text)\n", stderr)
-            exit(1)
+            let code = CLIExecutor.exitCode(for: error)
+            if code == CLIExitCode.usage.rawValue {
+                fputs("\(CLIHelp.text)\n", stderr)
+            }
+            exit(code)
         }
     }
 }

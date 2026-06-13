@@ -5,16 +5,20 @@ import AppKit
 class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
 
+    private override init() {
+        super.init()
+        // Set the delegate eagerly, not inside the authorization callback. The
+        // delegate drives tap-handling and foreground presentation; wiring it
+        // only on `granted` meant a notification scheduled before the prompt was
+        // answered (or on a previously-authorized launch where requestPermission
+        // wasn't called this run) would never route through us.
+        UNUserNotificationCenter.current().delegate = self
+    }
+
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
-        ) { granted, _ in
-            if granted {
-                DispatchQueue.main.async {
-                    UNUserNotificationCenter.current().delegate = self
-                }
-            }
-        }
+        ) { _, _ in }
     }
 
     func sendScanComplete(bytesFound: Int64) {

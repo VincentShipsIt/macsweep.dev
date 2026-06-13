@@ -49,12 +49,25 @@ struct MailAttachmentsModule: ScanModule {
             source: "Apple Mail"
         ))
 
-        // Mail message attachments (embedded in messages)
-        locations.append(AttachmentLocation(
-            path: library.appending(path: "Mail/V10"),
-            source: "Apple Mail (Embedded)",
-            filePatterns: ["Attachments"]
-        ))
+        // Mail message attachments (embedded in messages). The Mail data
+        // directory is version-stamped (V8, V9, V10, V11, …) and bumps with
+        // each macOS release, so hardcoding one version misses everyone on a
+        // different OS. Enumerate every V<number> dir present instead.
+        let mailRoot = library.appending(path: "Mail")
+        if let mailVersions = try? FileManager.default.contentsOfDirectory(
+            at: mailRoot,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ) {
+            for versionDir in mailVersions {
+                let name = versionDir.lastPathComponent
+                guard name.hasPrefix("V"), Int(name.dropFirst()) != nil else { continue }
+                locations.append(AttachmentLocation(
+                    path: versionDir,
+                    source: "Apple Mail (Embedded)",
+                    filePatterns: ["Attachments"]
+                ))
+            }
+        }
 
         // Outlook attachments
         locations.append(AttachmentLocation(

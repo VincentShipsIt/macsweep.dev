@@ -51,6 +51,11 @@ final class ProcessMonitor: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // One `ps` invocation for every process, instead of two spawns per app.
+        // The previous code ran `ps` 2× per running app on a 5s timer — dozens of
+        // process spawns each tick. Sample once and look pids up in the table.
+        let stats = await Self.sampleProcessStats()
+
         let runningApps = NSWorkspace.shared.runningApplications
 
         var newProcesses: [ProcessInfo] = []
@@ -58,16 +63,15 @@ final class ProcessMonitor: ObservableObject {
         for app in runningApps {
             guard let name = app.localizedName ?? app.bundleIdentifier else { continue }
 
-            let memory = getMemoryUsage(pid: app.processIdentifier)
-            let cpu = getCPUUsage(pid: app.processIdentifier)
+            let sample = stats[app.processIdentifier]
 
             newProcesses.append(ProcessInfo(
                 pid: app.processIdentifier,
                 name: name,
                 bundleID: app.bundleIdentifier,
                 icon: app.icon,
-                memoryMB: memory,
-                cpuPercent: cpu,
+                memoryMB: sample?.memoryMB ?? 0,
+                cpuPercent: sample?.cpuPercent ?? 0,
                 isActive: app.isActive
             ))
         }
@@ -85,53 +89,48 @@ final class ProcessMonitor: ObservableObject {
         Array(processes.sorted { $0.memoryMB > $1.memoryMB }.prefix(limit))
     }
 
-    private func getMemoryUsage(pid: pid_t) -> Double {
-        let process = Process()
-        let pipe = Pipe()
+    /// Sample memory + CPU for every process in one `ps` invocation.
+    ///
+    /// Runs off the main actor on a utility queue. The pipe is drained
+    /// (`readDataToEndOfFile`) BEFORE `waitUntilExit` — `ps -axo` for hundreds of
+    /// processes overflows the 64KB pipe buffer, and waiting first would deadlock
+    /// (child blocks on a full pipe, parent blocks on the child).
+    private static func sampleProcessStats() async -> [pid_t: (memoryMB: Double, cpuPercent: Double)] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let process = Process()
+                let pipe = Pipe()
 
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", "\(pid)", "-o", "rss="]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+                process.executableURL = URL(fileURLWithPath: "/bin/ps")
+                process.arguments = ["-axo", "pid=,rss=,%cpu="]
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+                var result: [pid_t: (memoryMB: Double, cpuPercent: Double)] = [:]
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               let kb = Double(output) {
-                return kb / 1024
+                do {
+                    try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+
+                    if let output = String(data: data, encoding: .utf8) {
+                        for line in output.split(separator: "\n") {
+                            let cols = line
+                                .split(whereSeparator: { $0 == " " || $0 == "\t" })
+                                .filter { !$0.isEmpty }
+                            guard cols.count >= 3,
+                                  let pid = pid_t(cols[0]),
+                                  let rssKB = Double(cols[1]),
+                                  let cpu = Double(cols[2]) else { continue }
+                            result[pid] = (memoryMB: rssKB / 1024, cpuPercent: cpu)
+                        }
+                    }
+                } catch {
+                    // Ignore errors — empty table means 0/0 for every app.
+                }
+
+                continuation.resume(returning: result)
             }
-        } catch {
-            // Ignore errors
         }
-
-        return 0
-    }
-
-    private func getCPUUsage(pid: pid_t) -> Double {
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", "\(pid)", "-o", "%cpu="]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               let cpu = Double(output) {
-                return cpu
-            }
-        } catch {
-            // Ignore errors
-        }
-
-        return 0
     }
 }

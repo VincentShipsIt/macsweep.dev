@@ -88,11 +88,31 @@ struct DuplicateFinderModule: ScanModule {
     }
 
     private func findDuplicatesInGroup(urls: [URL], size: Int64) async -> [DuplicateGroup] {
-        var hashGroups: [String: [URL]] = [:]
-
+        // Stage 1: bucket by a cheap hash. Small files are hashed in full;
+        // large files only get a partial (head/middle/tail) hash.
+        var quickGroups: [String: [URL]] = [:]
         for url in urls {
             if let hash = await computeHash(for: url, size: size) {
-                hashGroups[hash, default: []].append(url)
+                quickGroups[hash, default: []].append(url)
+            }
+        }
+
+        // Stage 2: confirm. A partial-hash match is NOT proof of identity — two
+        // distinct large files can share head/middle/tail bytes, and acting on a
+        // false positive trashes a unique file the user never duplicated. For
+        // large files, re-bucket each partial-hash candidate by a full-content
+        // hash before treating them as duplicates. Small files were already
+        // hashed in full, so their buckets are definitive.
+        var hashGroups: [String: [URL]] = [:]
+        let isFullyHashed = size < 1_048_576
+        for (quickHash, candidates) in quickGroups where candidates.count > 1 {
+            if isFullyHashed {
+                hashGroups[quickHash] = candidates
+            } else {
+                for url in candidates {
+                    guard let full = try? streamingFullHash(url) else { continue }
+                    hashGroups["\(quickHash):\(full)", default: []].append(url)
+                }
             }
         }
 
@@ -145,6 +165,21 @@ struct DuplicateFinderModule: ScanModule {
         let data = try Data(contentsOf: url)
         let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Full-content SHA-256 read in chunks, so confirming a large-file duplicate
+    /// never loads the whole file (up to 5GB) into memory at once.
+    private func streamingFullHash(_ url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var hasher = SHA256()
+        while true {
+            let chunk = handle.readData(ofLength: 1_048_576)  // 1MB
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private func partialHash(_ url: URL, size: Int64) throws -> String {

@@ -195,10 +195,12 @@ actor MaintenanceActions {
         // Create and delete a large file to trigger reclamation
         let tempFile = FileManager.default.temporaryDirectory.appending(path: "macsweep_purge_\(UUID().uuidString)")
 
-        // Try to allocate a large sparse file
+        // Allocate a real 1GB file (NOT sparse) to apply space pressure. The
+        // previous "-n" flag created a sparse file that reserves no blocks, so
+        // it never forced APFS to reclaim purgeable space — the whole point.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mkfile")
-        process.arguments = ["-n", "1g", tempFile.path]
+        process.arguments = ["1g", tempFile.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
@@ -229,7 +231,7 @@ actor MaintenanceActions {
             )
         } catch {
             try? FileManager.default.removeItem(at: tempFile)
-            throw MaintenanceError.commandFailed("purge", error.localizedDescription)
+            throw MaintenanceError.commandFailed("mkfile", error.localizedDescription)
         }
     }
 

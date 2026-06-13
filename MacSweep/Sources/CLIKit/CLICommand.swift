@@ -11,8 +11,16 @@ public enum CLICommand: Sendable, Equatable {
     case dryRun(HeadlessSelectionRequest, CLIOutputFormat)
     case apply(HeadlessSelectionRequest, yes: Bool, format: CLIOutputFormat)
     case maintenance(String, CLIOutputFormat)
+    case maintenanceList(CLIOutputFormat)
     case permissionsStatus(CLIOutputFormat)
     case modulesList(CLIOutputFormat)
+    case version(CLIOutputFormat)
+    case space(CLIOutputFormat)
+    case loginItemsList(CLIOutputFormat)
+    case malwareScan(useAI: Bool, format: CLIOutputFormat)
+    case homebrewOutdated(CLIOutputFormat)
+    case homebrewUpgrade(yes: Bool, format: CLIOutputFormat)
+    case shred(path: String, level: String, yes: Bool, format: CLIOutputFormat)
     case help
 }
 
@@ -64,11 +72,45 @@ public enum CLICommandParser {
             return try parsePermissions(arguments.dropFirst())
         case "modules":
             return try parseModules(arguments.dropFirst())
+        case "version", "--version", "-v":
+            return try parseVersion(arguments.dropFirst())
+        case "space":
+            return .space(try parseTrailingFormat(arguments.dropFirst()))
+        case "login-items":
+            return try parseLoginItems(arguments.dropFirst())
+        case "malware":
+            return try parseMalware(arguments.dropFirst())
+        case "homebrew", "brew":
+            return try parseHomebrew(arguments.dropFirst())
+        case "shred":
+            return try parseShred(arguments.dropFirst())
         case "help", "--help", "-h":
             return .help
         default:
             throw CLIParseError.unknownCommand(command)
         }
+    }
+
+    /// Parses an optional trailing `--format <value>` from a slice that contains
+    /// no positional arguments (the subcommand, if any, must already be dropped).
+    private static func parseTrailingFormat(_ args: ArraySlice<String>) throws -> CLIOutputFormat {
+        var format: CLIOutputFormat = .text
+        var trailing = Array(args)
+        while trailing.count >= 2 {
+            let flag = trailing.removeFirst()
+            if flag != "--format" {
+                throw CLIParseError.unexpectedArgument(flag)
+            }
+            let value = trailing.removeFirst()
+            guard let parsed = CLIOutputFormat(rawValue: value) else {
+                throw CLIParseError.invalidValue(flag: "--format", value: value)
+            }
+            format = parsed
+        }
+        if let extra = trailing.first {
+            throw CLIParseError.unexpectedArgument(extra)
+        }
+        return format
     }
 
     private static func parseSelection(_ args: ArraySlice<String>) throws -> (HeadlessSelectionRequest, CLIOutputFormat) {
@@ -126,23 +168,10 @@ public enum CLICommandParser {
             throw CLIParseError.missingSubcommand("maintenance")
         }
 
-        var format: CLIOutputFormat = .text
-        var trailing = Array(args.dropFirst())
-        while trailing.count >= 2 {
-            let flag = trailing.removeFirst()
-            if flag != "--format" {
-                throw CLIParseError.unexpectedArgument(flag)
-            }
-            let value = trailing.removeFirst()
-            guard let parsed = CLIOutputFormat(rawValue: value) else {
-                throw CLIParseError.invalidValue(flag: "--format", value: value)
-            }
-            format = parsed
+        let format = try parseTrailingFormat(args.dropFirst())
+        if subcommand == "list" {
+            return .maintenanceList(format)
         }
-        if let extra = trailing.first {
-            throw CLIParseError.unexpectedArgument(extra)
-        }
-
         return .maintenance(subcommand, format)
     }
 
@@ -150,50 +179,110 @@ public enum CLICommandParser {
         guard args.first == "status" else {
             throw CLIParseError.missingSubcommand("permissions")
         }
-
-        var format: CLIOutputFormat = .text
-        var trailing = Array(args.dropFirst())
-        while trailing.count >= 2 {
-            let flag = trailing.removeFirst()
-            if flag != "--format" {
-                throw CLIParseError.unexpectedArgument(flag)
-            }
-            let value = trailing.removeFirst()
-            guard let parsed = CLIOutputFormat(rawValue: value) else {
-                throw CLIParseError.invalidValue(flag: "--format", value: value)
-            }
-            format = parsed
-        }
-        if let extra = trailing.first {
-            throw CLIParseError.unexpectedArgument(extra)
-        }
-
-        return .permissionsStatus(format)
+        return .permissionsStatus(try parseTrailingFormat(args.dropFirst()))
     }
 
     private static func parseModules(_ args: ArraySlice<String>) throws -> CLICommand {
         guard args.first == "list" else {
             throw CLIParseError.missingSubcommand("modules")
         }
+        return .modulesList(try parseTrailingFormat(args.dropFirst()))
+    }
 
+    private static func parseVersion(_ args: ArraySlice<String>) throws -> CLICommand {
+        return .version(try parseTrailingFormat(args))
+    }
+
+    private static func parseLoginItems(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard args.first == "list" else {
+            throw CLIParseError.missingSubcommand("login-items")
+        }
+        return .loginItemsList(try parseTrailingFormat(args.dropFirst()))
+    }
+
+    private static func parseMalware(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard args.first == "scan" else {
+            throw CLIParseError.missingSubcommand("malware")
+        }
+
+        var useAI = false
+        var rest: [String] = []
+        for arg in args.dropFirst() {
+            if arg == "--ai" {
+                useAI = true
+            } else {
+                rest.append(arg)
+            }
+        }
+        return .malwareScan(useAI: useAI, format: try parseTrailingFormat(ArraySlice(rest)))
+    }
+
+    private static func parseHomebrew(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("homebrew")
+        }
+
+        switch subcommand {
+        case "outdated":
+            return .homebrewOutdated(try parseTrailingFormat(args.dropFirst()))
+        case "upgrade":
+            var yes = false
+            var rest: [String] = []
+            for arg in args.dropFirst() {
+                if arg == "--yes" {
+                    yes = true
+                } else {
+                    rest.append(arg)
+                }
+            }
+            return .homebrewUpgrade(yes: yes, format: try parseTrailingFormat(ArraySlice(rest)))
+        default:
+            throw CLIParseError.unknownCommand("homebrew \(subcommand)")
+        }
+    }
+
+    private static func parseShred(_ args: ArraySlice<String>) throws -> CLICommand {
+        var path: String?
+        var level = "standard"
+        var yes = false
         var format: CLIOutputFormat = .text
-        var trailing = Array(args.dropFirst())
-        while trailing.count >= 2 {
-            let flag = trailing.removeFirst()
-            if flag != "--format" {
-                throw CLIParseError.unexpectedArgument(flag)
+
+        let validLevels: Set<String> = ["quick", "standard", "secure", "paranoid"]
+
+        var iterator = args.makeIterator()
+        while let arg = iterator.next() {
+            switch arg {
+            case "--level":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--level")
+                }
+                let normalized = value.lowercased()
+                guard validLevels.contains(normalized) else {
+                    throw CLIParseError.invalidValue(flag: "--level", value: value)
+                }
+                level = normalized
+            case "--yes":
+                yes = true
+            case "--format":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--format")
+                }
+                guard let parsed = CLIOutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidValue(flag: "--format", value: value)
+                }
+                format = parsed
+            default:
+                if arg.hasPrefix("--") || path != nil {
+                    throw CLIParseError.unexpectedArgument(arg)
+                }
+                path = arg
             }
-            let value = trailing.removeFirst()
-            guard let parsed = CLIOutputFormat(rawValue: value) else {
-                throw CLIParseError.invalidValue(flag: "--format", value: value)
-            }
-            format = parsed
-        }
-        if let extra = trailing.first {
-            throw CLIParseError.unexpectedArgument(extra)
         }
 
-        return .modulesList(format)
+        guard let resolvedPath = path else {
+            throw CLIParseError.missingValue("<path>")
+        }
+        return .shred(path: resolvedPath, level: level, yes: yes, format: format)
     }
 }
 
@@ -206,7 +295,15 @@ public enum CLIHelp {
       macsweep dry-run [--modules <csv>] [--smart-care] [--format json|text]
       macsweep apply [--modules <csv>] [--smart-care] [--yes] [--format json|text]
       macsweep maintenance <action> [--format json|text]
+      macsweep maintenance list [--format json|text]
       macsweep permissions status [--format json|text]
       macsweep modules list [--format json|text]
+      macsweep space [--format json|text]
+      macsweep login-items list [--format json|text]
+      macsweep malware scan [--ai] [--format json|text]
+      macsweep homebrew outdated [--format json|text]
+      macsweep homebrew upgrade [--yes] [--format json|text]
+      macsweep shred <path> [--level quick|standard|secure|paranoid] [--yes] [--format json|text]
+      macsweep version [--format json|text]
     """
 }

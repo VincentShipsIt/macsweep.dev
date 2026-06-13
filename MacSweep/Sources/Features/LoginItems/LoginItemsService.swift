@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Scans and manages macOS login items and launch agents/daemons
 @MainActor
@@ -264,18 +263,11 @@ final class LoginItemsService: ObservableObject {
     }
 
     private func loadAPIKey() -> String? {
-        // Try keychain first
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.macsweep.anthropic-api-key",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecSuccess,
-           let data = item as? Data,
-           let key = String(data: data, encoding: .utf8) {
+        // Use the shared keychain service so the key saved in the AI Analysis
+        // settings popover is found here too. Previously this read a separate
+        // service string ("com.macsweep.anthropic-api-key"), so a normally
+        // saved key was never found and analysis silently fell back to the env.
+        if let key = AIKeychainService.shared.loadKey() {
             return key
         }
         // Fallback: environment variable (dev mode)

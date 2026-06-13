@@ -1,7 +1,15 @@
 import Foundation
 import CryptoKit
 
-/// Secure file deletion with multiple overwrite passes
+/// Secure file deletion with multiple overwrite passes.
+///
+/// IMPORTANT — overwriting is best-effort on modern Macs. APFS is
+/// copy-on-write and SSDs do wear-levelling, so a write to "the same" logical
+/// offset does not necessarily land on the physical blocks that held the
+/// original data. Overwrite-based shredding therefore *cannot guarantee*
+/// erasure on Apple Silicon / SSD / APFS hardware. The real guarantee is
+/// FileVault: with full-disk encryption on, deleted data is unreadable
+/// regardless of which physical blocks survive. UI copy must not overstate this.
 actor SecureDelete {
 
     enum ShredLevel: String, CaseIterable, Identifiable {
@@ -28,9 +36,9 @@ actor SecureDelete {
             case .standard:
                 return "3 passes (DoD short). Good balance of speed and security."
             case .secure:
-                return "7 passes (DoD 5220.22-M). Meets government security standards."
+                return "7 passes (DoD 5220.22-M pattern). On SSD/APFS, overwrites can't guarantee the original blocks are erased."
             case .paranoid:
-                return "35 passes (Gutmann method). Maximum security, very slow."
+                return "35 passes (Gutmann method). Very slow. Same SSD/APFS caveat — keep FileVault on for a real guarantee."
             }
         }
     }
@@ -41,6 +49,13 @@ actor SecureDelete {
         level: ShredLevel = .standard,
         progress: ((Double) -> Void)? = nil
     ) async throws {
+        // Refuse symlinks BEFORE any fileExists check (which follows links):
+        // FileHandle(forWritingTo:) opens through the link and would overwrite
+        // the target's bytes — destroying unrelated data the user never selected.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil {
+            throw ShredError.refusedSymlink(url)
+        }
+
         // Verify file exists and is a regular file
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
@@ -121,11 +136,14 @@ actor SecureDelete {
         var bytesShredded: Int64 = 0
         var errors: [ShredError] = []
 
-        // Enumerate all files
+        // Enumerate all files. Hidden files are INCLUDED (no .skipsHiddenFiles):
+        // skipping them would leave dotfiles to be merely unlinked by the final
+        // removeItem instead of overwritten — defeating the point for things like
+        // ~/Documents/secret/.env. Symlinks are skipped (see loop below).
         guard let enumerator = FileManager.default.enumerator(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey],
+            options: []
         ) else {
             throw ShredError.cannotEnumerateDirectory(url)
         }
@@ -133,7 +151,10 @@ actor SecureDelete {
         var files: [(URL, Int64)] = []
 
         while let fileURL = enumerator.nextObject() as? URL {
-            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey])
+            // Skip symlinks: shred(file:) would follow them to their target. The
+            // final removeItem unlinks them safely without touching the target.
+            if values?.isSymbolicLink == true { continue }
             if values?.isDirectory == false {
                 let size = Int64(values?.fileSize ?? 0)
                 files.append((fileURL, size))
@@ -255,6 +276,7 @@ enum ShredError: LocalizedError {
     case cannotOpenFile(URL)
     case cannotEnumerateDirectory(URL)
     case writeFailed(URL)
+    case refusedSymlink(URL)
     case unknown(String)
 
     var errorDescription: String? {
@@ -267,6 +289,8 @@ enum ShredError: LocalizedError {
             return "Cannot enumerate directory: \(url.lastPathComponent)"
         case .writeFailed(let url):
             return "Write failed: \(url.lastPathComponent)"
+        case .refusedSymlink(let url):
+            return "Refused symlink (would destroy its target, not the link): \(url.lastPathComponent)"
         case .unknown(let message):
             return message
         }

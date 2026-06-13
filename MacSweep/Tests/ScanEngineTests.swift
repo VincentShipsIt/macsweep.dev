@@ -174,4 +174,58 @@ final class ScanEngineTests: XCTestCase {
         let order = await recorder.cleanupOrder()
         XCTAssertEqual(order, ["trash-bins", "system-cache"])
     }
+
+    func testCleanThrowsWhenAggregateExceedsHardLimitOnRealDelete() async {
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ])
+
+        let tmp = FileManager.default.temporaryDirectory
+        let hugeItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("huge.cache"),
+            size: 11_000_000_000,  // > 10GB hard limit
+            type: .file,
+            module: "system-cache",
+            moduleName: "System Cache"
+        )
+
+        do {
+            _ = try await engine.clean(items: [hugeItem], dryRun: false)
+            XCTFail("Expected deletionBlocked to be thrown")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked = error else {
+                return XCTFail("Expected .deletionBlocked, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected ScanEngineError, got \(error)")
+        }
+
+        // Nothing should have been dispatched to the module.
+        let calls = await recorder.items(for: "system-cache")
+        XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testCleanAllowsOversizedDryRunPreview() async throws {
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ])
+
+        let tmp = FileManager.default.temporaryDirectory
+        let hugeItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("huge.cache"),
+            size: 11_000_000_000,  // > 10GB hard limit, but dry-run previews are always allowed
+            type: .file,
+            module: "system-cache",
+            moduleName: "System Cache"
+        )
+
+        let result = try await engine.clean(items: [hugeItem], dryRun: true)
+        XCTAssertEqual(result.itemsProcessed, 1)
+        let calls = await recorder.items(for: "system-cache")
+        XCTAssertEqual(calls, [hugeItem])
+    }
 }

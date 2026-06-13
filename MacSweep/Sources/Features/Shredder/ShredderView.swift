@@ -270,9 +270,11 @@ struct ShredderView: View {
                 .font(.headline)
 
             Text("""
-            Regular deletion only removes file references, leaving data recoverable. \
-            The Shredder overwrites file contents multiple times with random data before deletion, \
-            making recovery virtually impossible.
+            Regular deletion only unlinks the file, leaving its bytes recoverable until \
+            something else overwrites them. The Shredder overwrites file contents with random \
+            data before deleting. Note: on SSD and APFS volumes — every modern Mac — wear-levelling \
+            and copy-on-write mean overwriting can't guarantee the original blocks are erased. \
+            Keep FileVault on for a real guarantee that deleted data stays unreadable.
             """)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -280,7 +282,7 @@ struct ShredderView: View {
             HStack(spacing: 16) {
                 InfoBadge(icon: "exclamationmark.triangle", text: "Cannot be undone", color: .orange)
                 InfoBadge(icon: "clock", text: "Slower than normal delete", color: .blue)
-                InfoBadge(icon: "lock.shield", text: "Military-grade security", color: .green)
+                InfoBadge(icon: "lock.shield", text: "Use FileVault for guarantees", color: .green)
             }
         }
         .padding()
@@ -360,10 +362,20 @@ struct ShredderView: View {
         var errors: [ShredError] = []
 
         let fileCount = droppedFiles.count
+        let safety = SafetyChecker()
 
         for (index, url) in droppedFiles.enumerated() {
             await MainActor.run {
                 currentFile = url.lastPathComponent
+            }
+
+            // Blocklist gate: refuse symlinks, the home/root dirs, whole user
+            // folders, and system / app-data / credential roots before any
+            // destructive write. Arbitrary user-selected files pass.
+            let verdict = safety.validateForShred(url)
+            guard verdict.isSafe else {
+                errors.append(.unknown("Skipped \(url.lastPathComponent): \(verdict.reason ?? "blocked by safety checks")"))
+                continue
             }
 
             do {

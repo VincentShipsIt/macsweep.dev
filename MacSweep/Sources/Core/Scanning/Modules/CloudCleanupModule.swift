@@ -79,19 +79,26 @@ struct CloudCleanupModule: ScanModule {
     }
 
     private func scanCloudCaches() async -> [CleanupItem] {
+        // ONLY genuine regenerable caches under ~/Library/Caches.
+        //
+        // Deliberately excluded — these are NOT caches and removing them is data
+        // loss or sync breakage:
+        //   • ~/Library/CloudStorage/*  — the live File Provider mounts. These
+        //     ARE the user's synced Dropbox/Google Drive/OneDrive files.
+        //   • ~/Library/Application Support/Dropbox — Dropbox's sync database and
+        //     config, not cache.
+        //   • ~/Library/Application Support/CloudDocs — iCloud Drive sync state.
         let roots = [
             FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/CloudKit"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/CloudDocs"),
             FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/Dropbox"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Dropbox"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/CloudStorage/Dropbox"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/CloudStorage/GoogleDrive"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/CloudStorage/OneDrive-Personal"),
-            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/CloudStorage/OneDrive"),
         ]
 
         var items: [CleanupItem] = []
+        let checker = SafetyChecker()
         for root in roots where FileManager.default.fileExists(atPath: root.path) {
+            // Defense-in-depth: only surface a cache root the safety gate accepts.
+            guard checker.validateForScan(root, moduleID: id).isSafe else { continue }
+
             let size = (try? await DiskAnalyzer.directorySize(at: root)) ?? 0
             guard size >= minimumFileSize else { continue }
 
@@ -126,6 +133,7 @@ struct CloudCleanupModule: ScanModule {
         var processed = 0
         var freed: Int64 = 0
         var errors: [CleanupError] = []
+        let checker = SafetyChecker()
 
         for item in items where item.module == id {
             if dryRun {
@@ -134,11 +142,22 @@ struct CloudCleanupModule: ScanModule {
                 continue
             }
 
+            // Defense-in-depth: gate every item, including the iCloud evictions.
+            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Blocked by safety checks"
+                ))
+                continue
+            }
+
             do {
                 if item.moduleName.contains("Local Copy") {
+                    // Non-destructive: frees the local copy, file stays in iCloud.
                     try FileManager.default.evictUbiquitousItem(at: item.path)
                 } else {
-                    try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
+                    // Provider caches regenerate; permanent removal frees the space.
+                    try CleanupFileRemover.permanent(item.path)
                 }
                 processed += 1
                 freed += item.size

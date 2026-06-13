@@ -197,9 +197,184 @@ public actor MacSweepHeadlessService {
             }
         )
     }
+
+    // MARK: - Disk Usage
+
+    public func diskUsage() async -> HeadlessDiskUsage {
+        guard let usage = await DiskUsage.current() else {
+            return HeadlessDiskUsage(
+                totalBytes: 0, usedBytes: 0, freeBytes: 0,
+                usedPercentage: 0, freePercentage: 0
+            )
+        }
+        // DiskUsage exposes used/free as 0–1 fractions; surface them as 0–100
+        // percentages so JSON and text consumers get a conventional number.
+        return HeadlessDiskUsage(
+            totalBytes: usage.total,
+            usedBytes: usage.used,
+            freeBytes: usage.free,
+            usedPercentage: usage.usedPercentage * 100,
+            freePercentage: usage.freePercentage * 100
+        )
+    }
+
+    // MARK: - Login Items
+
+    public func loginItems() async -> HeadlessLoginItemsReport {
+        let items = await LoginItemEnumerator().enumerate()
+        return HeadlessLoginItemsReport(totalItems: items.count, items: items)
+    }
+
+    // MARK: - Malware Scan (delegates to @MainActor service)
+
+    public func scanMalware(useAI: Bool) async -> HeadlessMalwareScanReport {
+        await runMalwareScanOnMain(useAI: useAI)
+    }
+
+    // MARK: - Homebrew (delegates to @MainActor service)
+
+    public func homebrewOutdated() async throws -> HeadlessHomebrewReport {
+        try await runHomebrewOutdatedOnMain()
+    }
+
+    public func homebrewUpgrade() async throws -> HeadlessHomebrewUpgradeResult {
+        try await runHomebrewUpgradeOnMain()
+    }
+
+    // MARK: - Shred
+
+    public func shred(path: String, level: String) async throws -> HeadlessShredResult {
+        let expanded = (path as NSString).expandingTildeInPath
+        let url = URL(fileURLWithPath: expanded)
+
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
+            throw HeadlessServiceError.pathNotFound(expanded)
+        }
+
+        // Apply the same blocklist the GUI shredder uses before any overwrite:
+        // refuses symlinks, the home/root dirs, whole user folders, and
+        // system/credential/cloud roots.
+        let validation = SafetyChecker().validateForShred(url)
+        guard validation.isSafe else {
+            throw HeadlessServiceError.shredRefused(validation.reason ?? "protected path")
+        }
+
+        let shredLevel = Self.shredLevel(from: level)
+
+        if isDir.boolValue {
+            let result = try await SecureDelete.shredDirectory(at: url, level: shredLevel)
+            return HeadlessShredResult(
+                path: expanded,
+                level: level.lowercased(),
+                isDirectory: true,
+                filesShredded: result.filesShredded,
+                bytesShredded: result.bytesShredded,
+                success: result.success,
+                errors: result.errors.map { $0.localizedDescription }
+            )
+        } else {
+            // Read size before shredding — the file is gone afterward.
+            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let size = (attrs?[.size] as? Int64) ?? 0
+            try await SecureDelete.shred(file: url, level: shredLevel)
+            return HeadlessShredResult(
+                path: expanded,
+                level: level.lowercased(),
+                isDirectory: false,
+                filesShredded: 1,
+                bytesShredded: size,
+                success: true,
+                errors: []
+            )
+        }
+    }
+
+    /// Map a lowercase CLI level string to the capitalized-rawValue ShredLevel.
+    private static func shredLevel(from raw: String) -> SecureDelete.ShredLevel {
+        switch raw.lowercased() {
+        case "quick": return .quick
+        case "secure": return .secure
+        case "paranoid": return .paranoid
+        default: return .standard
+        }
+    }
 }
 
 private struct SelectionSnapshot {
     let scanResult: HeadlessScanResult
     let selectedItems: [CleanupItem]
+}
+
+// MARK: - @MainActor bridges to ObservableObject services
+//
+// MalwareScannerService and HomebrewService are @MainActor classes. These
+// file-private free functions hop to the main actor, run the service, and
+// return ONLY Sendable Headless* structs — so the actor above never touches a
+// non-Sendable @MainActor object across isolation boundaries.
+
+@MainActor
+private func runMalwareScanOnMain(useAI: Bool) async -> HeadlessMalwareScanReport {
+    let service = MalwareScannerService()
+    await service.runScan(useAI: useAI)
+    let result = service.scanResult
+    let findings = (result?.findings ?? []).map { finding in
+        HeadlessThreatFinding(
+            path: finding.path,
+            category: finding.category.rawValue,
+            threatLevel: finding.threatLevel.rawValue,
+            description: finding.description,
+            aiExplanation: finding.aiExplanation,
+            remediation: finding.remediation
+        )
+    }
+    return HeadlessMalwareScanReport(
+        scannedAt: result?.scannedAt ?? Date(),
+        totalScanned: result?.totalScanned ?? 0,
+        isClean: result?.isClean ?? true,
+        xprotectStatus: service.xprotectStatus,
+        aiAnalysisRequested: useAI,
+        findings: findings
+    )
+}
+
+@MainActor
+private func runHomebrewOutdatedOnMain() async throws -> HeadlessHomebrewReport {
+    let service = HomebrewService()
+    guard service.brewExists() else {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    await service.checkOutdated()
+    if service.error == "brew_not_found" {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    let packages = service.packages.map { package in
+        HeadlessBrewPackage(
+            name: package.name,
+            currentVersion: package.currentVersion,
+            latestVersion: package.latestVersion
+        )
+    }
+    return HeadlessHomebrewReport(outdatedCount: packages.count, packages: packages)
+}
+
+@MainActor
+private func runHomebrewUpgradeOnMain() async throws -> HeadlessHomebrewUpgradeResult {
+    let service = HomebrewService()
+    guard service.brewExists() else {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    await service.upgradeAll()
+    let remaining = service.packages.map { package in
+        HeadlessBrewPackage(
+            name: package.name,
+            currentVersion: package.currentVersion,
+            latestVersion: package.latestVersion
+        )
+    }
+    return HeadlessHomebrewUpgradeResult(
+        upgraded: true,
+        log: service.upgradeLog,
+        remainingOutdated: remaining
+    )
 }

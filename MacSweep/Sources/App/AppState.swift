@@ -12,6 +12,9 @@ final class AppState: ObservableObject {
     @Published var selectedItems: Set<CleanupItem.ID> = []
     @Published var smartCareSummary: SmartCareSummary?
 
+    /// Last scan failure, surfaced to the UI. Cleared at the start of each scan.
+    @Published var lastError: String?
+
     // MARK: - Disk Usage
     @Published var diskUsage: DiskUsage?
 
@@ -152,6 +155,7 @@ final class AppState: ObservableObject {
         scanResults = []
         selectedItems = []
         smartCareSummary = nil
+        lastError = nil
 
         defer { isScanning = false }
 
@@ -163,7 +167,8 @@ final class AppState: ObservableObject {
             let combined = deduplicated(items: scannedItems + persistentItems)
             applyScanResults(combined, modules: modules)
         } catch {
-            print("Scan failed: \(error)")
+            // Surface to the UI instead of swallowing into a console log.
+            lastError = "Scan failed: \(error.localizedDescription)"
         }
     }
 

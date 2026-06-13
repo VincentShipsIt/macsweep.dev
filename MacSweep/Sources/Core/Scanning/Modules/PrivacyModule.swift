@@ -207,7 +207,7 @@ struct PrivacyModule: ScanModule {
                 freed += item.size
             } else {
                 do {
-                    try FileManager.default.removeItem(at: item.path)
+                    try CleanupFileRemover.recoverable(item.path)
                     processed += 1
                     freed += item.size
                 } catch {
@@ -274,7 +274,9 @@ struct PrivacyActions {
         for file in historyFiles {
             let path = home.appending(path: file)
             if FileManager.default.fileExists(atPath: path.path) {
-                try? FileManager.default.removeItem(at: path)
+                // Recoverable: shell history is not regenerable, so route through
+                // the Trash to make an accidental clear undoable.
+                try? CleanupFileRemover.recoverable(path)
             }
         }
     }

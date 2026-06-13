@@ -132,7 +132,7 @@ actor AppDiscovery {
         let icon = NSWorkspace.shared.icon(forFile: url.path)
 
         // Get last used date (from Spotlight metadata)
-        let lastUsed = await getLastUsedDate(for: bundleID)
+        let lastUsed = await getLastUsedDate(at: url)
 
         return InstalledApp(
             id: bundleID,
@@ -146,13 +146,17 @@ actor AppDiscovery {
     }
 
     /// Get last used date from Spotlight
-    private func getLastUsedDate(for bundleID: String) async -> Date? {
-        // Use mdls to query Spotlight for last used date
+    private func getLastUsedDate(at bundleURL: URL) async -> Date? {
+        // Query the actual bundle path. The previous code rebuilt the path as
+        // "/Applications/<bundleID>.app" — but the on-disk name is the display
+        // name ("Google Chrome.app"), not the bundle ID ("com.google.Chrome"),
+        // and ~/Applications apps aren't under /Applications at all. So mdls
+        // always hit a non-existent path and last-used was perpetually nil.
         let process = Process()
         let pipe = Pipe()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
-        process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", "/Applications/\(bundleID).app"]
+        process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", bundleURL.path]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
 

@@ -42,22 +42,21 @@ final class SystemMonitor: ObservableObject {
         let brandString = String(cString: brand)
 
         if !brandString.isEmpty {
+            // Primary path. On Apple Silicon this is e.g. "Apple M3 Pro".
             chipName = brandString
         } else {
-            // Fallback for Apple Silicon
+            // Fallback: hw.model (e.g. "Mac15,6"). The previous code read the
+            // system_profiler *binary* off disk as a UTF-8 string and threw the
+            // result away — a no-op that set chipName to modelString either way.
+            // Spawning system_profiler here would block the init; the model
+            // identifier is a fine, cheap fallback.
             var modelSize: size_t = 0
             sysctlbyname("hw.model", nil, &modelSize, nil, 0)
             var model = [CChar](repeating: 0, count: modelSize)
             sysctlbyname("hw.model", &model, &modelSize, nil, 0)
             let modelString = String(cString: model)
-
-            if modelString.contains("Mac") {
-                // Try to get Apple chip name
-                if let output = try? String(contentsOf: URL(fileURLWithPath: "/usr/sbin/system_profiler"), encoding: .utf8) {
-                    chipName = modelString
-                } else {
-                    chipName = modelString
-                }
+            if !modelString.isEmpty {
+                chipName = modelString
             }
         }
     }
@@ -470,8 +469,14 @@ extension SystemMonitor {
         if let previous = previousNetworkStats, let lastCheck = lastNetworkCheck {
             let timeDelta = now.timeIntervalSince(lastCheck)
             if timeDelta > 0 {
-                usage.downloadSpeed = UInt64(Double(totalRx - previous.rx) / timeDelta)
-                usage.uploadSpeed = UInt64(Double(totalTx - previous.tx) / timeDelta)
+                // Guard UInt64 subtraction: interface counters reset on link
+                // change / sleep and the set of interfaces summed can shrink, so
+                // totalRx < previous.rx is possible and would trap. Treat a
+                // backwards delta as zero for that tick.
+                let rxDelta = totalRx >= previous.rx ? totalRx - previous.rx : 0
+                let txDelta = totalTx >= previous.tx ? totalTx - previous.tx : 0
+                usage.downloadSpeed = UInt64(Double(rxDelta) / timeDelta)
+                usage.uploadSpeed = UInt64(Double(txDelta) / timeDelta)
             }
         }
 

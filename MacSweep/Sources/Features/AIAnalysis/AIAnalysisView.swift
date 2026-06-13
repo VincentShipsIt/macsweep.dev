@@ -92,10 +92,16 @@ struct AIAnalysisView: View {
             Text("Claude API Key")
                 .font(.headline)
 
-            Text("Stored securely in macOS Keychain as 'MacSweep-Claude'. Never written to disk.")
+            Text("Stored securely in the macOS Keychain. Never written to disk in plain text.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)
+
+            Text("When AI analysis runs, item details — names, paths, sizes, and metadata — are sent to Anthropic's API (api.anthropic.com) for evaluation. File contents are never uploaded. Leave the key empty to keep all analysis on-device.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 280, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
 
             SecureField("sk-ant-...", text: $apiKeyInput)
                 .textFieldStyle(.roundedBorder)
@@ -276,11 +282,24 @@ struct AIAnalysisView: View {
         let pathsToDelete = selectedFindings.map { $0.path }
         var deletedPaths: [String] = []
         var failedPaths: [String] = []
+        var blockedPaths: [String] = []
+
+        let safety = SafetyChecker()
 
         for path in pathsToDelete {
             let url = URL(fileURLWithPath: path)
+
+            // AI suggestions are advisory — they MUST pass the same safety gate as
+            // every other cleanup path before anything is touched.
+            guard safety.validateForCleanup(url).isSafe else {
+                blockedPaths.append(path)
+                continue
+            }
+
             do {
-                try FileManager.default.removeItem(at: url)
+                // Recoverable: AI false positives are possible, so move to Trash
+                // rather than deleting outright.
+                try CleanupFileRemover.recoverable(url)
                 deletedPaths.append(path)
             } catch {
                 failedPaths.append(path)
@@ -290,8 +309,15 @@ struct AIAnalysisView: View {
         // Remove deleted items from findings
         service.findings.removeAll { deletedPaths.contains($0.path) }
 
+        var messages: [String] = []
+        if !blockedPaths.isEmpty {
+            messages.append("\(blockedPaths.count) item(s) blocked by safety checks")
+        }
         if !failedPaths.isEmpty {
-            service.error = "Could not delete \(failedPaths.count) item(s). Check permissions."
+            messages.append("\(failedPaths.count) item(s) could not be moved to Trash (check permissions)")
+        }
+        if !messages.isEmpty {
+            service.error = messages.joined(separator: "; ")
         }
     }
 }

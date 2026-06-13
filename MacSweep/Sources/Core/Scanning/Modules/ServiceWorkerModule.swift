@@ -160,7 +160,7 @@ struct ServiceWorkerModule: ScanModule {
                         includingPropertiesForKeys: nil
                     )
                     for content in contents {
-                        try FileManager.default.removeItem(at: content)
+                        try CleanupFileRemover.recoverable(content)
                     }
                     processed += 1
                     freed += item.size
