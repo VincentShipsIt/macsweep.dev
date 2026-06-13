@@ -59,7 +59,7 @@ struct DuplicateFinderView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -124,7 +124,7 @@ struct DuplicateFinderView: View {
                     await scanDuplicates()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -158,12 +158,12 @@ struct DuplicateFinderView: View {
             Button("Select All") {
                 selectedItems = Set(sortedItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Move to Trash") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

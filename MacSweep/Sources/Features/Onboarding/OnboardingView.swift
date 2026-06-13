@@ -71,7 +71,7 @@ struct OnboardingView: View {
                             currentPage -= 1
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .glassButton()
                 }
 
                 if currentPage < welcomePages.count {
@@ -80,12 +80,12 @@ struct OnboardingView: View {
                             currentPage += 1
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                 } else {
                     Button(hasFullDiskAccess ? "Get Started" : "Continue Anyway") {
                         isPresented = false
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .tint(hasFullDiskAccess ? .accentColor : .orange)
                 }
             }
@@ -177,7 +177,7 @@ struct FDAPermissionPageView: View {
                         Label("Open System Settings", systemImage: "gear")
                             .frame(minWidth: 180)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
 
                     Button {
                         revealAppInFinder()
@@ -185,7 +185,7 @@ struct FDAPermissionPageView: View {
                         Label("Reveal in Finder", systemImage: "folder")
                             .frame(minWidth: 150)
                     }
-                    .buttonStyle(.bordered)
+                    .glassButton()
                 }
                 .padding(.top, 8)
             } else {

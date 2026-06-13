@@ -57,7 +57,7 @@ struct TrashBinsView: View {
             } label: {
                 Label("Empty All Trash", systemImage: "trash.slash")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(trashItems.isEmpty && trashSummary?.totalCount == 0)
 
@@ -168,12 +168,12 @@ struct TrashBinsView: View {
             Button("Select All") {
                 selectedItems = Set(trashItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Delete Selected") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

@@ -67,7 +67,9 @@ class AIAnalysisService: ObservableObject {
         }.value
     }
 
-    private func parseFastScanOutput(_ output: String) -> [CacheFinding] {
+    // Pure transform — touches no actor-isolated state, so it runs off the main
+    // actor inside the detached fast-scan task.
+    private nonisolated func parseFastScanOutput(_ output: String) -> [CacheFinding] {
         output.components(separatedBy: "\n").compactMap { line -> CacheFinding? in
             let parts = line.components(separatedBy: "\t")
             guard parts.count == 2 else { return nil }
@@ -84,7 +86,7 @@ class AIAnalysisService: ObservableObject {
         }
     }
 
-    private func categorize(path: String) -> CacheCategory {
+    private nonisolated func categorize(path: String) -> CacheCategory {
         let p = path.lowercased()
         if p.contains("code cache") || p.contains("gpucache") || p.contains("dawn") ||
            p.contains("shadercache") || p.contains("vm_bundles/warm") {
@@ -176,7 +178,7 @@ class AIAnalysisService: ObservableObject {
 
     // MARK: - Shell helper
 
-    private func shell(_ cmd: String) -> String {
+    private nonisolated func shell(_ cmd: String) -> String {
         let task = Process()
         task.launchPath = "/bin/bash"
         task.arguments = ["-c", cmd]

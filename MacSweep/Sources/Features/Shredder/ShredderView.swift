@@ -75,7 +75,7 @@ struct ShredderView: View {
             } label: {
                 Label("Add Files", systemImage: "plus")
             }
-            .buttonStyle(.bordered)
+            .glassButton()
         }
         .padding()
     }
@@ -241,7 +241,7 @@ struct ShredderView: View {
                     Label("Shred Files", systemImage: "scissors")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .tint(.red)
                 .controlSize(.large)
             }
@@ -316,7 +316,7 @@ struct ShredderView: View {
                     showingResult = false
                     droppedFiles.removeAll()
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
             }
         }
         .padding(40)

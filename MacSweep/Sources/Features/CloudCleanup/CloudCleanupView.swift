@@ -63,7 +63,7 @@ struct CloudCleanupView: View {
             } label: {
                 Label("Scan", systemImage: "icloud.and.arrow.down")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -141,7 +141,7 @@ struct CloudCleanupView: View {
             Button("Start Scan") {
                 Task { await scanCloudStorage() }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -172,12 +172,12 @@ struct CloudCleanupView: View {
             Button("Select All") {
                 selectedItems = Set(filteredItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Reclaim Space") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(selectedItems.isEmpty)
         }
         .padding()

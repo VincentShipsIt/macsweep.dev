@@ -105,7 +105,7 @@ struct BuildArtifactsView: View {
                 } label: {
                     Label("Scan", systemImage: "magnifyingglass")
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .disabled(isScanning)
             }
 
@@ -238,7 +238,7 @@ struct BuildArtifactsView: View {
                     await scan()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -294,18 +294,18 @@ struct BuildArtifactsView: View {
             Button("Select All") {
                 selectedItems = Set(allCleanupItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Select Stale Only") {
                 selectStaleOnly()
             }
-            .buttonStyle(.bordered)
+            .glassButton()
             .help("Select only projects not modified in the last 48 hours")
 
             Button("Clean Selected") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

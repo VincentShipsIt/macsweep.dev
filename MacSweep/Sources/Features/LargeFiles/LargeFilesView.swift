@@ -70,7 +70,7 @@ struct LargeFilesView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -189,7 +189,7 @@ struct LargeFilesView: View {
                     await scanLargeFiles()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -234,12 +234,12 @@ struct LargeFilesView: View {
             Button("Select All") {
                 selectedItems = Set(filteredItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Move to Trash") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

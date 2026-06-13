@@ -63,7 +63,7 @@ struct BrowserCleanupView: View {
             } label: {
                 Label("Scan Browsers", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -106,7 +106,7 @@ struct BrowserCleanupView: View {
                     await scanBrowsers()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -164,12 +164,12 @@ struct BrowserCleanupView: View {
             Button("Select All") {
                 selectAll()
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Clean") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }
@@ -494,7 +494,7 @@ struct SafariFDAWarningBanner: View {
             Button("Open Settings") {
                 openFDASettings()
             }
-            .buttonStyle(.bordered)
+            .glassButton()
         }
         .padding()
         .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))

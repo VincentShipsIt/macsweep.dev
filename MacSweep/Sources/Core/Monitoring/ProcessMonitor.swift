@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Process information for display in lists
-struct ProcessInfo: Identifiable {
+struct RunningProcess: Identifiable {
     var id: pid_t { pid }
     let pid: pid_t
     let name: String
@@ -27,7 +27,7 @@ struct ProcessInfo: Identifiable {
 /// Monitors running processes for CPU and memory usage
 @MainActor
 final class ProcessMonitor: ObservableObject {
-    @Published var processes: [ProcessInfo] = []
+    @Published var processes: [RunningProcess] = []
     @Published var isLoading = false
 
     private var timer: Timer?
@@ -58,14 +58,14 @@ final class ProcessMonitor: ObservableObject {
 
         let runningApps = NSWorkspace.shared.runningApplications
 
-        var newProcesses: [ProcessInfo] = []
+        var newProcesses: [RunningProcess] = []
 
         for app in runningApps {
             guard let name = app.localizedName ?? app.bundleIdentifier else { continue }
 
             let sample = stats[app.processIdentifier]
 
-            newProcesses.append(ProcessInfo(
+            newProcesses.append(RunningProcess(
                 pid: app.processIdentifier,
                 name: name,
                 bundleID: app.bundleIdentifier,
@@ -80,12 +80,12 @@ final class ProcessMonitor: ObservableObject {
     }
 
     /// Get top processes sorted by CPU usage
-    func topByCPU(limit: Int = 5) -> [ProcessInfo] {
+    func topByCPU(limit: Int = 5) -> [RunningProcess] {
         Array(processes.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(limit))
     }
 
     /// Get top processes sorted by memory usage
-    func topByMemory(limit: Int = 5) -> [ProcessInfo] {
+    func topByMemory(limit: Int = 5) -> [RunningProcess] {
         Array(processes.sorted { $0.memoryMB > $1.memoryMB }.prefix(limit))
     }
 

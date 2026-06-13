@@ -13,7 +13,10 @@ struct ContentView: View {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
-        .background(GradientBackground())
+        // No full-window gradient: it would bleed across the sidebar and leave the
+        // system's Liquid Glass nothing neutral to refract. The window background
+        // and native glass chrome carry the look. GradientBackground is reserved
+        // for subtle, content-only accents elsewhere.
     }
 
     // MARK: - Sidebar (CleanMyMac style)
@@ -24,14 +27,14 @@ struct ContentView: View {
                 if section == .main {
                     // Smart Scan at top (no header)
                     ForEach(section.features) { feature in
-                        SidebarRow(feature: feature, isSelected: appState.selectedFeature == feature)
+                        SidebarRow(feature: feature)
                             .tag(feature)
                     }
                 } else {
                     // Grouped sections
                     Section(section.rawValue) {
                         ForEach(section.features) { feature in
-                            SidebarRow(feature: feature, isSelected: appState.selectedFeature == feature)
+                            SidebarRow(feature: feature)
                                 .tag(feature)
                         }
                     }
@@ -39,8 +42,10 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
+        // No background overrides: the native sidebar draws its own Liquid Glass
+        // material and selection highlight. Hiding the scroll background or forcing
+        // it clear suppresses that material and was the cause of the broken-looking
+        // selection chip.
     }
 
     // MARK: - Detail View
@@ -115,25 +120,12 @@ struct ContentView: View {
 
 struct SidebarRow: View {
     let feature: Feature
-    let isSelected: Bool
 
     var body: some View {
-        Label {
-            Text(feature.rawValue)
-                .fontWeight(isSelected ? .semibold : .regular)
-        } icon: {
-            Image(systemName: feature.icon)
-                .foregroundStyle(isSelected ? .white : .secondary)
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 8)
-        .background(
-            isSelected ?
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor.opacity(0.8))
-                : nil
-        )
-        .foregroundStyle(isSelected ? .white : .primary)
+        // Plain Label only. The enclosing List(selection:) draws the native
+        // Liquid Glass selection highlight and tints the icon for us — no custom
+        // pill, no manual foreground/weight overrides to fight it.
+        Label(feature.rawValue, systemImage: feature.icon)
     }
 }
 
@@ -174,11 +166,10 @@ struct SmartScanView: View {
                             .frame(width: 8, height: 8)
                         Text("Assistant")
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
                 }
-                .buttonStyle(.plain)
+                // Floating chrome control → native Liquid Glass capsule (the .glass
+                // style supplies the capsule shape, padding and material itself).
+                .glassButton()
             }
             .padding()
 
@@ -278,10 +269,12 @@ struct ScanButton: View {
                     .scaleEffect(pulseAnimation ? 1.1 : 1.0)
                     .opacity(pulseAnimation ? 0 : 1)
 
-                // Background circle
+                // Background circle — Liquid Glass orb (interactive: it's the tap
+                // target of the primary scan action).
                 Circle()
-                    .fill(.ultraThinMaterial)
+                    .fill(.clear)
                     .frame(width: 120, height: 120)
+                    .glassControl(in: Circle(), interactive: true)
 
                 // Progress ring (when scanning)
                 if isScanning {
@@ -489,7 +482,7 @@ struct MaintenanceTaskRow: View {
                         await action()
                     }
                 }
-                .buttonStyle(.bordered)
+                .glassButton()
             }
         }
         .padding()

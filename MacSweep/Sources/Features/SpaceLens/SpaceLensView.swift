@@ -78,7 +78,7 @@ struct SpaceLensView: View {
                 } label: {
                     Label("Scan", systemImage: "magnifyingglass")
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .disabled(isScanning)
             }
 
@@ -127,7 +127,7 @@ struct SpaceLensView: View {
                 currentPath.removeLast()
                 selectedNode = nil
             }
-            .buttonStyle(.bordered)
+            .glassButton()
         }
     }
 
@@ -219,7 +219,7 @@ struct SpaceLensView: View {
                             Label("Open", systemImage: "folder.badge.gearshape")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .glassButton()
                     }
 
                     Button {
@@ -228,7 +228,7 @@ struct SpaceLensView: View {
                         Label("Reveal in Finder", systemImage: "folder")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .glassButton()
 
                     Button {
                         moveToTrash(node)
@@ -236,7 +236,7 @@ struct SpaceLensView: View {
                         Label("Move to Trash", systemImage: "trash")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .tint(.red)
                 }
                 .padding()
@@ -306,7 +306,7 @@ struct SpaceLensView: View {
                     await scanDisk()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

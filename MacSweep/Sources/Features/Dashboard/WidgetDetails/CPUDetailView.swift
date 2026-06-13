@@ -172,7 +172,7 @@ struct UsagePill: View {
 
 /// Row showing a process's resource usage
 struct ProcessConsumerRow: View {
-    let process: ProcessInfo
+    let process: RunningProcess
     let metric: ProcessMetric
 
     enum ProcessMetric {
@@ -211,7 +211,7 @@ struct ProcessConsumerRow: View {
                 Text("Quit")
                     .font(.caption2)
             }
-            .buttonStyle(.bordered)
+            .glassButton()
             .controlSize(.mini)
         }
         .padding(.vertical, 2)

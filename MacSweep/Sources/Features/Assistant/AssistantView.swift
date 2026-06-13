@@ -44,7 +44,7 @@ struct AssistantView: View {
             } label: {
                 Label("Open Config Folder", systemImage: "folder")
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button {
                 Task {
@@ -53,7 +53,7 @@ struct AssistantView: View {
             } label: {
                 Label("Scan Watchlists", systemImage: "scope")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
         }
         .padding()
@@ -101,7 +101,7 @@ struct AssistantView: View {
                     } label: {
                         Label(assistant.isSubmitting ? "Thinking..." : "Send", systemImage: "paperplane.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .disabled(assistant.isSubmitting || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -201,7 +201,7 @@ struct AssistantView: View {
                         } label: {
                             Label("Run Scan", systemImage: "play.fill")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .glassButton(prominent: true)
                         .disabled(appState.isScanning)
 
                         Button {
@@ -211,7 +211,7 @@ struct AssistantView: View {
                         } label: {
                             Label("Save Rules", systemImage: "square.and.arrow.down")
                         }
-                        .buttonStyle(.bordered)
+                        .glassButton()
                         .disabled(plan.recommendedRules.isEmpty)
                     }
                 }

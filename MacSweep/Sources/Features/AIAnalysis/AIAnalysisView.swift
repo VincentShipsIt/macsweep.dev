@@ -77,7 +77,7 @@ struct AIAnalysisView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.purple)
             .disabled(service.isScanning)
         }
@@ -121,7 +121,7 @@ struct AIAnalysisView: View {
                         apiKeyInput = ""
                         showKeyField = false
                     }
-                    .buttonStyle(.bordered)
+                    .glassButton()
                 }
                 Spacer()
                 Button("Save") {
@@ -136,7 +136,7 @@ struct AIAnalysisView: View {
                         keySaveError = true
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .tint(.purple)
                 .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -211,24 +211,31 @@ struct AIAnalysisView: View {
                 }
 
                 ForEach(CacheCategory.allCases) { category in
-                    let items = service.findings.filter { $0.category == category }
-                    if !items.isEmpty {
-                        Section {
-                            ForEach(items.indices, id: \.self) { idx in
-                                if let globalIdx = service.findings.firstIndex(where: { $0.id == items[idx].id }) {
-                                    FindingRow(finding: $service.findings[globalIdx])
-                                    if idx < items.count - 1 {
-                                        Divider().padding(.leading, 48)
-                                    }
-                                }
-                            }
-                        } header: {
-                            CategoryHeader(category: category, count: items.count)
-                        }
-                    }
+                    categorySection(for: category)
                 }
             }
             .padding(.bottom, 8)
+        }
+    }
+
+    /// One category's section. Computing the global findings indices up front and
+    /// binding directly to `$service.findings[globalIdx]` keeps each row a stable,
+    /// independently-typed expression — the previous nested `filter` + `firstIndex`
+    /// closure tree blew past the SwiftUI type-checker's time budget.
+    @ViewBuilder
+    private func categorySection(for category: CacheCategory) -> some View {
+        let indices = service.findings.indices.filter { service.findings[$0].category == category }
+        if !indices.isEmpty {
+            Section {
+                ForEach(Array(indices.enumerated()), id: \.element) { offset, globalIdx in
+                    CacheFindingRow(finding: $service.findings[globalIdx])
+                    if offset < indices.count - 1 {
+                        Divider().padding(.leading, 48)
+                    }
+                }
+            } header: {
+                CategoryHeader(category: category, count: indices.count)
+            }
         }
     }
 
@@ -259,7 +266,7 @@ struct AIAnalysisView: View {
                 } label: {
                     Label("Clean Selected", systemImage: "trash")
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .tint(.red)
                 .disabled(selectedFindings.isEmpty || service.isScanning)
             }
@@ -351,7 +358,9 @@ struct CategoryHeader: View {
 
 // MARK: - Finding Row
 
-struct FindingRow: View {
+/// Row for an AI-cache finding. Named distinctly from MalwareScanner's `FindingRow`
+/// (a sibling top-level type in the same module) to avoid an invalid redeclaration.
+struct CacheFindingRow: View {
     @Binding var finding: CacheFinding
 
     var body: some View {
@@ -419,7 +428,9 @@ struct FindingRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     AIAnalysisView()
         .frame(width: 800, height: 600)
 }
+#endif

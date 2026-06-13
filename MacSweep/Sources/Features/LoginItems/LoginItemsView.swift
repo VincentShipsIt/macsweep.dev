@@ -62,7 +62,7 @@ struct LoginItemsView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .glassButton()
                 .disabled(service.isLoading)
 
                 Button {
@@ -77,7 +77,7 @@ struct LoginItemsView: View {
                         Label("Analyze with AI", systemImage: "sparkles")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .disabled(service.isAnalyzing || service.items.isEmpty)
             }
         }
@@ -212,7 +212,7 @@ struct LoginItemRow: View {
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .disabled(item.type == .appService)
-                    .onChange(of: isEnabled) { _, newValue in
+                    .onChange(of: isEnabled) { newValue in
                         onToggle(newValue)
                     }
 
@@ -259,7 +259,9 @@ struct LoginItemRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     LoginItemsView()
         .frame(width: 700, height: 500)
 }
+#endif

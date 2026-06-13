@@ -66,7 +66,7 @@ struct OptimizationView: View {
             } label: {
                 Label("Free Up RAM", systemImage: "memorychip")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isFreezingRAM)
 
             // Refresh
@@ -209,14 +209,14 @@ struct OptimizationView: View {
             Button("Deselect All") {
                 selectedProcesses.removeAll()
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button {
                 showingQuitConfirmation = true
             } label: {
                 Label("Quit Selected", systemImage: "xmark.circle")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.orange)
         }
         .padding()
@@ -301,7 +301,7 @@ struct OptimizationView: View {
 
     // MARK: - Computed
 
-    private var sortedProcesses: [ProcessInfo] {
+    private var sortedProcesses: [RunningProcess] {
         switch sortOrder {
         case .memory:
             return processMonitor.processes.sorted { $0.memoryMB > $1.memoryMB }
@@ -327,12 +327,12 @@ struct OptimizationView: View {
     }
 }
 
-// ProcessMonitor and ProcessInfo are defined in Core/Monitoring/ProcessMonitor.swift
+// ProcessMonitor and RunningProcess are defined in Core/Monitoring/ProcessMonitor.swift
 
 // MARK: - Process Row
 
 struct ProcessRow: View {
-    let process: ProcessInfo
+    let process: RunningProcess
     let isSelected: Bool
 
     var body: some View {

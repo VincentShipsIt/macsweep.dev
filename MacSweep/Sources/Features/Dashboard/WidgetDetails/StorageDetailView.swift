@@ -189,7 +189,7 @@ struct StorageDetailView: View {
             Label("Open Space Lens", systemImage: "chart.pie")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .glassButton(prominent: true)
     }
 }
 

@@ -167,7 +167,7 @@ struct AppUninstallerView: View {
             Button("Clean Orphans") {
                 // TODO: Clean orphaned leftovers
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.orange)
             .padding()
         }
@@ -361,7 +361,7 @@ struct AppDetailView: View {
                         Label("Uninstall", systemImage: "trash")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .tint(.red)
                     .controlSize(.large)
                     .padding(.horizontal)

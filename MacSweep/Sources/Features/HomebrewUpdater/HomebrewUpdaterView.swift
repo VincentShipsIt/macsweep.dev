@@ -77,7 +77,7 @@ struct HomebrewUpdaterView: View {
                         systemImage: "sparkles"
                     )
                 }
-                .buttonStyle(.bordered)
+                .glassButton()
                 .disabled(service.isAnalyzingAI || service.isUpgrading)
                 .help("Use Claude AI to summarize changes and flag breaking updates")
             }
@@ -87,7 +87,7 @@ struct HomebrewUpdaterView: View {
             } label: {
                 Label("Check Updates", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(service.isLoading || service.isUpgrading)
         }
         .padding()
@@ -127,7 +127,7 @@ struct HomebrewUpdaterView: View {
             Button("Check Again") {
                 Task { await service.checkOutdated() }
             }
-            .buttonStyle(.bordered)
+            .glassButton()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -143,7 +143,7 @@ struct HomebrewUpdaterView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Link("Install Homebrew", destination: URL(string: "https://brew.sh")!)
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -185,14 +185,14 @@ struct HomebrewUpdaterView: View {
                 showLog = true
                 Task { await service.upgradeSelected() }
             }
-            .buttonStyle(.bordered)
+            .glassButton()
             .disabled(service.isUpgrading || service.packages.filter(\.isSelected).isEmpty)
 
             Button("Upgrade All") {
                 showLog = true
                 Task { await service.upgradeAll() }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(service.isUpgrading)
         }
         .padding()
@@ -334,7 +334,9 @@ struct PackageRow: View {
     }
 }
 
+#if !SWIFT_PACKAGE
 #Preview {
     HomebrewUpdaterView()
         .frame(width: 800, height: 600)
 }
+#endif

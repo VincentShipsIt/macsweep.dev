@@ -57,7 +57,7 @@ struct SimilarPhotosView: View {
             } label: {
                 Label("Scan", systemImage: "photo.stack")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -120,7 +120,7 @@ struct SimilarPhotosView: View {
             Button("Start Scan") {
                 Task { await scanPhotos() }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -151,12 +151,12 @@ struct SimilarPhotosView: View {
             Button("Select All") {
                 selectedItems = Set(sortedItems.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Move to Trash") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

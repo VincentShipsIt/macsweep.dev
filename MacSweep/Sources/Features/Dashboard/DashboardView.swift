@@ -64,7 +64,7 @@ struct DashboardView: View {
             Button("Grant Access") {
                 FullDiskAccess.openSystemPreferences()
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.orange)
 
             Button {
@@ -136,7 +136,7 @@ struct DashboardView: View {
                         } label: {
                             Label(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan", systemImage: "sparkles")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .glassButton(prominent: true)
                         .disabled(appState.isScanning)
 
                         Button {
@@ -146,7 +146,7 @@ struct DashboardView: View {
                         } label: {
                             Label("Clean Recommended", systemImage: "trash")
                         }
-                        .buttonStyle(.bordered)
+                        .glassButton()
                         .disabled(appState.selectedItems.isEmpty || appState.isScanning)
                     }
 
@@ -472,7 +472,7 @@ struct DashboardView: View {
                         Button("Review") {
                             appState.selectedFeature = .systemJunk
                         }
-                        .buttonStyle(.borderedProminent)
+                        .glassButton(prominent: true)
                         .controlSize(.small)
                     }
                     .padding()
@@ -573,7 +573,7 @@ struct RecommendationCard: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(iconColor)
             .disabled(isLoading)
         }
@@ -641,7 +641,7 @@ struct OverviewCard: View {
 
             if let actionTitle = actionTitle, let action = action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+                    .glassButton()
                     .controlSize(.small)
             }
         }

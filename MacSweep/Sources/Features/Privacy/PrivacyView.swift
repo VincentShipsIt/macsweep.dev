@@ -59,7 +59,7 @@ struct PrivacyView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
     }
@@ -149,7 +149,7 @@ struct PrivacyView: View {
                     } label: {
                         Label("Clean Selected (\(selectedSize))", systemImage: "trash")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton(prominent: true)
                     .tint(.red)
                 }
                 .padding(.top)

@@ -59,7 +59,7 @@ struct MailAttachmentsView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(isScanning)
         }
         .padding()
@@ -163,7 +163,7 @@ struct MailAttachmentsView: View {
                     await scanAttachments()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -203,12 +203,12 @@ struct MailAttachmentsView: View {
             Button("Select All") {
                 selectedItems = Set(filteredAttachments.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Move to Trash") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedItems.isEmpty)
         }

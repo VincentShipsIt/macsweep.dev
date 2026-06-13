@@ -190,7 +190,7 @@ struct MemoryDetailView: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .buttonStyle(.borderedProminent)
+        .glassButton(prominent: true)
         .tint(alertLevel == .normal ? .blue : alertLevel.color)
         .disabled(isFreeing)
     }

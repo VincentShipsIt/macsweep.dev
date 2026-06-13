@@ -51,7 +51,7 @@ struct SystemCleanupView: View {
             } label: {
                 Label("Scan", systemImage: "magnifyingglass")
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .disabled(appState.isScanning)
         }
         .padding()
@@ -88,7 +88,7 @@ struct SystemCleanupView: View {
                         await appState.scan()
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,12 +152,12 @@ struct SystemCleanupView: View {
             Button("Preview") {
                 // Show preview
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Clean") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(appState.selectedItems.isEmpty)
         }

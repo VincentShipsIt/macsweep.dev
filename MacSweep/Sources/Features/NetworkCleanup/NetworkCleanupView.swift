@@ -100,7 +100,7 @@ struct WiFiNetworksView: View {
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.bordered)
+            .glassButton()
             .disabled(isLoading)
         }
         .padding()
@@ -184,12 +184,12 @@ struct WiFiNetworksView: View {
             Button("Select All Except Current") {
                 selectAllExceptCurrent()
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Remove Selected") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedNetworks.isEmpty)
         }
@@ -374,7 +374,7 @@ struct SSHHostsView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .glassButton()
                 .disabled(isLoading)
             }
 
@@ -452,18 +452,18 @@ struct SSHHostsView: View {
             Button("Select All") {
                 selectedHosts = Set(hosts.map(\.id))
             }
-            .buttonStyle(.bordered)
+            .glassButton()
 
             Button("Clear All Hosts") {
                 showingClearAllConfirmation = true
             }
-            .buttonStyle(.bordered)
+            .glassButton()
             .tint(.orange)
 
             Button("Remove Selected") {
                 showingConfirmation = true
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
             .tint(.red)
             .disabled(selectedHosts.isEmpty)
         }
@@ -615,7 +615,7 @@ struct DNSCacheView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .glassButton()
                 .disabled(isScanning)
             }
 
@@ -660,7 +660,7 @@ struct DNSCacheView: View {
                             .frame(width: 100)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton(prominent: true)
                 .disabled(isFlushingDNS)
             }
 
