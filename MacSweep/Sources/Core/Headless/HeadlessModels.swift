@@ -296,6 +296,229 @@ public struct HeadlessLoginItemsReport: Codable, Sendable {
     }
 }
 
+public struct HeadlessLoginItemMutationResult: Codable, Sendable {
+    public let label: String
+    public let plistPath: String
+    public let kind: HeadlessLoginItemKind
+    public let action: String   // "enable" | "disable" | "remove"
+    public let enabled: Bool
+    public let removed: Bool
+
+    public init(
+        label: String,
+        plistPath: String,
+        kind: HeadlessLoginItemKind,
+        action: String,
+        enabled: Bool,
+        removed: Bool
+    ) {
+        self.label = label
+        self.plistPath = plistPath
+        self.kind = kind
+        self.action = action
+        self.enabled = enabled
+        self.removed = removed
+    }
+}
+
+// MARK: - Space Lens (disk tree)
+
+public struct HeadlessDiskNode: Codable, Sendable {
+    public let name: String
+    public let path: String
+    public let size: Int64
+    public let isDirectory: Bool
+    public let lastModified: Date?
+    /// Number of direct children discovered (the `children` array is the full,
+    /// depth-bounded set; consumers may truncate for display).
+    public let childCount: Int
+    public let children: [HeadlessDiskNode]
+
+    public init(
+        name: String,
+        path: String,
+        size: Int64,
+        isDirectory: Bool,
+        lastModified: Date?,
+        childCount: Int,
+        children: [HeadlessDiskNode]
+    ) {
+        self.name = name
+        self.path = path
+        self.size = size
+        self.isDirectory = isDirectory
+        self.lastModified = lastModified
+        self.childCount = childCount
+        self.children = children
+    }
+}
+
+public struct HeadlessDiskTree: Codable, Sendable {
+    public let rootPath: String
+    public let depth: Int
+    public let totalBytes: Int64
+    public let root: HeadlessDiskNode
+
+    public init(rootPath: String, depth: Int, totalBytes: Int64, root: HeadlessDiskNode) {
+        self.rootPath = rootPath
+        self.depth = depth
+        self.totalBytes = totalBytes
+        self.root = root
+    }
+}
+
+// MARK: - Cache Analysis
+
+public struct HeadlessCacheFinding: Codable, Sendable {
+    public let path: String
+    public let sizeText: String
+    public let category: String
+    public let regeneratesAutomatically: Bool
+    public let source: String
+    public let reason: String?
+
+    public init(
+        path: String,
+        sizeText: String,
+        category: String,
+        regeneratesAutomatically: Bool,
+        source: String,
+        reason: String?
+    ) {
+        self.path = path
+        self.sizeText = sizeText
+        self.category = category
+        self.regeneratesAutomatically = regeneratesAutomatically
+        self.source = source
+        self.reason = reason
+    }
+}
+
+public struct HeadlessCacheReport: Codable, Sendable {
+    public let fastScanCount: Int
+    public let aiScanRequested: Bool
+    public let aiScanRan: Bool
+    public let totalFindings: Int
+    public let findings: [HeadlessCacheFinding]
+    public let errors: [String]
+
+    public init(
+        fastScanCount: Int,
+        aiScanRequested: Bool,
+        aiScanRan: Bool,
+        totalFindings: Int,
+        findings: [HeadlessCacheFinding],
+        errors: [String]
+    ) {
+        self.fastScanCount = fastScanCount
+        self.aiScanRequested = aiScanRequested
+        self.aiScanRan = aiScanRan
+        self.totalFindings = totalFindings
+        self.findings = findings
+        self.errors = errors
+    }
+}
+
+// MARK: - App Uninstall
+
+public struct HeadlessAppLeftover: Codable, Sendable {
+    public let path: String
+    public let size: Int64
+    public let type: String
+
+    public init(path: String, size: Int64, type: String) {
+        self.path = path
+        self.size = size
+        self.type = type
+    }
+}
+
+public struct HeadlessInstalledApp: Codable, Sendable {
+    public let id: String
+    public let name: String
+    public let bundlePath: String
+    public let version: String?
+    public let bundleSize: Int64
+    public let leftoverBytes: Int64
+    public let leftoverCount: Int
+    public let totalSize: Int64
+    public let lastUsed: Date?
+    public let leftovers: [HeadlessAppLeftover]
+
+    public init(
+        id: String,
+        name: String,
+        bundlePath: String,
+        version: String?,
+        bundleSize: Int64,
+        leftoverBytes: Int64,
+        leftoverCount: Int,
+        totalSize: Int64,
+        lastUsed: Date?,
+        leftovers: [HeadlessAppLeftover]
+    ) {
+        self.id = id
+        self.name = name
+        self.bundlePath = bundlePath
+        self.version = version
+        self.bundleSize = bundleSize
+        self.leftoverBytes = leftoverBytes
+        self.leftoverCount = leftoverCount
+        self.totalSize = totalSize
+        self.lastUsed = lastUsed
+        self.leftovers = leftovers
+    }
+}
+
+public struct HeadlessUninstallableAppsReport: Codable, Sendable {
+    public let totalApps: Int
+    public let totalReclaimableBytes: Int64
+    public let apps: [HeadlessInstalledApp]
+
+    public init(totalApps: Int, totalReclaimableBytes: Int64, apps: [HeadlessInstalledApp]) {
+        self.totalApps = totalApps
+        self.totalReclaimableBytes = totalReclaimableBytes
+        self.apps = apps
+    }
+}
+
+public struct HeadlessUninstallResult: Codable, Sendable {
+    public let appID: String
+    public let appName: String
+    public let bundlePath: String
+    public let dryRun: Bool
+    public let removedApp: Bool
+    public let itemsProcessed: Int
+    public let bytesFreed: Int64
+    public let leftoversRemoved: Int
+    public let leftovers: [HeadlessAppLeftover]
+    public let errors: [HeadlessCleanupError]
+
+    public init(
+        appID: String,
+        appName: String,
+        bundlePath: String,
+        dryRun: Bool,
+        removedApp: Bool,
+        itemsProcessed: Int,
+        bytesFreed: Int64,
+        leftoversRemoved: Int,
+        leftovers: [HeadlessAppLeftover],
+        errors: [HeadlessCleanupError]
+    ) {
+        self.appID = appID
+        self.appName = appName
+        self.bundlePath = bundlePath
+        self.dryRun = dryRun
+        self.removedApp = removedApp
+        self.itemsProcessed = itemsProcessed
+        self.bytesFreed = bytesFreed
+        self.leftoversRemoved = leftoversRemoved
+        self.leftovers = leftovers
+        self.errors = errors
+    }
+}
+
 // MARK: - Malware Scan
 
 public struct HeadlessThreatFinding: Codable, Sendable {
@@ -421,6 +644,13 @@ public enum HeadlessServiceError: Error, LocalizedError, Sendable {
     case pathNotFound(String)
     case shredRefused(String)
     case homebrewNotInstalled
+    case appNotFound(String)
+    case appRunning(String)
+    case ambiguousAppMatch(String, [String])
+    case uninstallFailed(String)
+    case loginItemNotFound(String)
+    case loginItemAmbiguous(String, [String])
+    case loginItemMutationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -436,6 +666,20 @@ public enum HeadlessServiceError: Error, LocalizedError, Sendable {
             return "Refusing to shred: \(reason)."
         case .homebrewNotInstalled:
             return "Homebrew is not installed (no brew binary at /opt/homebrew or /usr/local)."
+        case .appNotFound(let query):
+            return "No installed application matched: \(query)."
+        case .appRunning(let name):
+            return "Quit \(name) before uninstalling it."
+        case .ambiguousAppMatch(let query, let matches):
+            return "Multiple apps match '\(query)': \(matches.joined(separator: ", ")). Use the exact bundle identifier."
+        case .uninstallFailed(let reason):
+            return "Uninstall failed: \(reason)."
+        case .loginItemNotFound(let label):
+            return "No login item matched: \(label). Use the exact Label from 'login-items list'."
+        case .loginItemAmbiguous(let label, let paths):
+            return "Multiple login item plists match '\(label)': \(paths.joined(separator: ", ")). Remove or rename the duplicate."
+        case .loginItemMutationFailed(let reason):
+            return "Login item update failed: \(reason)."
         }
     }
 }

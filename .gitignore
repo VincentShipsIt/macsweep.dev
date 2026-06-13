@@ -40,6 +40,18 @@ Package.resolved
 .agents/TASKS/*.md
 !.agents/TASKS/.gitkeep
 
+# Agent memory: commit project memory at the root, ignore machine-specific
+# (personal) memory written by the scan-and-memorize skill.
+.agents/memory/local/*
+!.agents/memory/local/.gitkeep
+
+# Skill discovery mirrors are regenerable symlinks (scripts/skills.sh sync).
+# Source of truth is .agents/skills/. Keep the dir, ignore the links.
+.claude/skills/*
+!.claude/skills/.gitkeep
+.codex/skills/*
+!.codex/skills/.gitkeep
+
 # Logs
 *.log
 logs/

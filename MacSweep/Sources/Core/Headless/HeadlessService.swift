@@ -225,6 +225,249 @@ public actor MacSweepHeadlessService {
         return HeadlessLoginItemsReport(totalItems: items.count, items: items)
     }
 
+    /// Enable or disable a launch agent/daemon by its launchd Label.
+    public func setLoginItemEnabled(_ enabled: Bool, label: String) async throws -> HeadlessLoginItemMutationResult {
+        do {
+            let outcome = try await LoginItemController().setEnabled(enabled, label: label)
+            return HeadlessLoginItemMutationResult(
+                label: outcome.label,
+                plistPath: outcome.plistPath,
+                kind: outcome.kind,
+                action: enabled ? "enable" : "disable",
+                enabled: outcome.enabled,
+                removed: false
+            )
+        } catch let error as LoginItemController.MutationError {
+            throw Self.mapLoginItemError(error, label: label)
+        }
+    }
+
+    /// Move a launch agent/daemon plist to the Trash by its launchd Label.
+    public func removeLoginItem(label: String) async throws -> HeadlessLoginItemMutationResult {
+        do {
+            let outcome = try await LoginItemController().remove(label: label)
+            return HeadlessLoginItemMutationResult(
+                label: outcome.label,
+                plistPath: outcome.plistPath,
+                kind: outcome.kind,
+                action: "remove",
+                enabled: false,
+                removed: true
+            )
+        } catch let error as LoginItemController.MutationError {
+            throw Self.mapLoginItemError(error, label: label)
+        }
+    }
+
+    private static func mapLoginItemError(_ error: LoginItemController.MutationError, label: String) -> HeadlessServiceError {
+        switch error {
+        case .notFound:
+            return .loginItemNotFound(label)
+        case .ambiguous(let paths):
+            return .loginItemAmbiguous(label, paths)
+        case .failed(let reason):
+            return .loginItemMutationFailed(reason)
+        }
+    }
+
+    // MARK: - Space Lens (disk tree)
+
+    /// Build a depth-bounded disk-usage tree rooted at `path` (defaults to the
+    /// user's home directory). Read-only — sizing and enumeration only.
+    public func diskTree(path: String?, depth: Int) async throws -> HeadlessDiskTree {
+        let expanded: String
+        if let path, !path.isEmpty {
+            expanded = (path as NSString).expandingTildeInPath
+        } else {
+            expanded = FileManager.default.homeDirectoryForCurrentUser.path
+        }
+        let url = URL(fileURLWithPath: expanded)
+
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
+            throw HeadlessServiceError.pathNotFound(expanded)
+        }
+
+        // Defensive clamp; the parser already validates 1...6.
+        let clampedDepth = min(max(depth, 1), 6)
+        let node = try await DiskAnalyzer.buildDiskTree(at: url, maxDepth: clampedDepth)
+
+        return HeadlessDiskTree(
+            rootPath: url.path,
+            depth: clampedDepth,
+            totalBytes: node.size,
+            root: Self.serializeDiskNode(node)
+        )
+    }
+
+    private static func serializeDiskNode(_ node: DiskNode) -> HeadlessDiskNode {
+        HeadlessDiskNode(
+            name: node.name,
+            path: node.url.path,
+            size: node.size,
+            isDirectory: node.isDirectory,
+            lastModified: node.lastModified,
+            childCount: node.children.count,
+            children: node.children.map { serializeDiskNode($0) }
+        )
+    }
+
+    // MARK: - App Uninstall
+
+    /// Enumerate installed apps with their leftover footprint, sorted by total
+    /// reclaimable size. Read-only — discovery + per-app leftover scan, no removal.
+    public func uninstallableApps() async -> HeadlessUninstallableAppsReport {
+        let discovery = AppDiscovery()
+        var apps = await discovery.installedApps()
+        let scanner = LeftoverScanner()
+        for index in apps.indices {
+            apps[index].leftovers = await scanner.findLeftovers(for: apps[index])
+        }
+
+        let headless = apps
+            .map { Self.serializeInstalledApp($0) }
+            .sorted { $0.totalSize > $1.totalSize }
+        let totalReclaimable = headless.reduce(Int64(0)) { $0 + $1.totalSize }
+
+        return HeadlessUninstallableAppsReport(
+            totalApps: headless.count,
+            totalReclaimableBytes: totalReclaimable,
+            apps: headless
+        )
+    }
+
+    /// Resolve `query` to a single installed app and either preview (dryRun) or
+    /// execute its uninstall (bundle + leftovers, all moved to Trash).
+    public func uninstall(app query: String, dryRun: Bool) async throws -> HeadlessUninstallResult {
+        let discovery = AppDiscovery()
+        let apps = await discovery.installedApps()
+        var target = try Self.matchApp(query: query, in: apps)
+
+        // Always populate leftovers before previewing or removing.
+        let scanner = LeftoverScanner()
+        target.leftovers = await scanner.findLeftovers(for: target)
+        let leftoverDTOs = target.leftovers.map { Self.serializeLeftover($0) }
+
+        if dryRun {
+            return HeadlessUninstallResult(
+                appID: target.id,
+                appName: target.name,
+                bundlePath: target.bundlePath.path,
+                dryRun: true,
+                removedApp: false,
+                itemsProcessed: 1 + target.leftovers.count,
+                bytesFreed: target.totalSize,
+                leftoversRemoved: 0,
+                leftovers: leftoverDTOs,
+                errors: []
+            )
+        }
+
+        do {
+            let result = try await AppUninstaller().uninstall(target, includeLeftovers: true)
+            // uninstall() throws if the bundle can't be removed, so reaching here
+            // means the app itself went to Trash; remaining items are leftovers.
+            let leftoversRemoved = max(0, result.itemsProcessed - 1)
+            return HeadlessUninstallResult(
+                appID: target.id,
+                appName: target.name,
+                bundlePath: target.bundlePath.path,
+                dryRun: false,
+                removedApp: true,
+                itemsProcessed: result.itemsProcessed,
+                bytesFreed: result.bytesFreed,
+                leftoversRemoved: leftoversRemoved,
+                leftovers: leftoverDTOs,
+                errors: result.errors.map {
+                    HeadlessCleanupError(path: $0.path.path, message: $0.message)
+                }
+            )
+        } catch let error as UninstallError {
+            switch error {
+            case .appRunning(let name):
+                throw HeadlessServiceError.appRunning(name)
+            case .cannotRemoveApp(_, let underlying):
+                throw HeadlessServiceError.uninstallFailed(underlying.localizedDescription)
+            case .insufficientPermissions(let name):
+                throw HeadlessServiceError.uninstallFailed(
+                    "Administrator privileges required to remove \(name) from /Applications."
+                )
+            }
+        }
+    }
+
+    /// Match precedence: exact bundle id → exact display name → single substring
+    /// (on name or bundle id). Multiple matches at name/substring level are
+    /// ambiguous; zero matches are not found.
+    private static func matchApp(query: String, in apps: [InstalledApp]) throws -> InstalledApp {
+        if let byID = apps.first(where: { $0.id.caseInsensitiveCompare(query) == .orderedSame }) {
+            return byID
+        }
+
+        let exactNames = apps.filter { $0.name.caseInsensitiveCompare(query) == .orderedSame }
+        if exactNames.count == 1 { return exactNames[0] }
+        if exactNames.count > 1 {
+            throw HeadlessServiceError.ambiguousAppMatch(query, exactNames.map { "\($0.name) (\($0.id))" })
+        }
+
+        let substring = apps.filter {
+            $0.name.localizedCaseInsensitiveContains(query) ||
+            $0.id.localizedCaseInsensitiveContains(query)
+        }
+        if substring.count == 1 { return substring[0] }
+        if substring.count > 1 {
+            throw HeadlessServiceError.ambiguousAppMatch(query, substring.map { "\($0.name) (\($0.id))" })
+        }
+
+        throw HeadlessServiceError.appNotFound(query)
+    }
+
+    private static func serializeLeftover(_ leftover: AppLeftover) -> HeadlessAppLeftover {
+        HeadlessAppLeftover(path: leftover.path.path, size: leftover.size, type: leftover.type.rawValue)
+    }
+
+    private static func serializeInstalledApp(_ app: InstalledApp) -> HeadlessInstalledApp {
+        HeadlessInstalledApp(
+            id: app.id,
+            name: app.name,
+            bundlePath: app.bundlePath.path,
+            version: app.version,
+            bundleSize: app.bundleSize,
+            leftoverBytes: app.leftoverSize,
+            leftoverCount: app.leftovers.count,
+            totalSize: app.totalSize,
+            lastUsed: app.lastUsed,
+            leftovers: app.leftovers.map { serializeLeftover($0) }
+        )
+    }
+
+    // MARK: - Cache Analysis
+
+    /// Deterministic developer-cache scan plus, when `deep` is true and a stored
+    /// Anthropic key exists, an AI semantic pass. Read-only — never deletes.
+    public func cacheAnalysis(deep: Bool) async -> HeadlessCacheReport {
+        let analyzer = CacheAnalyzer()
+        let result = await analyzer.analyze(deep: deep)
+        let findings = result.findings.map { finding in
+            HeadlessCacheFinding(
+                path: finding.path,
+                sizeText: finding.sizeText,
+                category: finding.category.rawValue,
+                regeneratesAutomatically: finding.regeneratesAutomatically,
+                source: finding.source,
+                reason: finding.reason
+            )
+        }
+        return HeadlessCacheReport(
+            fastScanCount: result.fastCount,
+            aiScanRequested: deep,
+            aiScanRan: result.aiRan,
+            totalFindings: findings.count,
+            findings: findings,
+            errors: result.errors
+        )
+    }
+
     // MARK: - Malware Scan (delegates to @MainActor service)
 
     public func scanMalware(useAI: Bool) async -> HeadlessMalwareScanReport {

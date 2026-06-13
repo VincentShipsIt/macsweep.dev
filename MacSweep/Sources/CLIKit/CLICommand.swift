@@ -16,7 +16,13 @@ public enum CLICommand: Sendable, Equatable {
     case modulesList(CLIOutputFormat)
     case version(CLIOutputFormat)
     case space(CLIOutputFormat)
+    case spaceLens(path: String?, depth: Int, format: CLIOutputFormat)
     case loginItemsList(CLIOutputFormat)
+    case loginItemSet(label: String, enabled: Bool, yes: Bool, format: CLIOutputFormat)
+    case loginItemRemove(label: String, yes: Bool, format: CLIOutputFormat)
+    case uninstallList(CLIOutputFormat)
+    case uninstall(app: String, yes: Bool, format: CLIOutputFormat)
+    case aiAnalysis(deep: Bool, format: CLIOutputFormat)
     case malwareScan(useAI: Bool, format: CLIOutputFormat)
     case homebrewOutdated(CLIOutputFormat)
     case homebrewUpgrade(yes: Bool, format: CLIOutputFormat)
@@ -75,9 +81,13 @@ public enum CLICommandParser {
         case "version", "--version", "-v":
             return try parseVersion(arguments.dropFirst())
         case "space":
-            return .space(try parseTrailingFormat(arguments.dropFirst()))
+            return try parseSpace(arguments.dropFirst())
         case "login-items":
             return try parseLoginItems(arguments.dropFirst())
+        case "uninstall":
+            return try parseUninstall(arguments.dropFirst())
+        case "ai":
+            return try parseAI(arguments.dropFirst())
         case "malware":
             return try parseMalware(arguments.dropFirst())
         case "homebrew", "brew":
@@ -193,11 +203,165 @@ public enum CLICommandParser {
         return .version(try parseTrailingFormat(args))
     }
 
+    /// `space` → disk-usage summary; `space lens [path] [--depth N]` → tree.
+    private static func parseSpace(_ args: ArraySlice<String>) throws -> CLICommand {
+        if args.first == "lens" {
+            return try parseSpaceLens(args.dropFirst())
+        }
+        return .space(try parseTrailingFormat(args))
+    }
+
+    private static func parseSpaceLens(_ args: ArraySlice<String>) throws -> CLICommand {
+        var path: String?
+        var depth = 2
+        var format: CLIOutputFormat = .text
+
+        var iterator = args.makeIterator()
+        while let arg = iterator.next() {
+            switch arg {
+            case "--depth":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--depth")
+                }
+                guard let parsed = Int(value), (1...6).contains(parsed) else {
+                    throw CLIParseError.invalidValue(flag: "--depth", value: value)
+                }
+                depth = parsed
+            case "--format":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--format")
+                }
+                guard let parsed = CLIOutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidValue(flag: "--format", value: value)
+                }
+                format = parsed
+            default:
+                if arg.hasPrefix("--") || path != nil {
+                    throw CLIParseError.unexpectedArgument(arg)
+                }
+                path = arg
+            }
+        }
+        return .spaceLens(path: path, depth: depth, format: format)
+    }
+
     private static func parseLoginItems(_ args: ArraySlice<String>) throws -> CLICommand {
-        guard args.first == "list" else {
+        guard let subcommand = args.first else {
             throw CLIParseError.missingSubcommand("login-items")
         }
-        return .loginItemsList(try parseTrailingFormat(args.dropFirst()))
+
+        switch subcommand {
+        case "list":
+            return .loginItemsList(try parseTrailingFormat(args.dropFirst()))
+        case "enable":
+            let (label, yes, format) = try parseLoginItemMutation(args.dropFirst(), action: "enable")
+            return .loginItemSet(label: label, enabled: true, yes: yes, format: format)
+        case "disable":
+            let (label, yes, format) = try parseLoginItemMutation(args.dropFirst(), action: "disable")
+            return .loginItemSet(label: label, enabled: false, yes: yes, format: format)
+        case "remove":
+            let (label, yes, format) = try parseLoginItemMutation(args.dropFirst(), action: "remove")
+            return .loginItemRemove(label: label, yes: yes, format: format)
+        default:
+            throw CLIParseError.unknownCommand("login-items \(subcommand)")
+        }
+    }
+
+    /// Parse `<label> [--yes] [--format ...]` for a login-items mutation. The
+    /// positional `<label>` is the launchd Label (quote it if it contains spaces).
+    private static func parseLoginItemMutation(
+        _ args: ArraySlice<String>,
+        action: String
+    ) throws -> (label: String, yes: Bool, format: CLIOutputFormat) {
+        var label: String?
+        var yes = false
+        var format: CLIOutputFormat = .text
+
+        var iterator = args.makeIterator()
+        while let arg = iterator.next() {
+            switch arg {
+            case "--yes":
+                yes = true
+            case "--format":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--format")
+                }
+                guard let parsed = CLIOutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidValue(flag: "--format", value: value)
+                }
+                format = parsed
+            default:
+                if arg.hasPrefix("--") || label != nil {
+                    throw CLIParseError.unexpectedArgument(arg)
+                }
+                label = arg
+            }
+        }
+
+        guard let resolved = label else {
+            throw CLIParseError.missingValue("login-items \(action) <label>")
+        }
+        return (resolved, yes, format)
+    }
+
+    private static func parseUninstall(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let first = args.first else {
+            throw CLIParseError.missingSubcommand("uninstall")
+        }
+
+        if first == "list" {
+            return .uninstallList(try parseTrailingFormat(args.dropFirst()))
+        }
+
+        // Positional <app> (quote names with spaces) plus optional --yes/--format.
+        var appQuery: String?
+        var yes = false
+        var format: CLIOutputFormat = .text
+
+        var iterator = args.makeIterator()
+        while let arg = iterator.next() {
+            switch arg {
+            case "--yes":
+                yes = true
+            case "--format":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--format")
+                }
+                guard let parsed = CLIOutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidValue(flag: "--format", value: value)
+                }
+                format = parsed
+            default:
+                if arg.hasPrefix("--") || appQuery != nil {
+                    throw CLIParseError.unexpectedArgument(arg)
+                }
+                appQuery = arg
+            }
+        }
+
+        guard let resolved = appQuery else {
+            throw CLIParseError.missingValue("<app>")
+        }
+        return .uninstall(app: resolved, yes: yes, format: format)
+    }
+
+    private static func parseAI(_ args: ArraySlice<String>) throws -> CLICommand {
+        // `ai [scan] [--ai|--deep] [--format ...]`. The "scan" subcommand is
+        // optional sugar; --ai/--deep opt into the gated semantic pass.
+        var deep = false
+        var rest: [String] = []
+        var sawSubcommand = false
+        for arg in args {
+            switch arg {
+            case "scan" where !sawSubcommand:
+                sawSubcommand = true
+            case "--ai", "--deep":
+                deep = true
+            default:
+                rest.append(arg)
+            }
+        }
+        return .aiAnalysis(deep: deep, format: try parseTrailingFormat(ArraySlice(rest)))
     }
 
     private static func parseMalware(_ args: ArraySlice<String>) throws -> CLICommand {
@@ -299,7 +463,14 @@ public enum CLIHelp {
       macsweep permissions status [--format json|text]
       macsweep modules list [--format json|text]
       macsweep space [--format json|text]
+      macsweep space lens [path] [--depth 1-6] [--format json|text]
       macsweep login-items list [--format json|text]
+      macsweep login-items enable <label> [--yes] [--format json|text]
+      macsweep login-items disable <label> [--yes] [--format json|text]
+      macsweep login-items remove <label> [--yes] [--format json|text]
+      macsweep uninstall list [--format json|text]
+      macsweep uninstall <app> [--yes] [--format json|text]
+      macsweep ai [scan] [--deep] [--format json|text]
       macsweep malware scan [--ai] [--format json|text]
       macsweep homebrew outdated [--format json|text]
       macsweep homebrew upgrade [--yes] [--format json|text]

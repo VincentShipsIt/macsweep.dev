@@ -51,6 +51,31 @@ struct CLILoginItemsOutput: Codable {
     let report: HeadlessLoginItemsReport
 }
 
+struct CLILoginItemMutationOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessLoginItemMutationResult
+}
+
+struct CLISpaceLensOutput: Codable {
+    let metadata: CLICommandMetadata
+    let tree: HeadlessDiskTree
+}
+
+struct CLIUninstallListOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessUninstallableAppsReport
+}
+
+struct CLIUninstallOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessUninstallResult
+}
+
+struct CLIAIOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessCacheReport
+}
+
 struct CLIMalwareOutput: Codable {
     let metadata: CLICommandMetadata
     let report: HeadlessMalwareScanReport
@@ -194,6 +219,15 @@ public enum CLIExecutor {
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
 
+        case .spaceLens(let path, let depth, let format):
+            let tree = try await service.diskTree(path: path, depth: depth)
+            let output = CLISpaceLensOutput(
+                metadata: CLICommandMetadata(command: "space lens", timestamp: Date(), executedModules: []),
+                tree: tree
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
         case .loginItemsList(let format):
             let report = await service.loginItems()
             let output = CLILoginItemsOutput(
@@ -202,6 +236,72 @@ public enum CLIExecutor {
             )
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
+
+        case .loginItemSet(let label, let enabled, let yes, let format):
+            if !yes {
+                let verb = enabled ? "Enable" : "Disable"
+                try confirm("\(verb) login item '\(label)' (rewrites its launchd plist)?")
+            }
+            let result = try await service.setLoginItemEnabled(enabled, label: label)
+            let output = CLILoginItemMutationOutput(
+                metadata: CLICommandMetadata(command: "login-items \(enabled ? "enable" : "disable")", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .loginItemRemove(let label, let yes, let format):
+            if !yes {
+                try confirm("Remove login item '\(label)', moving its launchd plist to Trash?")
+            }
+            let result = try await service.removeLoginItem(label: label)
+            let output = CLILoginItemMutationOutput(
+                metadata: CLICommandMetadata(command: "login-items remove", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .uninstallList(let format):
+            let report = await service.uninstallableApps()
+            let output = CLIUninstallListOutput(
+                metadata: CLICommandMetadata(command: "uninstall list", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .uninstall(let app, let yes, let format):
+            // Resolve + price the removal up front so the confirmation prompt
+            // (and the non-interactive refusal path) reflect the real footprint.
+            // This also surfaces not-found / ambiguous errors before any prompt.
+            let preview = try await service.uninstall(app: app, dryRun: true)
+            if !yes {
+                let formatter = ByteCountFormatter()
+                formatter.countStyle = .file
+                try confirm(
+                    "Uninstall \(preview.appName) and \(preview.leftovers.count) leftover item(s), moving \(formatter.string(fromByteCount: preview.bytesFreed)) to Trash?"
+                )
+            }
+            let result = try await service.uninstall(app: app, dryRun: false)
+            let output = CLIUninstallOutput(
+                metadata: CLICommandMetadata(command: "uninstall", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return result.errors.isEmpty ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
+        case .aiAnalysis(let deep, let format):
+            let report = await service.cacheAnalysis(deep: deep)
+            let output = CLIAIOutput(
+                metadata: CLICommandMetadata(command: "ai", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            // Read-only scan: surface a soft failure (exit 1) only when errors
+            // were collected (e.g. --deep requested but no key, or the API call
+            // failed) so scripts can branch, while still emitting the findings.
+            return report.errors.isEmpty ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .malwareScan(let useAI, let format):
             let report = await service.scanMalware(useAI: useAI)
@@ -262,12 +362,14 @@ public enum CLIExecutor {
         }
         if let serviceError = error as? HeadlessServiceError {
             switch serviceError {
-            case .pathNotFound, .homebrewNotInstalled:
+            case .pathNotFound, .homebrewNotInstalled, .appNotFound, .loginItemNotFound:
                 return CLIExitCode.notFound.rawValue
-            case .shredRefused:
+            case .shredRefused, .appRunning:
                 return CLIExitCode.refused.rawValue
-            case .conflictingSelection, .invalidModules, .unknownMaintenanceAction:
+            case .conflictingSelection, .invalidModules, .unknownMaintenanceAction, .ambiguousAppMatch, .loginItemAmbiguous:
                 return CLIExitCode.usage.rawValue
+            case .uninstallFailed, .loginItemMutationFailed:
+                return CLIExitCode.generic.rawValue
             }
         }
         return CLIExitCode.generic.rawValue
@@ -416,6 +518,88 @@ public enum CLIExecutor {
             })
             return lines.joined(separator: "\n")
 
+        case let output as CLILoginItemMutationOutput:
+            let result = output.result
+            let state = result.removed
+                ? "removed (moved to Trash)"
+                : (result.enabled ? "enabled" : "disabled")
+            return [
+                "Login item: \(result.label) — \(state)",
+                "Kind: \(result.kind.rawValue)",
+                "Plist: \(result.plistPath)"
+            ].joined(separator: "\n")
+
+        case let output as CLISpaceLensOutput:
+            let tree = output.tree
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            var lines = [
+                "Space lens: \(tree.rootPath)",
+                "Depth: \(tree.depth)",
+                "Total: \(formatter.string(fromByteCount: tree.totalBytes))",
+                ""
+            ]
+            appendDiskNodeLines(tree.root, indent: 0, formatter: formatter, into: &lines, isRoot: true)
+            return lines.joined(separator: "\n")
+
+        case let output as CLIUninstallListOutput:
+            let report = output.report
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            var lines = [
+                "Installed apps: \(report.totalApps)",
+                "Total reclaimable: \(formatter.string(fromByteCount: report.totalReclaimableBytes))"
+            ]
+            lines.append(contentsOf: report.apps.map {
+                "  \($0.name) (\($0.id)) — \(formatter.string(fromByteCount: $0.totalSize)) [\($0.leftoverCount) leftover(s)]"
+            })
+            return lines.joined(separator: "\n")
+
+        case let output as CLIUninstallOutput:
+            let result = output.result
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            let status = result.dryRun ? "preview" : (result.removedApp ? "complete" : "failed")
+            var lines = [
+                "Uninstall: \(status) — \(result.appName) (\(result.appID))",
+                "Bundle: \(result.bundlePath)",
+                "Items: \(result.itemsProcessed) (\(result.leftoversRemoved) leftover(s) removed)",
+                "Reclaimed: \(formatter.string(fromByteCount: result.bytesFreed))"
+            ]
+            if !result.leftovers.isEmpty {
+                lines.append("Leftovers:")
+                lines.append(contentsOf: result.leftovers.map {
+                    "  - [\($0.type)] \($0.path) (\(formatter.string(fromByteCount: $0.size)))"
+                })
+            }
+            if !result.errors.isEmpty {
+                lines.append("Errors:")
+                lines.append(contentsOf: result.errors.map { "  - \($0.path): \($0.message)" })
+            }
+            return lines.joined(separator: "\n")
+
+        case let output as CLIAIOutput:
+            let report = output.report
+            var lines = [
+                "Cache analysis: \(report.totalFindings) finding(s)",
+                "Fast scan: \(report.fastScanCount)",
+                "AI analysis: \(report.aiScanRequested ? (report.aiScanRan ? "ran" : "requested (unavailable)") : "off")"
+            ]
+            if !report.findings.isEmpty {
+                lines.append("")
+                lines.append("Findings:")
+                lines.append(contentsOf: report.findings.map {
+                    let reason = $0.reason.map { " — \($0)" } ?? ""
+                    return "  - [\($0.category)] \($0.path) (\($0.sizeText)) {\($0.source)}\(reason)"
+                })
+            }
+            if !report.errors.isEmpty {
+                lines.append("")
+                lines.append("Notes:")
+                lines.append(contentsOf: report.errors.map { "  - \($0)" })
+            }
+            return lines.joined(separator: "\n")
+
         case let output as CLIMalwareOutput:
             let report = output.report
             var lines = [
@@ -507,6 +691,36 @@ public enum CLIExecutor {
         guard let response = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               response == "y" || response == "yes" else {
             throw CLIExecutionError.cleanupCancelled
+        }
+    }
+
+    /// Per-node cap on children rendered in the text space-lens tree, so a wide
+    /// directory does not flood the terminal. JSON output is uncapped.
+    private static let diskLensChildCap = 15
+
+    /// Recursively render a disk node and its (size-sorted) children as an
+    /// indented tree. The root node's header is printed separately, so the root
+    /// itself is skipped and its children start at indent 0.
+    private static func appendDiskNodeLines(
+        _ node: HeadlessDiskNode,
+        indent: Int,
+        formatter: ByteCountFormatter,
+        into lines: inout [String],
+        isRoot: Bool
+    ) {
+        if !isRoot {
+            let pad = String(repeating: "  ", count: indent)
+            let glyph = node.isDirectory ? "▸" : "·"
+            lines.append("\(pad)\(glyph) \(node.name) (\(formatter.string(fromByteCount: node.size)))")
+        }
+
+        let childIndent = isRoot ? 0 : indent + 1
+        for child in node.children.prefix(diskLensChildCap) {
+            appendDiskNodeLines(child, indent: childIndent, formatter: formatter, into: &lines, isRoot: false)
+        }
+        if node.children.count > diskLensChildCap {
+            let pad = String(repeating: "  ", count: childIndent)
+            lines.append("\(pad)… \(node.children.count - diskLensChildCap) more")
         }
     }
 
