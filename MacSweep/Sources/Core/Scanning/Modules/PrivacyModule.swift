@@ -185,15 +185,12 @@ struct PrivacyModule: ScanModule {
     // MARK: - Recent Places (Finder sidebar)
 
     private func scanRecentPlaces() async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
-        let favorites = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.FavoriteItems.sfl2")
-
-        // Note: We don't want to delete favorites, just show them
-        // This is informational only
-
-        return items
+        // Intentionally returns nothing. Finder "Favorites" / recent places live in
+        // ~/Library/Application Support/com.apple.sharedfilelist/...FavoriteItems.sfl2,
+        // but those are user-curated bookmarks, not reclaimable cruft — we never
+        // propose deleting them. Kept as a named no-op so the scan surface stays
+        // explicit and future informational-only reporting has a home.
+        return []
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {

@@ -55,10 +55,6 @@ struct PackageManagerModule: ScanModule {
             }
         }
 
-        // Homebrew downloads
-        let brewDownloads = URL(fileURLWithPath: "/usr/local/Homebrew/Library/Taps")
-        // Old versions in Cellar - would need special handling
-
         // Homebrew logs
         let brewLogs = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Logs/Homebrew")

@@ -227,6 +227,8 @@ struct WiFiNetworkManager {
         case .wpa3Personal: return "WPA3 Personal"
         case .wpa3Enterprise: return "WPA3 Enterprise"
         case .wpa3Transition: return "WPA3 Transition"
+        case .OWE: return "Enhanced Open (OWE)"
+        case .oweTransition: return "Enhanced Open Transition"
         case .unknown: return "Unknown"
         @unknown default: return "Unknown"
         }

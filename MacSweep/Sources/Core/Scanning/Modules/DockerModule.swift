@@ -91,17 +91,12 @@ struct DockerModule: ScanModule {
         // by scanning the actual Docker directories
 
         var items: [CleanupItem] = []
-        let home = FileManager.default.homeDirectoryForCurrentUser
 
-        // Docker data root (Docker Desktop)
-        let dockerData = home.appending(path: "Library/Containers/com.docker.docker/Data")
-
-        // Check for build cache info from docker system df
-        if let output = String(data: data, encoding: .utf8) {
-            // Parse the output to extract sizes
-            // This is a simplified version - full JSON parsing would be better
-
-            // For now, add general Docker cleanup items
+        // Only surface Docker cleanup actions when `docker system df` actually
+        // returned output (i.e. the daemon answered). The placeholder items below
+        // are sentinels — real reclamation happens via `docker ... prune` in
+        // clean(), keyed by moduleName, so their paths/sizes are intentionally nominal.
+        if !data.isEmpty {
             let dockerItems: [(String, String)] = [
                 ("Docker Build Cache", "docker-build-cache"),
                 ("Docker Images", "docker-images"),

@@ -213,11 +213,8 @@ struct DevToolsModule: ScanModule {
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
-        var currentDepth = 0
-        var lastPath = baseURL.path
-
         while let url = enumerator.nextObject() as? URL {
-            // Track depth
+            // Depth is derived inline from path components on each visit.
             let pathComponents = url.pathComponents.count - baseURL.pathComponents.count
             if pathComponents > maxDepth {
                 enumerator.skipDescendants()
