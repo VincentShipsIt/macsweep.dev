@@ -475,6 +475,9 @@ struct ProtectedPaths {
         "~/.gradle/caches",
         "~/.gradle/wrapper/dists",
         "~/.m2/repository",
+        // mise download/metadata cache (XDG ~/.cache). NOT ~/.local/share/mise/installs,
+        // which holds installed toolchains and must never be auto-cleaned.
+        "~/.cache/mise",
     ]
 
     /// Directory names that are generally safe to delete

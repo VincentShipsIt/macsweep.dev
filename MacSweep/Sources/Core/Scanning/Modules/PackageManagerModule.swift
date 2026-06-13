@@ -25,6 +25,9 @@ struct PackageManagerModule: ScanModule {
         items.append(contentsOf: await scanCarthage())
         items.append(contentsOf: await scanGradle())
         items.append(contentsOf: await scanMaven())
+        items.append(contentsOf: await scanMise())
+        items.append(contentsOf: await scanSccache())
+        items.append(contentsOf: await scanDeno())
 
         return items.sorted { $0.size > $1.size }
     }
@@ -511,6 +514,84 @@ struct PackageManagerModule: ScanModule {
         return items
     }
 
+    // MARK: - mise (polyglot version manager)
+
+    /// Only the re-fillable download/metadata cache (`~/.cache/mise`). The
+    /// installed toolchains under `~/.local/share/mise/installs` are deliberately
+    /// NOT scanned — deleting them removes working runtimes, not cache.
+    private func scanMise() async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+
+        let miseCache = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".cache/mise")
+
+        if FileManager.default.fileExists(atPath: miseCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: miseCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: miseCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "mise Cache"
+                ))
+            }
+        }
+
+        return items
+    }
+
+    // MARK: - sccache (compiler cache)
+
+    private func scanSccache() async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+
+        let sccache = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Caches/Mozilla.sccache")
+
+        if FileManager.default.fileExists(atPath: sccache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: sccache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: sccache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "sccache"
+                ))
+            }
+        }
+
+        return items
+    }
+
+    // MARK: - Deno
+
+    private func scanDeno() async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+
+        let denoCache = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Caches/deno")
+
+        if FileManager.default.fileExists(atPath: denoCache.path) {
+            let size = (try? await DiskAnalyzer.directorySize(at: denoCache)) ?? 0
+            if size > 0 {
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: denoCache,
+                    size: size,
+                    type: .directory,
+                    module: id,
+                    moduleName: "Deno Cache"
+                ))
+            }
+        }
+
+        return items
+    }
+
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         var processed = 0
         var freed: Int64 = 0
@@ -568,5 +649,8 @@ struct PackageManagerInfo: Identifiable {
         PackageManagerInfo(id: "carthage", name: "Carthage", icon: "cart", color: "blue"),
         PackageManagerInfo(id: "gradle", name: "Gradle", icon: "elephant", color: "green"),
         PackageManagerInfo(id: "maven", name: "Maven", icon: "m.circle", color: "red"),
+        PackageManagerInfo(id: "mise", name: "mise", icon: "arrow.triangle.2.circlepath", color: "green"),
+        PackageManagerInfo(id: "sccache", name: "sccache", icon: "bolt.horizontal", color: "orange"),
+        PackageManagerInfo(id: "deno", name: "Deno", icon: "lizard", color: "gray"),
     ]
 }
