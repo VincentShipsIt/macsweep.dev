@@ -1,41 +1,36 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCLIKit
 @testable import MacSweepCore
 
-final class CLICommandParserTests: XCTestCase {
-    func testParsesSmartCareDryRunAsJson() throws {
+struct CLICommandParserTests {
+    @Test func parsesSmartCareDryRunAsJson() throws {
         let command = try CLICommandParser.parse([
             "dry-run",
             "--smart-care",
             "--format", "json",
         ])
 
-        XCTAssertEqual(
-            command,
-            .dryRun(HeadlessSelectionRequest(moduleIDs: nil, smartCare: true), .json)
-        )
+        #expect(command == .dryRun(HeadlessSelectionRequest(moduleIDs: nil, smartCare: true), .json))
     }
 
-    func testParsesApplyWithModulesAndYes() throws {
+    @Test func parsesApplyWithModulesAndYes() throws {
         let command = try CLICommandParser.parse([
             "apply",
             "--modules", "system-cache,trash-bins",
             "--yes",
         ])
 
-        XCTAssertEqual(
-            command,
-            .apply(
-                HeadlessSelectionRequest(moduleIDs: ["system-cache", "trash-bins"], smartCare: false),
-                yes: true,
-                format: .text
-            )
-        )
+        #expect(command == .apply(
+            HeadlessSelectionRequest(moduleIDs: ["system-cache", "trash-bins"], smartCare: false),
+            yes: true,
+            format: .text
+        ))
     }
 
-    func testRejectsUnknownFormat() {
-        XCTAssertThrowsError(
+    @Test func rejectsUnknownFormat() {
+        #expect(throws: (any Error).self) {
             try CLICommandParser.parse(["scan", "--format", "xml"])
-        )
+        }
     }
 }

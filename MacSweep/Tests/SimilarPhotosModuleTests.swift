@@ -1,15 +1,16 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class SimilarPhotosModuleTests: XCTestCase {
-    func testHammingDistanceIncludesAspectRatioDelta() {
+struct SimilarPhotosModuleTests {
+    @Test func hammingDistanceIncludesAspectRatioDelta() {
         let lhs = SimilarPhotoSignature(bits: 0b1111, aspectRatioBucket: 10)
         let rhs = SimilarPhotoSignature(bits: 0b1101, aspectRatioBucket: 12)
 
-        XCTAssertEqual(lhs.hammingDistance(to: rhs), 3)
+        #expect(lhs.hammingDistance(to: rhs) == 3)
     }
 
-    func testGrouperClustersNearMatches() {
+    @Test func grouperClustersNearMatches() {
         let base = SimilarPhotoCandidate(
             id: UUID(),
             path: URL(fileURLWithPath: "/tmp/a.jpg"),
@@ -37,11 +38,11 @@ final class SimilarPhotosModuleTests: XCTestCase {
 
         let groups = SimilarPhotoGrouper(threshold: 3).group([base, near, far])
 
-        XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups[0].photos.count, 2)
+        #expect(groups.count == 1)
+        #expect(groups[0].photos.count == 2)
     }
 
-    func testSelectorKeepsOldestThenLargestPhoto() {
+    @Test func selectorKeepsOldestThenLargestPhoto() {
         let keeper = SimilarPhotoCandidate(
             id: UUID(),
             path: URL(fileURLWithPath: "/tmp/keeper.jpg"),
@@ -62,6 +63,6 @@ final class SimilarPhotosModuleTests: XCTestCase {
 
         let selected = SimilarPhotoSelector().autoSelect(group)
 
-        XCTAssertEqual(selected, [newer])
+        #expect(selected == [newer])
     }
 }

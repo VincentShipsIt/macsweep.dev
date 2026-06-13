@@ -1,7 +1,8 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class SafetyCheckerTests: XCTestCase {
+struct SafetyCheckerTests {
     private let checker = SafetyChecker()
 
     private func url(_ path: String) -> URL {
@@ -10,191 +11,191 @@ final class SafetyCheckerTests: XCTestCase {
 
     // MARK: - Path traversal
 
-    func testTraversalEscapeIntoProtectedRootIsBlocked() {
+    @Test func traversalEscapeIntoProtectedRootIsBlocked() {
         // `..` segments must be collapsed before evaluation so a cache-rooted
         // path cannot escape into ~/Documents.
         let result = checker.validateForCleanup(url("~/Library/Caches/../../Documents/secret.txt"))
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
     // MARK: - Default-deny
 
-    func testUnknownPathIsUnsafeByDefault() {
+    @Test func unknownPathIsUnsafeByDefault() {
         let result = checker.validateForCleanup(url("~/.m2/repository/org"))
-        XCTAssertFalse(result.isSafe, "Unrecognized paths must default to unsafe")
-        if case .unknown = result {} else { XCTFail("Expected .unknown, got \(result)") }
+        #expect(!result.isSafe, "Unrecognized paths must default to unsafe")
+        if case .unknown = result {} else { Issue.record("Expected .unknown, got \(result)") }
     }
 
     // MARK: - Module-scoped user-managed carve-outs
 
-    func testPicturesBlockedForStandardModule() {
+    @Test func picturesBlockedForStandardModule() {
         let result = checker.validateForCleanup(
             url("~/Pictures/family-photo.jpg"), moduleID: "system-cache", itemType: .file)
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
-    func testPicturesAllowedForSimilarPhotosCleanup() {
+    @Test func picturesAllowedForSimilarPhotosCleanup() {
         let result = checker.validateForCleanup(
             url("~/Pictures/similar-shot.jpg"), moduleID: "similar-photos", itemType: .file)
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
-    func testDocumentsBlockedForLargeFilesCleanup() {
+    @Test func documentsBlockedForLargeFilesCleanup() {
         // large-files may *scan* user-managed roots but never *clean* them.
         let result = checker.validateForCleanup(
             url("~/Documents/project-root"), moduleID: "large-files", itemType: .directory)
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
-    func testDocumentsAllowedForLargeFilesScan() {
+    @Test func documentsAllowedForLargeFilesScan() {
         let result = checker.validateForScan(url("~/Documents/project-root"), moduleID: "large-files")
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
     // MARK: - Longest-prefix arbitration
 
-    func testCacheRootAllowed() {
+    @Test func cacheRootAllowed() {
         let result = checker.validateForCleanup(
             url("~/Library/Caches/example-cache"), moduleID: "system-cache", itemType: .directory)
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
-    func testTempFolderAllowed() {
+    @Test func tempFolderAllowed() {
         // /var/folders sits inside the protected /var root; the more-specific
         // safe-cache root must win.
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent("alpha.tmp")
         let result = checker.validateForCleanup(temp, moduleID: "alpha", itemType: .file)
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
-    func testCacheDirNameInsideProtectedRootIsBlocked() {
+    @Test func cacheDirNameInsideProtectedRootIsBlocked() {
         // A folder literally named "Cache" inside ~/Documents must still be protected.
         let result = checker.validateForCleanup(url("~/Documents/Cache/x"))
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
-    func testGenericCacheDirNameOutsideProtectedRootAllowed() {
+    @Test func genericCacheDirNameOutsideProtectedRootAllowed() {
         let result = checker.validateForCleanup(url("~/SomeApp/Cache/x"))
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
     // MARK: - Trash allow-zone
 
-    func testTrashAllowedForTrashModule() {
+    @Test func trashAllowedForTrashModule() {
         let result = checker.validateForCleanup(
             url("~/.Trash/old-file"), moduleID: "trash-bins", itemType: .file)
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
-    func testTrashBlockedForNonTrashModule() {
+    @Test func trashBlockedForNonTrashModule() {
         let result = checker.validateForCleanup(
             url("~/.Trash/old-file"), moduleID: "system-cache", itemType: .file)
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
     // MARK: - Package-manager allow-zone
 
-    func testPackageManagerCachesAllowedForPackageModule() {
+    @Test func packageManagerCachesAllowedForPackageModule() {
         for path in ["~/.npm/_cacache/abc", "~/Library/pnpm/store/v3", "~/.m2/repository/org"] {
             let result = checker.validateForCleanup(url(path), moduleID: "package-managers", itemType: .directory)
-            XCTAssertTrue(result.isSafe, "\(path) should be cleanable by package-managers")
+            #expect(result.isSafe, "\(path) should be cleanable by package-managers")
         }
     }
 
-    func testPackageManagerCachesBlockedForOtherModule() {
+    @Test func packageManagerCachesBlockedForOtherModule() {
         let result = checker.validateForCleanup(
             url("~/.m2/repository/org"), moduleID: "system-cache", itemType: .directory)
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
     // MARK: - Privacy allow-zone
 
-    func testPrivacyArtifactsAllowedForPrivacyModule() {
+    @Test func privacyArtifactsAllowedForPrivacyModule() {
         let sfl = url("~/Library/Application Support/com.apple.sharedfilelist/x.sfl2")
-        XCTAssertTrue(checker.validateForCleanup(sfl, moduleID: "privacy", itemType: .file).isSafe)
+        #expect(checker.validateForCleanup(sfl, moduleID: "privacy", itemType: .file).isSafe)
         let downloads = url("~/Library/Safari/Downloads.plist")
-        XCTAssertTrue(checker.validateForCleanup(downloads, moduleID: "privacy", itemType: .file).isSafe)
+        #expect(checker.validateForCleanup(downloads, moduleID: "privacy", itemType: .file).isSafe)
     }
 
     // MARK: - Sensitive patterns block everywhere
 
-    func testSensitiveFileBlockedEvenInTrash() {
+    @Test func sensitiveFileBlockedEvenInTrash() {
         let result = checker.validateForCleanup(
             url("~/.Trash/id_rsa"), moduleID: "trash-bins", itemType: .file)
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
-    func testSensitiveFileBlockedInCache() {
+    @Test func sensitiveFileBlockedInCache() {
         for path in ["~/Library/Caches/foo.key", "~/Library/Caches/x/cookies.sqlite"] {
             let result = checker.validateForCleanup(url(path), moduleID: "system-cache", itemType: .file)
-            XCTAssertFalse(result.isSafe, "\(path) is sensitive and must be blocked")
+            #expect(!result.isSafe, "\(path) is sensitive and must be blocked")
         }
     }
 
     // MARK: - System / credential roots
 
-    func testSystemRootsBlocked() {
+    @Test func systemRootsBlocked() {
         for path in ["/System/Library/x", "/usr/local/x", "~/.ssh/known_hosts"] {
-            XCTAssertFalse(checker.validateForCleanup(url(path)).isSafe, "\(path) must be protected")
+            #expect(!checker.validateForCleanup(url(path)).isSafe, "\(path) must be protected")
         }
     }
 
     // MARK: - Generic dev-tool dirs
 
-    func testNodeModulesAllowedForDevTools() {
+    @Test func nodeModulesAllowedForDevTools() {
         let result = checker.validateForCleanup(
             url("~/code/app/node_modules"), moduleID: "dev-tools", itemType: .directory)
-        XCTAssertTrue(result.isSafe)
+        #expect(result.isSafe)
     }
 
     // MARK: - Shred blocklist (validateForShred)
 
-    func testShredBlocksFilesystemRoot() {
-        XCTAssertFalse(checker.validateForShred(url("/")).isSafe)
+    @Test func shredBlocksFilesystemRoot() {
+        #expect(!checker.validateForShred(url("/")).isSafe)
     }
 
-    func testShredBlocksHomeDirectory() {
+    @Test func shredBlocksHomeDirectory() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        XCTAssertFalse(checker.validateForShred(home).isSafe)
+        #expect(!checker.validateForShred(home).isSafe)
     }
 
-    func testShredBlocksWholeUserFolders() {
+    @Test func shredBlocksWholeUserFolders() {
         // The whole ~/Documents (or any user root) is refused, even though files
         // *inside* it are shreddable.
         for path in ["~/Documents", "~/Desktop", "~/Downloads", "~/Pictures", "~/Movies", "~/Music"] {
             let result = checker.validateForShred(url(path))
-            XCTAssertFalse(result.isSafe, "\(path) (whole folder) must be refused")
+            #expect(!result.isSafe, "\(path) (whole folder) must be refused")
         }
     }
 
-    func testShredBlocksSystemAndCredentialRoots() {
+    @Test func shredBlocksSystemAndCredentialRoots() {
         for path in ["/System/Library/x", "/usr/local/bin/x", "~/.ssh/id_rsa",
                      "~/Library/Preferences/com.apple.foo.plist", "~/Library/Mobile Documents/x"] {
-            XCTAssertFalse(checker.validateForShred(url(path)).isSafe, "\(path) must be refused")
+            #expect(!checker.validateForShred(url(path)).isSafe, "\(path) must be refused")
         }
     }
 
-    func testShredBlocksTraversalEscapeIntoProtectedRoot() {
+    @Test func shredBlocksTraversalEscapeIntoProtectedRoot() {
         // `..` collapses so a Downloads-rooted path cannot escape into ~/.ssh.
         let result = checker.validateForShred(url("~/Downloads/../.ssh/id_rsa"))
-        XCTAssertFalse(result.isSafe)
+        #expect(!result.isSafe)
     }
 
-    func testShredAllowsFilesInsideUserFolders() {
+    @Test func shredAllowsFilesInsideUserFolders() {
         // Files the user explicitly drops in — including credential files they
         // want destroyed — are shreddable when nested inside a user root.
         for path in ["~/Downloads/secret.key", "~/Documents/old_tax.pdf", "~/Desktop/a/b/c.bin"] {
-            XCTAssertTrue(checker.validateForShred(url(path)).isSafe, "\(path) should be shreddable")
+            #expect(checker.validateForShred(url(path)).isSafe, "\(path) should be shreddable")
         }
     }
 
-    func testShredAllowsArbitraryNonProtectedFiles() {
+    @Test func shredAllowsArbitraryNonProtectedFiles() {
         for path in ["/tmp/macsweep/junk.bin", "~/code/proj/build/out.o"] {
-            XCTAssertTrue(checker.validateForShred(url(path)).isSafe, "\(path) should be shreddable")
+            #expect(checker.validateForShred(url(path)).isSafe, "\(path) should be shreddable")
         }
     }
 
-    func testShredRefusesSymlink() throws {
+    @Test func shredRefusesSymlink() throws {
         // A symlink must be refused: overwriting would destroy its target.
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("macsweep-shred-\(UUID().uuidString)")
@@ -207,7 +208,7 @@ final class SafetyCheckerTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
 
         let result = checker.validateForShred(link)
-        XCTAssertFalse(result.isSafe)
-        if case .symlink = result {} else { XCTFail("Expected .symlink, got \(result)") }
+        #expect(!result.isSafe)
+        if case .symlink = result {} else { Issue.record("Expected .symlink, got \(result)") }
     }
 }

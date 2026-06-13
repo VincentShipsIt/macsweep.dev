@@ -1,8 +1,9 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class SmartCareAnalyzerTests: XCTestCase {
-    func testSummarizeGroupsByModuleAndPreselectsRecommendedItems() {
+struct SmartCareAnalyzerTests {
+    @Test func summarizeGroupsByModuleAndPreselectsRecommendedItems() {
         let tmp = FileManager.default.temporaryDirectory
         let cacheItem = CleanupItem(
             id: UUID(),
@@ -34,11 +35,11 @@ final class SmartCareAnalyzerTests: XCTestCase {
             diskUsage: DiskUsage(total: 100, used: 92, free: 8)
         )
 
-        XCTAssertEqual(summary.findings.count, 3)
-        XCTAssertEqual(summary.findings.first?.moduleID, "similar-photos")
-        XCTAssertTrue(summary.recommendedCleanupItemIDs.contains(cacheItem.id))
-        XCTAssertFalse(summary.recommendedCleanupItemIDs.contains(duplicateItem.id))
-        XCTAssertFalse(summary.recommendedCleanupItemIDs.contains(similarPhoto.id))
-        XCTAssertLessThan(summary.score, 100)
+        #expect(summary.findings.count == 3)
+        #expect(summary.findings.first?.moduleID == "similar-photos")
+        #expect(summary.recommendedCleanupItemIDs.contains(cacheItem.id))
+        #expect(!summary.recommendedCleanupItemIDs.contains(duplicateItem.id))
+        #expect(!summary.recommendedCleanupItemIDs.contains(similarPhoto.id))
+        #expect(summary.score < 100)
     }
 }

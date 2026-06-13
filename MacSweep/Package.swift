@@ -1,5 +1,22 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
+
+// MARK: - Running the tests
+//
+// The suite is written against swift-testing (`import Testing`), which SwiftPM
+// only auto-discovers at tools-version 6.0+. How you run it depends on the host:
+//
+//   * Full Xcode (e.g. CI's macos runner): plain `swift test` just works.
+//   * Command Line Tools only (no Xcode.app): CLT bundles Testing.framework but
+//     NOT the `xctest` host tool, so SwiftPM's default `.xctest`-bundle path
+//     silently no-ops. Use `Scripts/test.sh`, which passes `--disable-xctest`
+//     (build a standalone swift-testing runner instead of a bundle) plus the CLT
+//     framework search path and rpaths inline so they reach that runner product.
+//
+// Flags are intentionally NOT baked into the test target here: target-scoped
+// unsafeFlags never reach the synthesized `*PackageTests` runner, so they'd
+// compile a bundle that never executes — a silent-pass footgun. Keeping them out
+// means plain `swift test` on a CLT-only host fails loudly instead.
 
 let package = Package(
     name: "MacSweep",
@@ -30,5 +47,9 @@ let package = Package(
             dependencies: ["MacSweepCore", "MacSweepCLIKit"],
             path: "Tests"
         )
-    ]
+    ],
+    // Keep targets in Swift 5 language mode. The tools-version bump to 6.0 is
+    // only to get SwiftPM's swift-testing test runner; the existing sources are
+    // not audited for Swift 6 strict concurrency and must keep compiling as-is.
+    swiftLanguageModes: [.v5]
 )

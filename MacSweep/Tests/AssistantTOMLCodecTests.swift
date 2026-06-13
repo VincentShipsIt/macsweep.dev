@@ -1,18 +1,19 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class AssistantTOMLCodecTests: XCTestCase {
-    func testProviderConfigRoundTripsMiniDefault() throws {
+struct AssistantTOMLCodecTests {
+    @Test func providerConfigRoundTripsMiniDefault() throws {
         let rendered = AssistantTOMLCodec.renderProviders(.default)
         let parsed = try AssistantTOMLCodec.parseProviders(rendered)
 
-        XCTAssertEqual(parsed.defaultProvider, .codex)
-        XCTAssertEqual(parsed.providers[.codex]?.model, "gpt-5.4-mini")
-        XCTAssertEqual(parsed.providers[.codex]?.reasoningEffort, "medium")
-        XCTAssertEqual(parsed.fallbackOrder.first, .codex)
+        #expect(parsed.defaultProvider == .codex)
+        #expect(parsed.providers[.codex]?.model == "gpt-5.4-mini")
+        #expect(parsed.providers[.codex]?.reasoningEffort == "medium")
+        #expect(parsed.fallbackOrder.first == .codex)
     }
 
-    func testWatchlistsRoundTripPreservesRules() throws {
+    @Test func watchlistsRoundTripPreservesRules() throws {
         let rules = [
             AssistantWatchlistRule(
                 id: "slack-cache",
@@ -28,6 +29,6 @@ final class AssistantTOMLCodecTests: XCTestCase {
         let rendered = AssistantTOMLCodec.renderWatchlists(rules)
         let parsed = try AssistantTOMLCodec.parseWatchlists(rendered)
 
-        XCTAssertEqual(parsed, rules)
+        #expect(parsed == rules)
     }
 }

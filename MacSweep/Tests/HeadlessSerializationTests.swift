@@ -1,8 +1,9 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class HeadlessSerializationTests: XCTestCase {
-    func testScanResultEncodesStableJSONKeys() throws {
+struct HeadlessSerializationTests {
+    @Test func scanResultEncodesStableJSONKeys() throws {
         let result = HeadlessScanResult(
             executedModules: ["system-cache"],
             permissions: HeadlessPermissionStatusReport(
@@ -45,10 +46,10 @@ final class HeadlessSerializationTests: XCTestCase {
         let data = try encoder.encode(result)
         let json = String(decoding: data, as: UTF8.self)
 
-        XCTAssertTrue(json.contains("\"executedModules\""))
-        XCTAssertTrue(json.contains("\"permissions\""))
-        XCTAssertTrue(json.contains("\"findings\""))
-        XCTAssertTrue(json.contains("\"summary\""))
-        XCTAssertTrue(json.contains("\"recommended\":true"))
+        #expect(json.contains("\"executedModules\""))
+        #expect(json.contains("\"permissions\""))
+        #expect(json.contains("\"findings\""))
+        #expect(json.contains("\"summary\""))
+        #expect(json.contains("\"recommended\":true"))
     }
 }

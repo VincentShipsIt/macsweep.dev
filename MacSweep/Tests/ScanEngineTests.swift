@@ -1,7 +1,8 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class ScanEngineTests: XCTestCase {
+struct ScanEngineTests {
     actor CleanupRecorder {
         private var calls: [String: [CleanupItem]] = [:]
         private var order: [String] = []
@@ -38,7 +39,7 @@ final class ScanEngineTests: XCTestCase {
         }
     }
 
-    func testCleanDispatchesItemsToOwningModules() async throws {
+    @Test func cleanDispatchesItemsToOwningModules() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "alpha", name: "Alpha", description: "Alpha", recorder: recorder),
@@ -68,13 +69,13 @@ final class ScanEngineTests: XCTestCase {
         let alphaCalls = await recorder.items(for: "alpha")
         let betaCalls = await recorder.items(for: "beta")
 
-        XCTAssertEqual(alphaCalls, [alphaItem])
-        XCTAssertEqual(betaCalls, [betaItem])
-        XCTAssertEqual(result.itemsProcessed, 2)
-        XCTAssertEqual(result.bytesFreed, 2560)
+        #expect(alphaCalls == [alphaItem])
+        #expect(betaCalls == [betaItem])
+        #expect(result.itemsProcessed == 2)
+        #expect(result.bytesFreed == 2560)
     }
 
-    func testCleanBlocksProtectedPathForStandardModule() async throws {
+    @Test func cleanBlocksProtectedPathForStandardModule() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
@@ -92,12 +93,12 @@ final class ScanEngineTests: XCTestCase {
         let result = try await engine.clean(items: [protectedItem], dryRun: true)
 
         let calls = await recorder.items(for: "system-cache")
-        XCTAssertTrue(calls.isEmpty)
-        XCTAssertEqual(result.itemsProcessed, 0)
-        XCTAssertEqual(result.errors.count, 1)
+        #expect(calls.isEmpty)
+        #expect(result.itemsProcessed == 0)
+        #expect(result.errors.count == 1)
     }
 
-    func testCleanAllowsUserManagedPathForSimilarPhotos() async throws {
+    @Test func cleanAllowsUserManagedPathForSimilarPhotos() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "similar-photos", name: "Similar Photos", description: "Similar Photos", recorder: recorder),
@@ -115,12 +116,12 @@ final class ScanEngineTests: XCTestCase {
         let result = try await engine.clean(items: [photoItem], dryRun: true)
 
         let calls = await recorder.items(for: "similar-photos")
-        XCTAssertEqual(calls, [photoItem])
-        XCTAssertEqual(result.itemsProcessed, 1)
-        XCTAssertTrue(result.errors.isEmpty)
+        #expect(calls == [photoItem])
+        #expect(result.itemsProcessed == 1)
+        #expect(result.errors.isEmpty)
     }
 
-    func testCleanBlocksUserManagedDirectoryForLargeFiles() async throws {
+    @Test func cleanBlocksUserManagedDirectoryForLargeFiles() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "large-files", name: "Large Files", description: "Large Files", recorder: recorder),
@@ -139,12 +140,12 @@ final class ScanEngineTests: XCTestCase {
         let result = try await engine.clean(items: [projectItem], dryRun: true)
 
         let calls = await recorder.items(for: "large-files")
-        XCTAssertTrue(calls.isEmpty)
-        XCTAssertEqual(result.itemsProcessed, 0)
-        XCTAssertEqual(result.errors.count, 1)
+        #expect(calls.isEmpty)
+        #expect(result.itemsProcessed == 0)
+        #expect(result.errors.count == 1)
     }
 
-    func testCleanPrioritizesTrashBeforeOtherModules() async throws {
+    @Test func cleanPrioritizesTrashBeforeOtherModules() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
@@ -172,10 +173,10 @@ final class ScanEngineTests: XCTestCase {
         _ = try await engine.clean(items: [cacheItem, trashItem], dryRun: true)
 
         let order = await recorder.cleanupOrder()
-        XCTAssertEqual(order, ["trash-bins", "system-cache"])
+        #expect(order == ["trash-bins", "system-cache"])
     }
 
-    func testCleanThrowsWhenAggregateExceedsHardLimitOnRealDelete() async {
+    @Test func cleanThrowsWhenAggregateExceedsHardLimitOnRealDelete() async {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
@@ -193,21 +194,22 @@ final class ScanEngineTests: XCTestCase {
 
         do {
             _ = try await engine.clean(items: [hugeItem], dryRun: false)
-            XCTFail("Expected deletionBlocked to be thrown")
+            Issue.record("Expected deletionBlocked to be thrown")
         } catch let error as ScanEngineError {
             guard case .deletionBlocked = error else {
-                return XCTFail("Expected .deletionBlocked, got \(error)")
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
             }
         } catch {
-            XCTFail("Expected ScanEngineError, got \(error)")
+            Issue.record("Expected ScanEngineError, got \(error)")
         }
 
         // Nothing should have been dispatched to the module.
         let calls = await recorder.items(for: "system-cache")
-        XCTAssertTrue(calls.isEmpty)
+        #expect(calls.isEmpty)
     }
 
-    func testCleanAllowsOversizedDryRunPreview() async throws {
+    @Test func cleanAllowsOversizedDryRunPreview() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
@@ -224,8 +226,8 @@ final class ScanEngineTests: XCTestCase {
         )
 
         let result = try await engine.clean(items: [hugeItem], dryRun: true)
-        XCTAssertEqual(result.itemsProcessed, 1)
+        #expect(result.itemsProcessed == 1)
         let calls = await recorder.items(for: "system-cache")
-        XCTAssertEqual(calls, [hugeItem])
+        #expect(calls == [hugeItem])
     }
 }

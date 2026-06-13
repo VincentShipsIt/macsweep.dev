@@ -1,7 +1,14 @@
 name: CI
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
+
+# A newer push to the same branch/PR cancels the in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -9,7 +16,17 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Build (SPM)
-        run: cd MacSweep && swift build
-      - name: Test (SPM)
-        run: cd MacSweep && swift test
+
+      - name: Toolchain
+        run: swift --version
+
+      # Build the release CLI product — this is the exact artifact the Homebrew
+      # formula builds, so CI fails the same way a `brew install` would.
+      - name: Build release CLI (SPM)
+        run: swift build -c release --product macsweep --package-path MacSweep
+
+      # scripts/test.sh auto-detects the toolchain: on this full-Xcode runner the
+      # xctest host is present so it runs plain `swift test`; on a CLT-only host it
+      # falls back to the standalone swift-testing runner. One canonical command.
+      - name: Test (swift-testing)
+        run: ./scripts/test.sh

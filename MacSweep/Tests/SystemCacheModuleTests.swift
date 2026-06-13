@@ -1,15 +1,16 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MacSweepCore
 
-final class SystemCacheModuleTests: XCTestCase {
+final class SystemCacheModuleTests {
 
-    var module: SystemCacheModule!
-    var testDirectory: URL!
+    let module = SystemCacheModule()
+    let testDirectory: URL
 
-    override func setUp() async throws {
-        module = SystemCacheModule()
-
-        // Create a temporary directory for testing
+    // swift-testing creates a fresh instance per @Test: init() is the per-test
+    // setUp, deinit is the per-test tearDown. Each instance gets a UUID-scoped
+    // temp dir so parallel test execution can't collide.
+    init() throws {
         testDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MacSweepTests-\(UUID().uuidString)")
 
@@ -19,79 +20,75 @@ final class SystemCacheModuleTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
-        // Clean up test directory
-        if let testDir = testDirectory, FileManager.default.fileExists(atPath: testDir.path) {
-            try? FileManager.default.removeItem(at: testDir)
+    deinit {
+        if FileManager.default.fileExists(atPath: testDirectory.path) {
+            try? FileManager.default.removeItem(at: testDirectory)
         }
     }
 
     // MARK: - Module Properties Tests
 
-    func testModuleHasCorrectIdentifier() {
-        XCTAssertEqual(module.id, "system-cache")
+    @Test func moduleHasCorrectIdentifier() {
+        #expect(module.id == "system-cache")
     }
 
-    func testModuleHasCorrectName() {
-        XCTAssertEqual(module.name, "System Caches")
+    @Test func moduleHasCorrectName() {
+        #expect(module.name == "System Caches")
     }
 
-    func testModuleHasCorrectDescription() {
-        XCTAssertEqual(module.description, "Application caches, logs, and crash reports")
+    @Test func moduleHasCorrectDescription() {
+        #expect(module.description == "Application caches, logs, and crash reports")
     }
 
-    func testModuleHasCorrectIcon() {
-        XCTAssertEqual(module.icon, "folder.badge.gearshape")
+    @Test func moduleHasCorrectIcon() {
+        #expect(module.icon == "folder.badge.gearshape")
     }
 
     // MARK: - Scan Tests
 
-    func testScanReturnsEmptyArrayForNonexistentDirectory() async throws {
-        // The module should handle non-existent directories gracefully
-        let items = try await module.scan()
-
-        // Should not crash, may return items from existing system directories
-        XCTAssertNotNil(items)
+    @Test func scanReturnsEmptyArrayForNonexistentDirectory() async throws {
+        // The module should handle non-existent directories gracefully and
+        // not crash; it may return items from existing system directories.
+        _ = try await module.scan()
     }
 
-    func testScanReturnsSortedBySize() async throws {
+    @Test func scanReturnsSortedBySize() async throws {
         // Scan actual system caches
         let items = try await module.scan()
 
         // Verify items are sorted by size (largest first)
         if items.count >= 2 {
             for i in 0..<(items.count - 1) {
-                XCTAssertGreaterThanOrEqual(
-                    items[i].size,
-                    items[i + 1].size,
+                #expect(
+                    items[i].size >= items[i + 1].size,
                     "Items should be sorted by size descending"
                 )
             }
         }
     }
 
-    func testScanSkipsTinyItems() async throws {
+    @Test func scanSkipsTinyItems() async throws {
         let items = try await module.scan()
 
         // All items should be larger than 1KB
         for item in items {
-            XCTAssertGreaterThan(item.size, 1024, "Items smaller than 1KB should be filtered")
+            #expect(item.size > 1024, "Items smaller than 1KB should be filtered")
         }
     }
 
-    func testScanItemsHaveCorrectModule() async throws {
+    @Test func scanItemsHaveCorrectModule() async throws {
         let items = try await module.scan()
 
         for item in items {
-            XCTAssertEqual(item.module, "system-cache", "All items should belong to system-cache module")
+            #expect(item.module == "system-cache", "All items should belong to system-cache module")
         }
     }
 
-    func testScanItemsHaveModuleName() async throws {
+    @Test func scanItemsHaveModuleName() async throws {
         let items = try await module.scan()
 
         for item in items {
-            XCTAssertTrue(
+            #expect(
                 item.moduleName.hasPrefix("System Caches - "),
                 "Module name should start with 'System Caches - '"
             )
@@ -100,7 +97,7 @@ final class SystemCacheModuleTests: XCTestCase {
 
     // MARK: - Clean Tests (Dry Run)
 
-    func testDryRunDoesNotDeleteFiles() async throws {
+    @Test func dryRunDoesNotDeleteFiles() async throws {
         // Create a test file
         let testFile = testDirectory.appendingPathComponent("test-cache-file.txt")
         let testContent = "Test content for cache cleanup"
@@ -120,13 +117,13 @@ final class SystemCacheModuleTests: XCTestCase {
         let result = try await module.clean(items: [item], dryRun: true)
 
         // File should still exist
-        XCTAssertTrue(FileManager.default.fileExists(atPath: testFile.path), "Dry run should not delete files")
-        XCTAssertEqual(result.itemsProcessed, 1)
-        XCTAssertEqual(result.bytesFreed, item.size)
-        XCTAssertTrue(result.errors.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: testFile.path), "Dry run should not delete files")
+        #expect(result.itemsProcessed == 1)
+        #expect(result.bytesFreed == item.size)
+        #expect(result.errors.isEmpty)
     }
 
-    func testCleanReportsCorrectBytesFreed() async throws {
+    @Test func cleanReportsCorrectBytesFreed() async throws {
         let items = try await module.scan()
 
         guard !items.isEmpty else {
@@ -138,10 +135,10 @@ final class SystemCacheModuleTests: XCTestCase {
         let result = try await module.clean(items: items, dryRun: true)
 
         let expectedBytes = items.reduce(0) { $0 + $1.size }
-        XCTAssertEqual(result.bytesFreed, expectedBytes, "Bytes freed should match total of item sizes")
+        #expect(result.bytesFreed == expectedBytes, "Bytes freed should match total of item sizes")
     }
 
-    func testCleanIgnoresItemsFromOtherModules() async throws {
+    @Test func cleanIgnoresItemsFromOtherModules() async throws {
         let otherModuleItem = CleanupItem(
             id: UUID(),
             path: testDirectory.appendingPathComponent("other.txt"),
@@ -153,13 +150,13 @@ final class SystemCacheModuleTests: XCTestCase {
 
         let result = try await module.clean(items: [otherModuleItem], dryRun: true)
 
-        XCTAssertEqual(result.itemsProcessed, 0, "Should not process items from other modules")
-        XCTAssertEqual(result.bytesFreed, 0)
+        #expect(result.itemsProcessed == 0, "Should not process items from other modules")
+        #expect(result.bytesFreed == 0)
     }
 
     // MARK: - Clean Tests (Actual Deletion)
 
-    func testCleanActuallyDeletesFiles() async throws {
+    @Test func cleanActuallyDeletesFiles() async throws {
         // Create a test file
         let testFile = testDirectory.appendingPathComponent("deleteme.cache")
         let testContent = String(repeating: "x", count: 2048)  // 2KB
@@ -178,12 +175,12 @@ final class SystemCacheModuleTests: XCTestCase {
         let result = try await module.clean(items: [item], dryRun: false)
 
         // File should be deleted
-        XCTAssertFalse(FileManager.default.fileExists(atPath: testFile.path), "File should be deleted")
-        XCTAssertEqual(result.itemsProcessed, 1)
-        XCTAssertTrue(result.errors.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: testFile.path), "File should be deleted")
+        #expect(result.itemsProcessed == 1)
+        #expect(result.errors.isEmpty)
     }
 
-    func testCleanDirectoryRemovesContentsOnly() async throws {
+    @Test func cleanDirectoryRemovesContentsOnly() async throws {
         // Create a test directory with files
         let testDir = testDirectory.appendingPathComponent("cache-dir")
         try FileManager.default.createDirectory(at: testDir, withIntermediateDirectories: true)
@@ -206,14 +203,14 @@ final class SystemCacheModuleTests: XCTestCase {
         let result = try await module.clean(items: [item], dryRun: false)
 
         // Directory should still exist but be empty
-        XCTAssertTrue(FileManager.default.fileExists(atPath: testDir.path), "Directory should still exist")
+        #expect(FileManager.default.fileExists(atPath: testDir.path), "Directory should still exist")
 
         let contents = try FileManager.default.contentsOfDirectory(atPath: testDir.path)
-        XCTAssertTrue(contents.isEmpty, "Directory should be empty after cleanup")
-        XCTAssertEqual(result.itemsProcessed, 1)
+        #expect(contents.isEmpty, "Directory should be empty after cleanup")
+        #expect(result.itemsProcessed == 1)
     }
 
-    func testCleanReportsErrorsForProtectedFiles() async throws {
+    @Test func cleanReportsErrorsForProtectedFiles() async throws {
         // Create an item pointing to a non-existent file
         let nonExistentFile = testDirectory.appendingPathComponent("does-not-exist.txt")
 
@@ -229,13 +226,13 @@ final class SystemCacheModuleTests: XCTestCase {
         let result = try await module.clean(items: [item], dryRun: false)
 
         // Should report an error
-        XCTAssertFalse(result.errors.isEmpty, "Should report error for missing file")
-        XCTAssertEqual(result.itemsProcessed, 0)
+        #expect(!result.errors.isEmpty, "Should report error for missing file")
+        #expect(result.itemsProcessed == 0)
     }
 
     // MARK: - Integration Tests
 
-    func testScanAndCleanWorkflow() async throws {
+    @Test func scanAndCleanWorkflow() async throws {
         // Create test cache structure
         let cacheDir = testDirectory.appendingPathComponent("TestCache")
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
@@ -249,7 +246,7 @@ final class SystemCacheModuleTests: XCTestCase {
 
         // Verify files exist
         let initialContents = try FileManager.default.contentsOfDirectory(atPath: cacheDir.path)
-        XCTAssertEqual(initialContents.count, 5)
+        #expect(initialContents.count == 5)
 
         // Create a cleanup item for the test cache directory
         let size = try await DiskAnalyzer.directorySize(at: cacheDir)
@@ -264,26 +261,25 @@ final class SystemCacheModuleTests: XCTestCase {
 
         // First dry run
         let dryResult = try await module.clean(items: [item], dryRun: true)
-        XCTAssertEqual(dryResult.bytesFreed, size)
+        #expect(dryResult.bytesFreed == size)
 
         // Files should still exist
         let afterDryRun = try FileManager.default.contentsOfDirectory(atPath: cacheDir.path)
-        XCTAssertEqual(afterDryRun.count, 5)
+        #expect(afterDryRun.count == 5)
 
         // Actual cleanup
         let cleanResult = try await module.clean(items: [item], dryRun: false)
-        XCTAssertEqual(cleanResult.itemsProcessed, 1)
+        #expect(cleanResult.itemsProcessed == 1)
 
         // Directory should be empty
         let afterClean = try FileManager.default.contentsOfDirectory(atPath: cacheDir.path)
-        XCTAssertTrue(afterClean.isEmpty)
+        #expect(afterClean.isEmpty)
     }
 
     // MARK: - Performance Tests
 
-    func testScanPerformance() async throws {
-        // This test ensures scan completes in reasonable time
-        // Using measure would require @MainActor, so we'll use a simple time check
+    @Test func scanPerformance() async throws {
+        // This test ensures scan completes in reasonable time.
         let startTime = Date()
 
         _ = try await module.scan()
@@ -291,6 +287,6 @@ final class SystemCacheModuleTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(startTime)
 
         // Scan should complete in less than 30 seconds for typical user
-        XCTAssertLessThan(elapsed, 30.0, "Scan should complete in less than 30 seconds")
+        #expect(elapsed < 30.0, "Scan should complete in less than 30 seconds")
     }
 }
