@@ -944,6 +944,47 @@ public struct HeadlessMonitorReport: Codable, Sendable {
     }
 }
 
+/// Current state of the weekly background-scan schedule, as steered by the GUI
+/// scheduler and reported/edited through `macsweep schedule`.
+public struct HeadlessScheduleReport: Codable, Sendable {
+    public let intervalDays: Int
+    public let intervalSeconds: Int
+    public let nextScheduledScan: Date?
+    public let minIntervalDays: Int
+    public let maxIntervalDays: Int
+
+    public init(
+        intervalDays: Int,
+        intervalSeconds: Int,
+        nextScheduledScan: Date?,
+        minIntervalDays: Int,
+        maxIntervalDays: Int
+    ) {
+        self.intervalDays = intervalDays
+        self.intervalSeconds = intervalSeconds
+        self.nextScheduledScan = nextScheduledScan
+        self.minIntervalDays = minIntervalDays
+        self.maxIntervalDays = maxIntervalDays
+    }
+}
+
+/// Result of `macsweep self-update`. Without `--yes` this just reports the version
+/// and the upgrade command (`applied == false`, `log == nil`); with `--yes` it
+/// reflects the executed `brew upgrade`.
+public struct HeadlessSelfUpdateResult: Codable, Sendable {
+    public let currentVersion: String
+    public let upgradeCommand: String
+    public let applied: Bool
+    public let log: String?
+
+    public init(currentVersion: String, upgradeCommand: String, applied: Bool, log: String?) {
+        self.currentVersion = currentVersion
+        self.upgradeCommand = upgradeCommand
+        self.applied = applied
+        self.log = log
+    }
+}
+
 public enum HeadlessServiceError: Error, LocalizedError, Sendable {
     case conflictingSelection
     case invalidModules([String])

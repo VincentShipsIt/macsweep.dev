@@ -146,6 +146,16 @@ struct CLIMonitorOutput: Codable {
     let report: HeadlessMonitorReport
 }
 
+struct CLIScheduleOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessScheduleReport
+}
+
+struct CLISelfUpdateOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessSelfUpdateResult
+}
+
 enum CLIExecutionError: Error, LocalizedError {
     case confirmationRequired
     case cleanupCancelled
@@ -530,6 +540,35 @@ public enum CLIExecutor {
             let output = CLIMonitorOutput(
                 metadata: CLICommandMetadata(command: "monitor", timestamp: Date(), executedModules: []),
                 report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .scheduleStatus(let format):
+            let report = await service.scheduleStatus()
+            let output = CLIScheduleOutput(
+                metadata: CLICommandMetadata(command: "schedule status", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .scheduleSetInterval(let days, let format):
+            let report = await service.setScheduleInterval(days: days)
+            let output = CLIScheduleOutput(
+                metadata: CLICommandMetadata(command: "schedule set-interval", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .selfUpdate(let apply, let format):
+            // `--yes` IS the confirmation for this destructive-ish action, so there
+            // is no interactive confirm() gate; without it we only print the command.
+            let result = try await service.selfUpdate(apply: apply)
+            let output = CLISelfUpdateOutput(
+                metadata: CLICommandMetadata(command: "self-update", timestamp: Date(), executedModules: []),
+                result: result
             )
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
@@ -976,6 +1015,39 @@ public enum CLIExecutor {
                 formatter.string(fromByteCount: Int64(net.uploadSpeedBytesPerSec)),
                 net.isConnected ? "" : " (offline)"
             ))
+            return lines.joined(separator: "\n")
+
+        case let output as CLIScheduleOutput:
+            let report = output.report
+            var lines = ["Background scan schedule"]
+            lines.append("Interval: every \(report.intervalDays) day\(report.intervalDays == 1 ? "" : "s")")
+            if let next = report.nextScheduledScan {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .short
+                lines.append("Next scan: \(formatter.string(from: next))")
+            } else {
+                lines.append("Next scan: not scheduled")
+            }
+            lines.append("Allowed range: \(report.minIntervalDays)–\(report.maxIntervalDays) days")
+            return lines.joined(separator: "\n")
+
+        case let output as CLISelfUpdateOutput:
+            let result = output.result
+            var lines: [String] = []
+            if result.applied {
+                lines.append("Ran: \(result.upgradeCommand)")
+                lines.append("Current version: \(result.currentVersion)")
+                if let log = result.log?.trimmingCharacters(in: .whitespacesAndNewlines), !log.isEmpty {
+                    lines.append("")
+                    lines.append(log)
+                }
+            } else {
+                lines.append("MacSweep \(result.currentVersion)")
+                lines.append("To upgrade via Homebrew, run:")
+                lines.append("  \(result.upgradeCommand)")
+                lines.append("Or re-run with --yes to upgrade now.")
+            }
             return lines.joined(separator: "\n")
 
         default:

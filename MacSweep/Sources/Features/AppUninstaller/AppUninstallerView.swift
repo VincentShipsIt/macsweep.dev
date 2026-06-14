@@ -20,6 +20,32 @@ struct AppUninstallerView: View {
         case lastUsed = "Last Used"
     }
 
+    /// When true, the auto-load `.task` is skipped so injected snapshot data isn't
+    /// immediately overwritten by a real disk scan. Always false in production.
+    private let disableAutoLoad: Bool
+
+    /// Default production initializer — discovers installed apps on appear.
+    init() {
+        disableAutoLoad = false
+    }
+
+    /// Seeds the data-bearing `@State` (and suppresses the auto-load scan) so the
+    /// headless snapshot harness (and Xcode previews) can render the populated and
+    /// error layouts without touching the real filesystem. Not used by the app's
+    /// normal navigation, which constructs the view with the no-arg initializer.
+    init(
+        snapshotApps: [InstalledApp],
+        snapshotSelectedApp: InstalledApp? = nil,
+        snapshotOrphans: [AppLeftover] = [],
+        snapshotError: String? = nil
+    ) {
+        _apps = State(initialValue: snapshotApps)
+        _selectedApp = State(initialValue: snapshotSelectedApp)
+        _orphanedLeftovers = State(initialValue: snapshotOrphans)
+        _errorMessage = State(initialValue: snapshotError)
+        disableAutoLoad = true
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let errorMessage {
@@ -119,7 +145,7 @@ struct AppUninstallerView: View {
             }
         }
         .task {
-            await loadApps()
+            if !disableAutoLoad { await loadApps() }
         }
     }
 

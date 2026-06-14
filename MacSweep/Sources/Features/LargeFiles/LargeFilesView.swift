@@ -26,6 +26,23 @@ struct LargeFilesView: View {
 
     private let categories = ["All", "Folder", "Video", "Image", "Audio", "Archive", "Disk Image", "Document", "Code", "Application", "Other"]
 
+    /// Default production initializer — empty on launch until the user scans.
+    init() {}
+
+    /// Seeds the data-bearing `@State` so the headless snapshot harness (and Xcode
+    /// previews) can render the populated and error layouts, which otherwise only
+    /// appear after a live scan. Not used by the app's normal navigation, which
+    /// constructs the view with the no-arg initializer above.
+    init(
+        snapshotItems: [CleanupItem],
+        snapshotSelection: Set<UUID> = [],
+        snapshotError: String? = nil
+    ) {
+        _largeItems = State(initialValue: snapshotItems)
+        _selectedItems = State(initialValue: snapshotSelection)
+        _errorMessage = State(initialValue: snapshotError)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let errorMessage {

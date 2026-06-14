@@ -37,6 +37,32 @@ A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with 
 
 ## Installation
 
+### Homebrew (recommended)
+
+MacSweep ships as a CLI built from source — no Apple Developer account or code
+signing required. Recent Homebrew gates third-party taps behind a trust check, so
+the install is three commands:
+
+```bash
+brew tap VincentShipsIt/macsweep https://github.com/VincentShipsIt/macsweep
+brew trust --formula vincentshipsit/macsweep/macsweep   # required for 3rd-party taps
+brew install VincentShipsIt/macsweep/macsweep           # pinned stable release
+```
+
+Prefer the bleeding edge from `master`:
+
+```bash
+brew install --HEAD VincentShipsIt/macsweep/macsweep
+```
+
+Verify the install, then keep it current:
+
+```bash
+macsweep version
+macsweep self-update           # prints the upgrade command
+macsweep self-update --yes     # runs `brew upgrade` now
+```
+
 ### Build from Source
 
 ```bash

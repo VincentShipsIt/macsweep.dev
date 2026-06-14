@@ -527,6 +527,43 @@ public actor MacSweepHeadlessService {
         try await runHomebrewLeavesOnMain()
     }
 
+    // MARK: - Schedule (shared suite domain with the GUI scheduler)
+
+    /// Report the configured background-scan interval and next run time. The plain
+    /// `SchedulerConfig` value type is `Sendable` and touches no main-actor state, so
+    /// it is used directly inside the actor — no main hop needed.
+    public func scheduleStatus() async -> HeadlessScheduleReport {
+        let config = SchedulerConfig()
+        return HeadlessScheduleReport(
+            intervalDays: config.intervalDays,
+            intervalSeconds: Int(config.intervalSeconds),
+            nextScheduledScan: config.nextScheduledScan,
+            minIntervalDays: SchedulerConfig.minIntervalDays,
+            maxIntervalDays: SchedulerConfig.maxIntervalDays
+        )
+    }
+
+    /// Set the interval and re-anchor the next scan one interval out so the new
+    /// cadence takes effect immediately rather than at the previously-stored date.
+    public func setScheduleInterval(days: Int) async -> HeadlessScheduleReport {
+        let config = SchedulerConfig()
+        config.setIntervalDays(days)
+        config.setNextScheduledScan(Date(timeIntervalSinceNow: config.intervalSeconds))
+        return HeadlessScheduleReport(
+            intervalDays: config.intervalDays,
+            intervalSeconds: Int(config.intervalSeconds),
+            nextScheduledScan: config.nextScheduledScan,
+            minIntervalDays: SchedulerConfig.minIntervalDays,
+            maxIntervalDays: SchedulerConfig.maxIntervalDays
+        )
+    }
+
+    // MARK: - Self-update (delegates to @MainActor service)
+
+    public func selfUpdate(apply: Bool) async throws -> HeadlessSelfUpdateResult {
+        try await runSelfUpdateOnMain(apply: apply)
+    }
+
     // MARK: - Shred
 
     public func shred(path: String, level: String) async throws -> HeadlessShredResult {
@@ -794,6 +831,32 @@ private func runHomebrewLeavesOnMain() async throws -> HeadlessHomebrewLeavesRep
     }
     let leaves = await service.leaves()
     return HeadlessHomebrewLeavesReport(count: leaves.count, leaves: leaves)
+}
+
+@MainActor
+private func runSelfUpdateOnMain(apply: Bool) async throws -> HeadlessSelfUpdateResult {
+    let command = HomebrewService.selfUpgradeCommand
+    let current = MacSweepVersion.current
+    // Default (no --yes): just report the command; never require brew to be present.
+    guard apply else {
+        return HeadlessSelfUpdateResult(
+            currentVersion: current,
+            upgradeCommand: command,
+            applied: false,
+            log: nil
+        )
+    }
+    let service = HomebrewService()
+    guard service.brewExists() else {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    let result = await service.selfUpgrade()
+    return HeadlessSelfUpdateResult(
+        currentVersion: current,
+        upgradeCommand: command,
+        applied: result.success,
+        log: result.log
+    )
 }
 
 // MARK: - Process bridges

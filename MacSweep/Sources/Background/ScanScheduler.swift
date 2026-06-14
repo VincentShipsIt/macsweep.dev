@@ -7,7 +7,10 @@ class ScanScheduler {
     static let shared = ScanScheduler()
     static let taskIdentifier = "com.vincentshipsit.macsweep.weeklyscan"
 
-    private let scanIntervalSeconds: TimeInterval = 7 * 24 * 60 * 60 // 7 days
+    // Interval and next-scan date live in the shared suite domain so the `macsweep`
+    // CLI (`schedule status` / `set-interval`) can read and steer this scheduler
+    // even though it runs as a separate process.
+    private let config = SchedulerConfig()
     private var timer: Timer?
 
     func register() {
@@ -15,20 +18,20 @@ class ScanScheduler {
     }
 
     func scheduleWeeklyScan() {
-        // Store next scan date
-        let nextScanDate = Date(timeIntervalSinceNow: scanIntervalSeconds)
-        UserDefaults.standard.set(nextScanDate, forKey: "nextScheduledScan")
+        // Store next scan date one interval out (interval is user-configurable via CLI).
+        let nextScanDate = Date(timeIntervalSinceNow: config.intervalSeconds)
+        config.setNextScheduledScan(nextScanDate)
         scheduleTimer(for: nextScanDate)
     }
 
     func cancelScheduledScan() {
         timer?.invalidate()
         timer = nil
-        UserDefaults.standard.removeObject(forKey: "nextScheduledScan")
+        config.setNextScheduledScan(nil)
     }
 
     private func scheduleIfNeeded() {
-        if let nextDate = UserDefaults.standard.object(forKey: "nextScheduledScan") as? Date {
+        if let nextDate = config.nextScheduledScan {
             if nextDate > Date() {
                 scheduleTimer(for: nextDate)
             } else {

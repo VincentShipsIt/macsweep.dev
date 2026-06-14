@@ -408,6 +408,62 @@ struct CLICommandParserTests {
         #expect(try CLICommandParser.parse(["monitor"]) == .monitor(.text))
         #expect(try CLICommandParser.parse(["monitor", "--format", "json"]) == .monitor(.json))
     }
+
+    // MARK: - schedule
+
+    @Test func parsesScheduleStatus() throws {
+        #expect(try CLICommandParser.parse(["schedule", "status"]) == .scheduleStatus(.text))
+        #expect(try CLICommandParser.parse(["schedule", "status", "--format", "json"]) == .scheduleStatus(.json))
+    }
+
+    @Test func parsesScheduleSetInterval() throws {
+        #expect(try CLICommandParser.parse(["schedule", "set-interval", "14"])
+            == .scheduleSetInterval(days: 14, format: .text))
+        #expect(try CLICommandParser.parse(["schedule", "set-interval", "30", "--format", "json"])
+            == .scheduleSetInterval(days: 30, format: .json))
+    }
+
+    @Test func scheduleSetIntervalInvalidRejected() throws {
+        #expect(throws: CLIParseError.invalidValue(flag: "<days>", value: "soon")) {
+            try CLICommandParser.parse(["schedule", "set-interval", "soon"])
+        }
+        // Zero and negative are non-positive → invalid, not clamped at parse time.
+        #expect(throws: CLIParseError.invalidValue(flag: "<days>", value: "0")) {
+            try CLICommandParser.parse(["schedule", "set-interval", "0"])
+        }
+    }
+
+    @Test func scheduleSetIntervalMissingValueRejected() throws {
+        #expect(throws: CLIParseError.missingValue("schedule set-interval <days>")) {
+            try CLICommandParser.parse(["schedule", "set-interval"])
+        }
+    }
+
+    @Test func scheduleMissingSubcommandRejected() throws {
+        #expect(throws: CLIParseError.missingSubcommand("schedule")) {
+            try CLICommandParser.parse(["schedule"])
+        }
+    }
+
+    @Test func scheduleUnknownSubcommandRejected() throws {
+        #expect(throws: CLIParseError.unknownCommand("schedule frobnicate")) {
+            try CLICommandParser.parse(["schedule", "frobnicate"])
+        }
+    }
+
+    // MARK: - self-update
+
+    @Test func parsesSelfUpdate() throws {
+        #expect(try CLICommandParser.parse(["self-update"]) == .selfUpdate(apply: false, format: .text))
+        #expect(try CLICommandParser.parse(["self-update", "--format", "json"])
+            == .selfUpdate(apply: false, format: .json))
+    }
+
+    @Test func parsesSelfUpdateYes() throws {
+        #expect(try CLICommandParser.parse(["self-update", "--yes"]) == .selfUpdate(apply: true, format: .text))
+        #expect(try CLICommandParser.parse(["self-update", "--yes", "--format", "json"])
+            == .selfUpdate(apply: true, format: .json))
+    }
 }
 
 /// Exit-code contract: the mapping from a thrown error to a process exit code is

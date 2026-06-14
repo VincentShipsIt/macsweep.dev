@@ -161,6 +161,20 @@ Only return the JSON array, no other text.
             .filter { !$0.isEmpty }
     }
 
+    /// Homebrew command that upgrades MacSweep itself via its tap. Printed by the
+    /// CLI's `self-update` (no `--yes`) so the user can run it manually, and executed
+    /// directly by `selfUpgrade()`.
+    static let selfUpgradeCommand = "brew upgrade vincentshipsit/macsweep/macsweep"
+
+    /// Upgrade the installed `macsweep` formula in place. Caller is responsible for
+    /// checking `brewExists()` first; this guards too and returns a sentinel log so
+    /// the headless layer can map the absence to the right exit code.
+    func selfUpgrade() async -> (success: Bool, log: String) {
+        guard brewExists() else { return (false, "brew_not_found") }
+        let output = shell("\(brewPath()) upgrade vincentshipsit/macsweep/macsweep 2>&1")
+        return (true, output)
+    }
+
     // MARK: - Private
 
     private func runUpgrade(args: String) async {

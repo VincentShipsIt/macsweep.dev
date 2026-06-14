@@ -37,6 +37,9 @@ public enum CLICommand: Sendable, Equatable {
     case processesQuit(target: String, force: Bool, yes: Bool, format: CLIOutputFormat)
     case privacyClear(action: String, yes: Bool, format: CLIOutputFormat)
     case monitor(CLIOutputFormat)
+    case scheduleStatus(CLIOutputFormat)
+    case scheduleSetInterval(days: Int, format: CLIOutputFormat)
+    case selfUpdate(apply: Bool, format: CLIOutputFormat)
     case help
 }
 
@@ -112,6 +115,10 @@ public enum CLICommandParser {
             return try parsePrivacy(arguments.dropFirst())
         case "monitor":
             return try parseMonitor(arguments.dropFirst())
+        case "schedule":
+            return try parseSchedule(arguments.dropFirst())
+        case "self-update":
+            return try parseSelfUpdate(arguments.dropFirst())
         case "help", "--help", "-h":
             return .help
         default:
@@ -466,6 +473,41 @@ public enum CLICommandParser {
         }
     }
 
+    private static func parseSchedule(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("schedule")
+        }
+
+        switch subcommand {
+        case "status":
+            return .scheduleStatus(try parseTrailingFormat(args.dropFirst()))
+        case "set-interval":
+            let rest = args.dropFirst()
+            guard let value = rest.first else {
+                throw CLIParseError.missingValue("schedule set-interval <days>")
+            }
+            guard let days = Int(value), days > 0 else {
+                throw CLIParseError.invalidValue(flag: "<days>", value: value)
+            }
+            return .scheduleSetInterval(days: days, format: try parseTrailingFormat(rest.dropFirst()))
+        default:
+            throw CLIParseError.unknownCommand("schedule \(subcommand)")
+        }
+    }
+
+    private static func parseSelfUpdate(_ args: ArraySlice<String>) throws -> CLICommand {
+        var apply = false
+        var rest: [String] = []
+        for arg in args {
+            if arg == "--yes" {
+                apply = true
+            } else {
+                rest.append(arg)
+            }
+        }
+        return .selfUpdate(apply: apply, format: try parseTrailingFormat(ArraySlice(rest)))
+    }
+
     private static func parseShred(_ args: ArraySlice<String>) throws -> CLICommand {
         var path: String?
         var level = "standard"
@@ -779,6 +821,9 @@ public enum CLIHelp {
       macsweep privacy clear-terminal-history [--yes] [--format json|text]
       macsweep privacy clear-recent-docs [--yes] [--format json|text]
       macsweep monitor [--format json|text]
+      macsweep schedule status [--format json|text]
+      macsweep schedule set-interval <days> [--format json|text]
+      macsweep self-update [--yes] [--format json|text]
       macsweep version [--format json|text]
     """
 }

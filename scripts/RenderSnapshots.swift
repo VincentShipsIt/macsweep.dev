@@ -52,11 +52,209 @@ struct SnapshotRenderer {
             FileHandle.standardError.write(Data("rendered \(name) ok=\(ok) bytes=\(bytes)\n".utf8))
         }
 
+        // Data-state variants: the loop above captures every feature's empty launch
+        // state; these extra passes capture the populated and error layouts of the
+        // three deletion-bearing flows, which only render once a scan has data.
+        for (slug, view) in dataStateVariants(size: shellSize) {
+            index += 1
+            let name = String(format: "%02d-%@", index, slug)
+            let url = outDir.appendingPathComponent("\(name).png")
+            let ok = renderToPNG(view, size: shellSize, to: url)
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            results.append((name, ok, bytes))
+            FileHandle.standardError.write(Data("rendered \(name) ok=\(ok) bytes=\(bytes)\n".utf8))
+        }
+
         // Summary line for the shell wrapper to parse.
         let good = results.filter { $0.1 && $0.2 > 5000 }.count
         FileHandle.standardError.write(Data("SNAPSHOT_SUMMARY rendered=\(results.count) usable=\(good) dir=\(outDir.path)\n".utf8))
         print("SNAPSHOT_DONE \(results.count) \(good) \(outDir.path)")
         exit(0)
+    }
+
+    // MARK: - Data-state variants
+
+    /// Builds the populated / error layouts for the three deletion-bearing flows.
+    /// SystemCleanup reads its rows straight off `AppState`; LargeFiles and the
+    /// Uninstaller hold local `@State`, so they take the snapshot-injection
+    /// initializers added on each view. Every view still renders through the real
+    /// composed body — only the seed data is synthetic.
+    @MainActor
+    static func dataStateVariants(size: CGSize) -> [(String, AnyView)] {
+        func wrap<V: View>(_ view: V, appState: AppState) -> AnyView {
+            AnyView(
+                view
+                    .environmentObject(appState)
+                    .environment(\.colorScheme, .dark)
+                    .frame(width: size.width, height: size.height)
+            )
+        }
+
+        let cleanupState = AppState()
+        let cleanupItems = sampleCleanupItems()
+        cleanupState.scanResults = cleanupItems
+        cleanupState.selectedItems = Set(cleanupItems.prefix(3).map(\.id))
+
+        let largeItems = sampleLargeItems()
+        let largeSelection = Set(largeItems.prefix(2).map(\.id))
+
+        let apps = sampleApps()
+        let orphans = sampleOrphans()
+
+        return [
+            ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
+            ("large-old-files-results", wrap(
+                LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
+                appState: AppState()
+            )),
+            ("large-old-files-error", wrap(
+                LargeFilesView(
+                    snapshotItems: [],
+                    snapshotError: "Couldn't scan for large files: permission denied"
+                ),
+                appState: AppState()
+            )),
+            ("uninstaller-results", wrap(
+                AppUninstallerView(
+                    snapshotApps: apps,
+                    snapshotSelectedApp: apps.first,
+                    snapshotOrphans: orphans
+                ),
+                appState: AppState()
+            )),
+            ("uninstaller-error", wrap(
+                AppUninstallerView(
+                    snapshotApps: [],
+                    snapshotError: "Couldn't uninstall Google Chrome: Administrator privileges required"
+                ),
+                appState: AppState()
+            )),
+        ]
+    }
+
+    // MARK: - Sample data
+
+    /// Fixed reference instant so successive renders produce stable "modified N
+    /// days ago" labels; this binary is free to call `Date()` but a frozen base
+    /// keeps the snapshots reproducible across runs.
+    private static let sampleBaseDate = Date(timeIntervalSince1970: 1_749_000_000)
+
+    private static func daysAgo(_ days: Double) -> Date {
+        sampleBaseDate.addingTimeInterval(-days * 86_400)
+    }
+
+    /// System-junk rows for the SystemCleanup results layout: a realistic spread
+    /// of cache/log directories across browsers, dev tooling and the OS.
+    @MainActor
+    static func sampleCleanupItems() -> [CleanupItem] {
+        func item(_ name: String, _ size: Int64, _ moduleName: String, _ age: Double) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/Library/Caches/\(name)"),
+                size: size,
+                type: .directory,
+                module: "system-cleanup",
+                moduleName: moduleName,
+                lastModified: daysAgo(age)
+            )
+        }
+        return [
+            item("com.apple.Safari", 1_240_000_000, "Browser Cache", 2),
+            item("Google/Chrome/Default", 4_100_000_000, "Browser Cache", 1),
+            item("com.apple.dt.Xcode", 2_600_000_000, "Developer Cache", 5),
+            item("Homebrew/downloads", 980_000_000, "Developer Cache", 9),
+            item("com.apple.appstore", 312_000_000, "System Cache", 14),
+            item("CrashReporter/diagnostics", 94_000_000, "System Logs", 21),
+        ]
+    }
+
+    /// Large-file rows for the LargeFiles results layout. The `moduleName` of each
+    /// row drives the category colour/icon in the view, so the sample spans the
+    /// distinct categories the view knows about. Every size is >= the 100 MB floor
+    /// the view filters on so all rows survive into `filteredItems`.
+    @MainActor
+    static func sampleLargeItems() -> [CleanupItem] {
+        func item(_ path: String, _ size: Int64, _ type: CleanupItem.ItemType, _ moduleName: String, _ age: Double) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: path),
+                size: size,
+                type: type,
+                module: "large-files",
+                moduleName: moduleName,
+                lastModified: daysAgo(age)
+            )
+        }
+        return [
+            item("/Users/you/Movies/wwdc-keynote-4k.mov", 6_800_000_000, .file, "Video", 40),
+            item("/Users/you/Downloads/Xcode_16.xip", 7_200_000_000, .file, "Archive", 120),
+            item("/Users/you/Downloads/Sonoma-installer.dmg", 13_400_000_000, .file, "Disk Image", 200),
+            item("/Users/you/Projects/old-monorepo", 3_900_000_000, .directory, "Folder", 95),
+            item("/Users/you/Documents/architecture-review.pdf", 142_000_000, .file, "Document", 310),
+            item("/Users/you/Music/Logic/session-stems.logicx", 2_100_000_000, .directory, "Audio", 58),
+        ]
+    }
+
+    /// Three installed apps with their per-app leftovers for the Uninstaller
+    /// results layout. `icon: nil` is handled by AppListRow (falls back to an SF
+    /// Symbol), so no real bundle on disk is needed.
+    @MainActor
+    static func sampleApps() -> [InstalledApp] {
+        func leftover(_ path: String, _ size: Int64, _ type: AppLeftover.LeftoverType) -> AppLeftover {
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: path), size: size, type: type)
+        }
+        let chrome = InstalledApp(
+            id: "com.google.Chrome",
+            name: "Google Chrome",
+            bundlePath: URL(fileURLWithPath: "/Applications/Google Chrome.app"),
+            version: "126.0.6478.62",
+            bundleSize: 1_480_000_000,
+            icon: nil,
+            lastUsed: daysAgo(1),
+            leftovers: [
+                leftover("~/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
+                leftover("~/Library/Caches/Google/Chrome", 540_000_000, .caches),
+                leftover("~/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
+            ]
+        )
+        let figma = InstalledApp(
+            id: "com.figma.Desktop",
+            name: "Figma",
+            bundlePath: URL(fileURLWithPath: "/Applications/Figma.app"),
+            version: "124.6.4",
+            bundleSize: 720_000_000,
+            icon: nil,
+            lastUsed: daysAgo(6),
+            leftovers: [
+                leftover("~/Library/Application Support/Figma", 410_000_000, .applicationSupport),
+                leftover("~/Library/Logs/Figma", 26_000_000, .logs),
+            ]
+        )
+        let slack = InstalledApp(
+            id: "com.tinyspeck.slackmacgap",
+            name: "Slack",
+            bundlePath: URL(fileURLWithPath: "/Applications/Slack.app"),
+            version: "4.38.121",
+            bundleSize: 310_000_000,
+            icon: nil,
+            lastUsed: daysAgo(30),
+            leftovers: [
+                leftover("~/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
+                leftover("~/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
+            ]
+        )
+        return [chrome, figma, slack]
+    }
+
+    /// Orphaned leftovers (apps no longer installed) for the Uninstaller's
+    /// orphan-cleanup affordance.
+    @MainActor
+    static func sampleOrphans() -> [AppLeftover] {
+        [
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
+        ]
     }
 
     // MARK: - Output dir
