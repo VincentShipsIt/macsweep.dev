@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-14
+
 ### Added
 
 - `macsweep self-update` — prints the Homebrew upgrade command, or runs it with `--yes`.
@@ -14,6 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configure the weekly background-scan interval. The CLI and the GUI scheduler share
   the same `com.vincentshipsit.macsweep` preferences domain, so a change from either
   side is honoured by the other.
+- CLI parity for network, running processes, privacy, and system monitoring.
+- Deeper malware scanning — crontab `@reboot` indicators, Firefox profile coverage,
+  Homebrew dependency/leaves analysis, and minimum-size gating.
+
+### Changed
+
+- The GUI now surfaces deletion and scan errors instead of silently swallowing them.
+- Malware scanner: full-path pipe detection plus a dedicated `threatsFound` exit code.
+
+### Security
+
+- **Closed a GUI deletion bypass** — all cleanup now routes through
+  `ScanEngine`/`DeletionGuard`, so deletions initiated from the GUI pass the same
+  default-deny safety checks, protected-path rules, and aggregate size cap as the CLI.
+
+### Internal
+
+- CLI exit-code contract with partial-scan surfacing and parser test coverage.
+- Safety-critical unit tests: `DeletionGuard`, `LoginItemController`, assistant
+  watchlist, `CacheAnalyzer`, duplicate finder, malware pipeline, login enumerator.
+- Release tooling: a tag-gated Homebrew CI job (validates the formula `sha256` against
+  its pinned tarball, then installs build-from-source and runs `brew test`), five
+  headless data-state snapshot variants for the deletion-bearing flows, and
+  version-sync automation across the CLI and Xcode project.
 
 ## [1.0.1] - 2026-06-14
 
@@ -65,6 +91,7 @@ Initial public release — a CLI-first native macOS system cleaner.
 - **Homebrew distribution** — build-from-source formula, no Apple Developer account
   or code signing required.
 
-[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VincentShipsIt/macsweep/releases/tag/v1.0.0
