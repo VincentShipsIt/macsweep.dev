@@ -12,9 +12,17 @@ private enum ModulePermissionCatalog {
 }
 
 public actor MacSweepHeadlessService {
-    private let engine = ScanEngine()
+    private let engine: ScanEngine
 
-    public init() {}
+    public init() {
+        self.engine = ScanEngine()
+    }
+
+    /// Test seam: inject a ScanEngine with stub modules to exercise partial-scan
+    /// surfacing (and other engine-backed paths) without touching real modules.
+    init(engine: ScanEngine) {
+        self.engine = engine
+    }
 
     public func listModules() async -> [HeadlessModuleDescriptor] {
         let modules = await engine.registeredModules()
@@ -92,10 +100,17 @@ public actor MacSweepHeadlessService {
         let executedModuleIDs = modules.map(\.id)
 
         let items: [CleanupItem]
+        let scanFailures: [ModuleScanFailure]
         if request.smartCare {
             items = try await engine.smartCareScan()
+            scanFailures = []
         } else {
-            items = try await engine.scan(modules: executedModuleIDs)
+            // Use the diagnostics variant so a module that throws is captured as a
+            // failure instead of silently dropped — the caller surfaces it as a
+            // partial scan (and the CLI turns it into a nonzero exit code).
+            let partial = await engine.scanWithDiagnostics(modules: executedModuleIDs)
+            items = partial.items
+            scanFailures = partial.failures
         }
 
         let diskUsage = await DiskUsage.current()
@@ -131,7 +146,13 @@ public actor MacSweepHeadlessService {
                 categoryCount: smartCareSummary.findings.count,
                 recommendedFindings: recommendedItems.count,
                 recommendedBytes: recommendedItems.reduce(0) { $0 + $1.size },
-                errors: []
+                // Per-module scan failures, surfaced so a partial scan is visible
+                // rather than masquerading as a smaller-but-complete result. `path`
+                // carries the module id (the locus of the failure) since a scan
+                // error is not tied to a single filesystem path.
+                errors: scanFailures.map {
+                    HeadlessCleanupError(path: $0.moduleID, message: $0.message)
+                }
             )
         )
 

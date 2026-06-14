@@ -30,7 +30,7 @@ public enum CLICommand: Sendable, Equatable {
     case help
 }
 
-public enum CLIParseError: Error, LocalizedError, Sendable {
+public enum CLIParseError: Error, LocalizedError, Sendable, Equatable {
     case missingCommand
     case unknownCommand(String)
     case missingValue(String)

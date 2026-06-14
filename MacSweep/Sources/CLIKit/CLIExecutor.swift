@@ -125,6 +125,11 @@ public enum CLIExitCode: Int32 {
     // "threats found" without conflating it with an operational error. `review`
     // items are not threats and do NOT trigger this — only `!isClean` does.
     case threatsFound = 6
+    // `homebrew outdated` completed and found one or more packages with a newer
+    // version. Distinct from `generic` so an agent/script can branch on "updates
+    // exist" (like `git diff --exit-code`) without parsing output. Zero outdated
+    // → success. Not in `exitCode(for:)`: it's a success-path result, not an error.
+    case updatesAvailable = 7
 }
 
 public enum CLIExecutor {
@@ -145,7 +150,10 @@ public enum CLIExecutor {
                 cleanup: nil,
                 format: format
             )
-            return CLIExitCode.success.rawValue
+            // A partial scan (one or more modules threw) completed but is missing
+            // results; signal it via exit 1 so scripts don't trust an undercount,
+            // while still emitting whatever did scan.
+            return result.summary.errors.isEmpty ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .dryRun(let request, let format):
             let plan = try await service.prepareCleanup(request: request)
@@ -155,7 +163,7 @@ public enum CLIExecutor {
                 cleanup: plan.cleanupPreview,
                 format: format
             )
-            return CLIExitCode.success.rawValue
+            return plan.scan.summary.errors.isEmpty ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .apply(let request, let yes, let format):
             let plan = try await service.prepareCleanup(request: request)
@@ -169,7 +177,10 @@ public enum CLIExecutor {
                 cleanup: result.cleanup,
                 format: format
             )
-            return CLIExitCode.success.rawValue
+            // Fail if EITHER the scan was partial (modules threw) OR the cleanup
+            // hit per-item delete errors — both leave the operation incomplete.
+            let applyHadErrors = !result.scan.summary.errors.isEmpty || !result.cleanup.errors.isEmpty
+            return applyHadErrors ? CLIExitCode.generic.rawValue : CLIExitCode.success.rawValue
 
         case .maintenance(let actionID, let format):
             let result = try await service.runMaintenance(actionID: actionID)
@@ -330,7 +341,9 @@ public enum CLIExecutor {
                 report: report
             )
             try emit(output, format: format)
-            return CLIExitCode.success.rawValue
+            // Exit 7 when updates exist so an agent can gate `homebrew upgrade` on
+            // the process result alone. All up to date → success.
+            return report.outdatedCount > 0 ? CLIExitCode.updatesAvailable.rawValue : CLIExitCode.success.rawValue
 
         case .homebrewUpgrade(let yes, let format):
             if !yes {
@@ -439,6 +452,15 @@ public enum CLIExecutor {
                 "Reclaimable: \(ByteCountFormatter.string(fromByteCount: output.summary.reclaimableBytes, countStyle: .file))",
                 "Score: \(output.summary.score)"
             ]
+
+            // Partial scan: one or more modules threw. Surface it prominently so a
+            // human sees the undercount, mirroring the nonzero exit code.
+            if !output.summary.errors.isEmpty {
+                lines.append("Partial scan: \(output.summary.errors.count) module(s) failed")
+                lines.append(contentsOf: output.summary.errors.map {
+                    "  ! [\($0.path)] \($0.message)"
+                })
+            }
 
             if let cleanup = output.cleanup {
                 lines.append(
