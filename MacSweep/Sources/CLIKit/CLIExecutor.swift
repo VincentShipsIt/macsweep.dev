@@ -120,6 +120,11 @@ public enum CLIExitCode: Int32 {
     case confirmationRequired = 3
     case notFound = 4
     case refused = 5
+    // A read-only scan that COMPLETED but surfaced a genuine threat
+    // (suspicious/malicious). Distinct from `generic` so an agent can branch on
+    // "threats found" without conflating it with an operational error. `review`
+    // items are not threats and do NOT trigger this — only `!isClean` does.
+    case threatsFound = 6
 }
 
 public enum CLIExecutor {
@@ -310,7 +315,10 @@ public enum CLIExecutor {
                 report: report
             )
             try emit(output, format: format)
-            return CLIExitCode.success.rawValue
+            // Scan ran successfully; signal a genuine threat via exit code so agents
+            // can branch on the process result, not just parse output. `review`/
+            // unknown items keep the scan clean (isClean ignores them) → exit 0.
+            return report.isClean ? CLIExitCode.success.rawValue : CLIExitCode.threatsFound.rawValue
 
         case .homebrewOutdated(let format):
             let report = try await service.homebrewOutdated()
