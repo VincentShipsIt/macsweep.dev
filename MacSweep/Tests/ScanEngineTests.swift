@@ -209,6 +209,104 @@ struct ScanEngineTests {
         #expect(calls.isEmpty)
     }
 
+    // MARK: - Partial-scan diagnostics
+
+    struct ScanFailure: Error {}
+
+    /// A module whose scan() either throws or returns a fixed set of items,
+    /// for exercising partial-scan capture without touching the real filesystem.
+    struct ScanOutcomeModule: ScanModule {
+        let id: String
+        let name: String
+        let description: String
+        let icon: String = "testtube.2"
+        let shouldThrow: Bool
+        let itemsToReturn: [CleanupItem]
+
+        func scan() async throws -> [CleanupItem] {
+            if shouldThrow { throw ScanFailure() }
+            return itemsToReturn
+        }
+
+        func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+            CleanupResult(itemsProcessed: 0, bytesFreed: 0)
+        }
+    }
+
+    @Test func scanWithDiagnosticsCapturesModuleFailures() async {
+        // A temp-dir path resolves under /var/folders (a safe cache root), so the
+        // healthy module's item survives the scan-time safety filter.
+        let tmp = FileManager.default.temporaryDirectory
+        let healthyItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("healthy.tmp"),
+            size: 256,
+            type: .file,
+            module: "healthy",
+            moduleName: "Healthy"
+        )
+
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(id: "healthy", name: "Healthy", description: "Healthy",
+                              shouldThrow: false, itemsToReturn: [healthyItem]),
+            ScanOutcomeModule(id: "broken", name: "Broken", description: "Broken",
+                              shouldThrow: true, itemsToReturn: []),
+        ])
+
+        let result = await engine.scanWithDiagnostics()
+
+        #expect(result.items == [healthyItem])
+        #expect(result.isPartial)
+        #expect(result.failures.count == 1)
+        #expect(result.failures.first?.moduleID == "broken")
+    }
+
+    @Test func scanWithDiagnosticsReportsCompleteWhenNoFailures() async {
+        let tmp = FileManager.default.temporaryDirectory
+        let healthyItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("healthy.tmp"),
+            size: 256,
+            type: .file,
+            module: "healthy",
+            moduleName: "Healthy"
+        )
+
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(id: "healthy", name: "Healthy", description: "Healthy",
+                              shouldThrow: false, itemsToReturn: [healthyItem]),
+        ])
+
+        let result = await engine.scanWithDiagnostics()
+
+        #expect(result.items == [healthyItem])
+        #expect(!result.isPartial)
+        #expect(result.failures.isEmpty)
+    }
+
+    @Test func scanShimDropsFailedModulesSilently() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+        let healthyItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("healthy.tmp"),
+            size: 256,
+            type: .file,
+            module: "healthy",
+            moduleName: "Healthy"
+        )
+
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(id: "healthy", name: "Healthy", description: "Healthy",
+                              shouldThrow: false, itemsToReturn: [healthyItem]),
+            ScanOutcomeModule(id: "broken", name: "Broken", description: "Broken",
+                              shouldThrow: true, itemsToReturn: []),
+        ])
+
+        // Back-compat shim returns only the items, swallowing the failure.
+        let items = try await engine.scan()
+        #expect(items == [healthyItem])
+    }
+
     @Test func cleanAllowsOversizedDryRunPreview() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [

@@ -211,10 +211,17 @@ struct CloudCleanupView: View {
     }
 
     private func cleanSelected() async {
-        let module = CloudCleanupModule()
         let itemsToClean = filteredItems.filter { selectedItems.contains($0.id) }
 
-        _ = try? await module.clean(items: itemsToClean, dryRun: false)
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
+        // module's own delete. A blocked delete throws and is caught here.
+        let engine = ScanEngine()
+        do {
+            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+        } catch {
+            print("Cloud cleanup error: \(error)")
+        }
         cloudItems.removeAll { selectedItems.contains($0.id) }
         selectedItems.removeAll()
     }

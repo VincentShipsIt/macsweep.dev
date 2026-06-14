@@ -309,9 +309,16 @@ struct PackageManagersView: View {
 
     private func cleanSelected() async {
         let itemsToClean = cacheItems.filter { selectedItems.contains($0.id) }
-        let module = PackageManagerModule()
 
-        _ = try? await module.clean(items: itemsToClean, dryRun: false)
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
+        // module's own delete. A blocked delete throws and is caught here.
+        let engine = ScanEngine()
+        do {
+            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+        } catch {
+            print("Package manager cleanup error: \(error)")
+        }
 
         // Refresh
         cacheItems.removeAll { selectedItems.contains($0.id) }

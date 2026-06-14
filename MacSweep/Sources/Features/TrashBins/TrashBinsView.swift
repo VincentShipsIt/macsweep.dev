@@ -219,9 +219,16 @@ struct TrashBinsView: View {
 
     private func deleteSelected() async {
         let itemsToDelete = trashItems.filter { selectedItems.contains($0.id) }
-        let module = TrashBinsModule()
 
-        _ = try? await module.clean(items: itemsToDelete, dryRun: false)
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
+        // module's own delete. A blocked delete throws and is caught here.
+        let engine = ScanEngine()
+        do {
+            _ = try await engine.clean(items: itemsToDelete, dryRun: false)
+        } catch {
+            print("Trash bins cleanup error: \(error)")
+        }
 
         // Refresh
         await scanTrash()

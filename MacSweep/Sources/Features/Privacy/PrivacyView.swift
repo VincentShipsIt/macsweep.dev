@@ -219,9 +219,16 @@ struct PrivacyView: View {
 
     private func cleanSelected() async {
         let itemsToClean = privacyItems.filter { selectedCategories.contains($0.moduleName) }
-        let module = PrivacyModule()
 
-        _ = try? await module.clean(items: itemsToClean, dryRun: false)
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
+        // module's own delete. A blocked delete throws and is caught here.
+        let engine = ScanEngine()
+        do {
+            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+        } catch {
+            print("Privacy cleanup error: \(error)")
+        }
 
         // Refresh
         await scanPrivacy()

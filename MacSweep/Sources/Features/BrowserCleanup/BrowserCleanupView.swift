@@ -230,11 +230,14 @@ struct BrowserCleanupView: View {
     private func cleanSelected() async {
         let itemsToClean = allItems.filter { selectedItems.contains($0.id) }
 
-        for browser in browsers {
-            let browserItems = itemsToClean.filter { $0.module == browser.id }
-            if !browserItems.isEmpty {
-                _ = try? await browser.clean(items: browserItems, dryRun: false)
-            }
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) applies. The engine
+        // groups items by module id and dispatches to each browser itself.
+        let engine = ScanEngine()
+        do {
+            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+        } catch {
+            print("Browser cleanup error: \(error)")
         }
 
         // Rescan

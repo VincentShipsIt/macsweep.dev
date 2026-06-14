@@ -178,7 +178,10 @@ public enum CLIExecutor {
                 result: result
             )
             try emit(output, format: format)
-            return CLIExitCode.success.rawValue
+            // A maintenance action that ran but failed (e.g. a helper tool exited
+            // non-zero) must not report success — an agent scripting against the
+            // exit code needs to see the failure.
+            return result.success ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .maintenanceList(let format):
             let actions = await service.maintenanceActions()

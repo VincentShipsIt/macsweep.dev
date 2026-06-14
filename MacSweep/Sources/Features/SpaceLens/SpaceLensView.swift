@@ -9,6 +9,8 @@ struct SpaceLensView: View {
     @State private var selectedNode: DiskNode?
     @State private var diskStats: DiskQuickStats?
     @State private var viewMode: ViewMode = .treemap
+    @State private var nodeToTrash: DiskNode?
+    @State private var showingTrashConfirmation = false
 
     enum ViewMode: String, CaseIterable {
         case treemap = "Treemap"
@@ -181,6 +183,25 @@ struct SpaceLensView: View {
         }
         .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial)
+        .confirmationDialog(
+            "Move to Trash?",
+            isPresented: $showingTrashConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                if let node = nodeToTrash {
+                    moveToTrash(node)
+                }
+                nodeToTrash = nil
+            }
+            Button("Cancel", role: .cancel) {
+                nodeToTrash = nil
+            }
+        } message: {
+            if let node = nodeToTrash {
+                Text("\"\(node.name)\" (\(node.formattedSize)) will be moved to the Trash. You can restore it from there until the Trash is emptied.")
+            }
+        }
     }
 
     private func nodeDetail(_ node: DiskNode) -> some View {
@@ -231,7 +252,8 @@ struct SpaceLensView: View {
                     .glassButton()
 
                     Button {
-                        moveToTrash(node)
+                        nodeToTrash = node
+                        showingTrashConfirmation = true
                     } label: {
                         Label("Move to Trash", systemImage: "trash")
                             .frame(maxWidth: .infinity)

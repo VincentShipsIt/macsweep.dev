@@ -226,9 +226,20 @@ actor SecureDelete {
     }
 
     private static func randomData(size: Int) -> Data {
+        // A zero-length buffer has a nil baseAddress; force-unwrapping it crashed.
+        guard size > 0 else { return Data() }
         var data = Data(count: size)
-        _ = data.withUnsafeMutableBytes { ptr in
-            SecRandomCopyBytes(kSecRandomDefault, size, ptr.baseAddress!)
+        let status = data.withUnsafeMutableBytes { ptr -> Int32 in
+            guard let base = ptr.baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, size, base)
+        }
+        // A secure wipe must never silently fall back to predictable bytes. If
+        // the system CSPRNG is unavailable, fill from the system RNG rather than
+        // leaving the all-zero buffer SecRandomCopyBytes may have left behind.
+        if status != errSecSuccess {
+            for index in 0..<size {
+                data[index] = UInt8.random(in: UInt8.min...UInt8.max)
+            }
         }
         return data
     }
@@ -345,17 +356,29 @@ extension SecureDelete {
                 break
             }
 
-            // Write random data
+            // Write random data. A failure here (e.g. the volume filling
+            // unexpectedly) must surface — silently swallowing it and then
+            // reporting progress 1.0 would falsely claim the wipe succeeded.
+            var writeError: Error?
             var chunkWritten: Int64 = 0
             while chunkWritten < writeSize {
                 let batchSize = min(65536, Int(writeSize - chunkWritten))
                 let data = randomData(size: batchSize)
-                try? writeHandle.write(contentsOf: data)
+                do {
+                    try writeHandle.write(contentsOf: data)
+                } catch {
+                    writeError = error
+                    break
+                }
                 chunkWritten += Int64(batchSize)
             }
 
             try? writeHandle.synchronize()
             try? writeHandle.close()
+
+            if writeError != nil {
+                throw ShredError.writeFailed(tempFile)
+            }
 
             written += writeSize
             fileIndex += 1

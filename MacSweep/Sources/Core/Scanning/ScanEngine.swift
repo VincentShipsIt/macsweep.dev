@@ -14,6 +14,23 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
     }
 }
 
+/// A single module that failed during a scan, captured rather than swallowed.
+struct ModuleScanFailure: Sendable, Equatable {
+    let moduleID: String
+    let message: String
+}
+
+/// Result of a scan that records which modules failed instead of silently
+/// returning a short item list. A partial scan (some modules threw) is still a
+/// useful result, but the caller must be able to tell the user it was partial.
+struct PartialScanResult: Sendable {
+    let items: [CleanupItem]
+    let failures: [ModuleScanFailure]
+
+    /// True when at least one module failed and its results are missing.
+    var isPartial: Bool { !failures.isEmpty }
+}
+
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
@@ -101,8 +118,23 @@ actor ScanEngine {
         try await scan(modules: SmartCareDefaults.moduleIDs)
     }
 
-    /// Scan all modules or specific ones
+    /// Scan all modules or specific ones, returning only the items.
+    ///
+    /// Back-compat shim over ``scanWithDiagnostics(modules:)``. A module that
+    /// throws is dropped from the results; callers that need to know a scan was
+    /// partial (to warn the user) should use ``scanWithDiagnostics(modules:)``.
+    /// Retains `throws` purely so existing `try await` call sites stay valid;
+    /// the body itself never throws.
     func scan(modules moduleIDs: [String]? = nil) async throws -> [CleanupItem] {
+        await scanWithDiagnostics(modules: moduleIDs).items
+    }
+
+    /// Scan all modules or specific ones, capturing per-module failures.
+    ///
+    /// Unlike ``scan(modules:)``, a thrown module error is recorded as a
+    /// ``ModuleScanFailure`` rather than silently swallowed, so the caller can
+    /// surface that the result is partial.
+    func scanWithDiagnostics(modules moduleIDs: [String]? = nil) async -> PartialScanResult {
         let modulesToScan: [any ScanModule]
 
         if let ids = moduleIDs {
@@ -111,28 +143,43 @@ actor ScanEngine {
             modulesToScan = modules
         }
 
-        // Parallel scanning
-        return try await withThrowingTaskGroup(of: [CleanupItem].self) { group in
+        // Each task returns either the module's safe items or a captured failure;
+        // a failing module never tears down the whole group.
+        enum ModuleOutcome: Sendable {
+            case items([CleanupItem])
+            case failure(ModuleScanFailure)
+        }
+
+        return await withTaskGroup(of: ModuleOutcome.self) { group in
             for module in modulesToScan {
                 group.addTask {
                     do {
                         let items = try await module.scan()
                         // Filter through safety checker
-                        return items.filter { item in
+                        let safe = items.filter { item in
                             self.safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
                         }
+                        return .items(safe)
                     } catch {
-                        print("Module \(module.id) scan failed: \(error)")
-                        return []
+                        return .failure(ModuleScanFailure(
+                            moduleID: module.id,
+                            message: error.localizedDescription
+                        ))
                     }
                 }
             }
 
             var allItems: [CleanupItem] = []
-            for try await items in group {
-                allItems.append(contentsOf: items)
+            var failures: [ModuleScanFailure] = []
+            for await outcome in group {
+                switch outcome {
+                case .items(let items):
+                    allItems.append(contentsOf: items)
+                case .failure(let failure):
+                    failures.append(failure)
+                }
             }
-            return allItems
+            return PartialScanResult(items: allItems, failures: failures)
         }
     }
 

@@ -217,6 +217,7 @@ struct SystemCacheModule: ScanModule {
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
+        let checker = SafetyChecker()
 
         for item in items {
             guard item.module == id else { continue }
@@ -225,6 +226,15 @@ struct SystemCacheModule: ScanModule {
                 processedCount += 1
                 bytesFreed += item.size
             } else {
+                // Defense-in-depth: re-validate every item before deleting,
+                // even though scan() already filtered to safe paths.
+                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                    errors.append(CleanupError(
+                        path: item.path,
+                        message: "Blocked by safety checks"
+                    ))
+                    continue
+                }
                 do {
                     if item.type == .directory {
                         // Remove contents but keep the directory

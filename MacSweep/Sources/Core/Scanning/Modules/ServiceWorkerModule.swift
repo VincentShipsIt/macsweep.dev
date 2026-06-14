@@ -135,12 +135,23 @@ struct ServiceWorkerModule: ScanModule {
         var processed = 0
         var freed: Int64 = 0
         var errors: [CleanupError] = []
+        let checker = SafetyChecker()
 
         for item in items where item.module == id {
             if dryRun {
                 processed += 1
                 freed += item.size
             } else {
+                // Defense-in-depth: re-validate every item before deleting,
+                // even though scan() already filtered to safe paths.
+                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                    errors.append(CleanupError(
+                        path: item.path,
+                        message: "Blocked by safety checks"
+                    ))
+                    continue
+                }
+
                 // Check if the app is running
                 let appName = item.moduleName.replacingOccurrences(of: " Service Worker", with: "")
                 if let app = Self.electronApps.first(where: { $0.name == appName }) {
