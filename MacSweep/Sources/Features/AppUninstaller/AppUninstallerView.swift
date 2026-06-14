@@ -9,6 +9,9 @@ struct AppUninstallerView: View {
     @State private var selectedApp: InstalledApp?
     @State private var searchText = ""
     @State private var showingUninstallConfirmation = false
+    @State private var showingCleanOrphansConfirmation = false
+    @State private var isCleaningOrphans = false
+    @State private var errorMessage: String?
     @State private var sortOrder: SortOrder = .name
 
     enum SortOrder: String, CaseIterable {
@@ -18,15 +21,36 @@ struct AppUninstallerView: View {
     }
 
     var body: some View {
-        HSplitView {
-            // App list
-            appListPane
-                .frame(minWidth: 300)
+        VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
 
-            // Detail pane
-            detailPane
-                .frame(minWidth: 350)
+            HSplitView {
+                // App list
+                appListPane
+                    .frame(minWidth: 300)
+
+                // Detail pane
+                detailPane
+                    .frame(minWidth: 350)
+            }
         }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - App List Pane
@@ -165,13 +189,27 @@ struct AppUninstallerView: View {
                 .padding(.horizontal)
 
             Button("Clean Orphans") {
-                // TODO: Clean orphaned leftovers
+                showingCleanOrphansConfirmation = true
             }
             .glassButton(prominent: true)
             .tint(.orange)
+            .disabled(isCleaningOrphans || orphanedLeftovers.isEmpty)
             .padding()
         }
         .background(.ultraThinMaterial)
+        .confirmationDialog(
+            "Move \(orphanedLeftovers.count) orphaned items to Trash?",
+            isPresented: $showingCleanOrphansConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                Task { await cleanOrphans() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            let totalSize = orphanedLeftovers.reduce(0) { $0 + $1.size }
+            Text("This will move \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) of leftover files from uninstalled apps to Trash. You can restore them from Trash if needed.")
+        }
     }
 
     // MARK: - Actions
@@ -200,14 +238,44 @@ struct AppUninstallerView: View {
         let uninstaller = AppUninstaller()
 
         do {
-            let result = try await uninstaller.uninstall(app, includeLeftovers: includeLeftovers)
-            print("Uninstalled \(app.name): \(result.formattedBytesFreed) freed")
+            _ = try await uninstaller.uninstall(app, includeLeftovers: includeLeftovers)
+            errorMessage = nil
 
             // Refresh list
             await loadApps()
             selectedApp = nil
         } catch {
-            print("Uninstall error: \(error)")
+            errorMessage = "Couldn't uninstall \(app.name): \(error.localizedDescription)"
+        }
+    }
+
+    /// Trash the orphaned leftovers through ScanEngine so the full safety pipeline
+    /// (per-item SafetyChecker + aggregate DeletionGuard cap) vets each path — the
+    /// same route the other GUI cleanups take. A blocked delete throws and surfaces
+    /// in the error banner rather than failing silently.
+    private func cleanOrphans() async {
+        isCleaningOrphans = true
+        defer { isCleaningOrphans = false }
+
+        let items = orphanedLeftovers.map { leftover in
+            CleanupItem(
+                id: leftover.id,
+                path: leftover.path,
+                size: leftover.size,
+                type: .directory,
+                module: "app-uninstaller",
+                moduleName: "App Uninstaller"
+            )
+        }
+
+        do {
+            _ = try await ScanEngine().clean(items: items, dryRun: false)
+            errorMessage = nil
+            orphanedLeftovers = []
+            // Re-scan so anything the safety pipeline refused stays visible.
+            await loadApps()
+        } catch {
+            errorMessage = "Couldn't clean orphaned leftovers: \(error.localizedDescription)"
         }
     }
 

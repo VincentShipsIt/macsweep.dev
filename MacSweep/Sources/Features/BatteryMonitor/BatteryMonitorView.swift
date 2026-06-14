@@ -381,9 +381,9 @@ private struct BatteryActionButton: View {
                     .foregroundStyle(.secondary)
             }
             .padding(14)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .glassButton()
     }
 }
 

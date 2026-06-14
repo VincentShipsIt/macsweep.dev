@@ -8,6 +8,7 @@ struct DuplicateFinderView: View {
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
     @State private var sortOrder: SortOrder = .sizeDesc
+    @State private var errorMessage: String?
 
     enum SortOrder: String, CaseIterable {
         case sizeDesc = "Largest First"
@@ -18,6 +19,9 @@ struct DuplicateFinderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
             filterBar
@@ -36,6 +40,21 @@ struct DuplicateFinderView: View {
                 footer
             }
         }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     private var header: some View {
@@ -188,6 +207,7 @@ struct DuplicateFinderView: View {
         isScanning = true
         duplicateItems = []
         selectedItems = []
+        errorMessage = nil
 
         defer { isScanning = false }
 
@@ -197,7 +217,7 @@ struct DuplicateFinderView: View {
             duplicateItems = try await module.scan()
             selectedItems = Set(duplicateItems.map(\.id))
         } catch {
-            print("Duplicate scan error: \(error)")
+            errorMessage = "Couldn't scan for duplicates: \(error.localizedDescription)"
         }
     }
 
@@ -210,8 +230,10 @@ struct DuplicateFinderView: View {
         let engine = ScanEngine()
         do {
             _ = try await engine.clean(items: itemsToDelete, dryRun: false)
+            errorMessage = nil
         } catch {
-            print("Duplicate cleanup error: \(error)")
+            errorMessage = "Couldn't move duplicates to Trash: \(error.localizedDescription)"
+            return
         }
 
         duplicateItems.removeAll { selectedItems.contains($0.id) }

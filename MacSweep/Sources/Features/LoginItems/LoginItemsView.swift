@@ -144,7 +144,7 @@ struct LoginItemsView: View {
                 .foregroundStyle(.secondary)
             Text("No startup items found")
                 .font(.headline)
-            Text("Tap Refresh to scan your system")
+            Text("Click Refresh to scan your system")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

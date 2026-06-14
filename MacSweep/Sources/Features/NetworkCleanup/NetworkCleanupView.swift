@@ -47,9 +47,13 @@ struct WiFiNetworksView: View {
     @State private var showingConfirmation = false
     @State private var currentSSID: String?
     @State private var protectedSSIDs: Set<String> = []
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
 
@@ -69,6 +73,23 @@ struct WiFiNetworksView: View {
         .task {
             await loadNetworks()
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -246,12 +267,23 @@ struct WiFiNetworksView: View {
             .filter { selectedNetworks.contains($0.id) }
             .map(\.ssid)
 
+        var failed: [String] = []
         for ssid in ssidsToRemove {
-            try? WiFiNetworkManager.removeNetwork(ssid)
+            do {
+                try WiFiNetworkManager.removeNetwork(ssid)
+            } catch {
+                failed.append(ssid)
+            }
         }
 
         selectedNetworks.removeAll()
         await loadNetworks()
+
+        if failed.isEmpty {
+            errorMessage = nil
+        } else {
+            errorMessage = "Couldn't remove: \(failed.joined(separator: ", ")). Removing saved networks requires administrator privileges."
+        }
     }
 
     private var containsCurrentNetwork: Bool {
@@ -328,9 +360,13 @@ struct SSHHostsView: View {
     @State private var isLoading = false
     @State private var showingConfirmation = false
     @State private var showingClearAllConfirmation = false
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
 
@@ -350,6 +386,23 @@ struct SSHHostsView: View {
         .task {
             loadHosts()
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -505,15 +558,28 @@ struct SSHHostsView: View {
 
     private func removeSelected() {
         let hostsToRemove = hosts.filter { selectedHosts.contains($0.id) }
+        var failed = 0
         for host in hostsToRemove {
-            try? SSHKnownHostsManager.removeHost(host)
+            do {
+                try SSHKnownHostsManager.removeHost(host)
+            } catch {
+                failed += 1
+            }
         }
         selectedHosts.removeAll()
         loadHosts()
+        errorMessage = failed == 0
+            ? nil
+            : "Couldn't remove \(failed) host\(failed == 1 ? "" : "s") from known_hosts."
     }
 
     private func clearAll() {
-        try? SSHKnownHostsManager.clearAll()
+        do {
+            try SSHKnownHostsManager.clearAll()
+            errorMessage = nil
+        } catch {
+            errorMessage = "Couldn't clear known_hosts: \(error.localizedDescription)"
+        }
         selectedHosts.removeAll()
         loadHosts()
     }

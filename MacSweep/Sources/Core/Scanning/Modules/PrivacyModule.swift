@@ -266,6 +266,10 @@ struct PrivacyActions {
         let appleScript = NSAppleScript(source: script)
         var errorInfo: NSDictionary?
         appleScript?.executeAndReturnError(&errorInfo)
+
+        if let error = errorInfo {
+            throw PrivacyError.scriptFailed(error.description)
+        }
     }
 
     /// Clear Terminal history
@@ -278,14 +282,22 @@ struct PrivacyActions {
 
         let home = FileManager.default.homeDirectoryForCurrentUser
 
+        // Attempt every history file, but surface the first failure instead of
+        // swallowing it — a silent `try?` made a failed clear look successful.
+        var firstError: Error?
         for file in historyFiles {
             let path = home.appending(path: file)
             if FileManager.default.fileExists(atPath: path.path) {
-                // Recoverable: shell history is not regenerable, so route through
-                // the Trash to make an accidental clear undoable.
-                try? CleanupFileRemover.recoverable(path)
+                do {
+                    // Recoverable: shell history is not regenerable, so route
+                    // through the Trash to make an accidental clear undoable.
+                    try CleanupFileRemover.recoverable(path)
+                } catch {
+                    if firstError == nil { firstError = error }
+                }
             }
         }
+        if let firstError { throw firstError }
     }
 
     /// Clear clipboard

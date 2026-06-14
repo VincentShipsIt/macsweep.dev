@@ -7,6 +7,7 @@ struct BrowserCleanupView: View {
     @State private var browserResults: [BrowserScanResult] = []
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
+    @State private var errorMessage: String?
 
     private let browsers: [any BrowserModule] = [
         ChromeModule(),
@@ -21,6 +22,9 @@ struct BrowserCleanupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
 
             Divider()
@@ -38,6 +42,23 @@ struct BrowserCleanupView: View {
                 footer
             }
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -196,9 +217,11 @@ struct BrowserCleanupView: View {
         isScanning = true
         browserResults = []
         selectedItems = []
+        errorMessage = nil
 
         defer { isScanning = false }
 
+        var failedBrowsers: [String] = []
         for browser in browsers {
             guard browser.isInstalled else { continue }
 
@@ -215,8 +238,12 @@ struct BrowserCleanupView: View {
                     browserResults.append(result)
                 }
             } catch {
-                print("Error scanning \(browser.name): \(error)")
+                failedBrowsers.append(browser.name)
             }
+        }
+
+        if !failedBrowsers.isEmpty {
+            errorMessage = "Couldn't scan: \(failedBrowsers.joined(separator: ", ")). Other browsers scanned normally."
         }
 
         // Scan service workers
@@ -234,14 +261,19 @@ struct BrowserCleanupView: View {
         // SafetyChecker + aggregate DeletionGuard cap) applies. The engine
         // groups items by module id and dispatches to each browser itself.
         let engine = ScanEngine()
+        var cleanupError: String?
         do {
             _ = try await engine.clean(items: itemsToClean, dryRun: false)
         } catch {
-            print("Browser cleanup error: \(error)")
+            cleanupError = "Couldn't clean browser data: \(error.localizedDescription)"
         }
 
-        // Rescan
+        // Rescan (clears errorMessage); restore the cleanup error afterwards so
+        // the user still sees why the clean failed.
         await scanBrowsers()
+        if let cleanupError {
+            errorMessage = cleanupError
+        }
     }
 
     private func selectAll() {

@@ -8,6 +8,7 @@ struct LargeFilesView: View {
     @State private var largeItems: [CleanupItem] = []
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
+    @State private var errorMessage: String?
 
     // Filters
     @State private var sizeThreshold: Double = 100  // MB
@@ -27,6 +28,9 @@ struct LargeFilesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
             filterBar
@@ -45,6 +49,23 @@ struct LargeFilesView: View {
                 footer
             }
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -266,6 +287,7 @@ struct LargeFilesView: View {
         isScanning = true
         largeItems = []
         selectedItems = []
+        errorMessage = nil
 
         defer { isScanning = false }
 
@@ -276,7 +298,7 @@ struct LargeFilesView: View {
         do {
             largeItems = try await module.scan()
         } catch {
-            print("Scan error: \(error)")
+            errorMessage = "Couldn't scan for large files: \(error.localizedDescription)"
         }
     }
 
@@ -289,8 +311,10 @@ struct LargeFilesView: View {
         let engine = ScanEngine()
         do {
             _ = try await engine.clean(items: itemsToDelete, dryRun: false)
+            errorMessage = nil
         } catch {
-            print("Large files cleanup error: \(error)")
+            errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
+            return
         }
 
         // Remove deleted items from list

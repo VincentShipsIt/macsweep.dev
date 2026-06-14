@@ -9,6 +9,7 @@ struct CloudCleanupView: View {
     @State private var showingConfirmation = false
     @State private var selectedProvider: String? = nil
     @State private var sortOrder: SortOrder = .sizeDesc
+    @State private var errorMessage: String?
 
     enum SortOrder: String, CaseIterable {
         case sizeDesc = "Largest First"
@@ -24,6 +25,9 @@ struct CloudCleanupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
             filterBar
@@ -42,6 +46,21 @@ struct CloudCleanupView: View {
                 footer
             }
         }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     private var header: some View {
@@ -199,6 +218,7 @@ struct CloudCleanupView: View {
         isScanning = true
         cloudItems = []
         selectedItems = []
+        errorMessage = nil
         defer { isScanning = false }
 
         do {
@@ -206,7 +226,7 @@ struct CloudCleanupView: View {
             cloudItems = try await module.scan()
             selectedItems = Set(cloudItems.map(\.id))
         } catch {
-            print("Cloud cleanup scan error: \(error)")
+            errorMessage = "Couldn't scan cloud storage: \(error.localizedDescription)"
         }
     }
 
@@ -219,8 +239,10 @@ struct CloudCleanupView: View {
         let engine = ScanEngine()
         do {
             _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            errorMessage = nil
         } catch {
-            print("Cloud cleanup error: \(error)")
+            errorMessage = "Couldn't reclaim cloud space: \(error.localizedDescription)"
+            return
         }
         cloudItems.removeAll { selectedItems.contains($0.id) }
         selectedItems.removeAll()

@@ -154,8 +154,12 @@ final class LoginItemsService: ObservableObject {
 
         plist["Disabled"] = !enabled
 
-        if let newData = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) {
-            try? newData.write(to: plistURL)
+        do {
+            let newData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            try newData.write(to: plistURL)
+        } catch {
+            errorMessage = "Couldn't update \(item.name): \(error.localizedDescription)"
+            return
         }
 
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
@@ -170,7 +174,12 @@ final class LoginItemsService: ObservableObject {
 
         let plistURL = plistURL(for: item)
         if let url = plistURL {
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"
+                return
+            }
         }
         items.removeAll { $0.id == item.id }
     }

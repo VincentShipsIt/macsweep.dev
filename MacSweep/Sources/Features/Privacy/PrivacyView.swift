@@ -12,10 +12,14 @@ struct PrivacyView: View {
     @State private var clearingClipboard = false
     @State private var clearingTerminal = false
     @State private var clearingRecents = false
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
                 header
 
                 // Quick Actions
@@ -34,6 +38,23 @@ struct PrivacyView: View {
             }
             .padding()
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -210,11 +231,16 @@ struct PrivacyView: View {
         isScanning = true
         privacyItems = []
         selectedCategories = []
+        errorMessage = nil
 
         defer { isScanning = false }
 
         let module = PrivacyModule()
-        privacyItems = (try? await module.scan()) ?? []
+        do {
+            privacyItems = try await module.scan()
+        } catch {
+            errorMessage = "Couldn't scan for privacy traces: \(error.localizedDescription)"
+        }
     }
 
     private func cleanSelected() async {
@@ -224,14 +250,16 @@ struct PrivacyView: View {
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
+        var cleanupError: String?
         do {
             _ = try await engine.clean(items: itemsToClean, dryRun: false)
         } catch {
-            print("Privacy cleanup error: \(error)")
+            cleanupError = "Couldn't clear privacy items: \(error.localizedDescription)"
         }
 
-        // Refresh
+        // Refresh (scanPrivacy clears errorMessage, so restore any cleanup error after)
         await scanPrivacy()
+        if let cleanupError { errorMessage = cleanupError }
     }
 
     private func clearClipboard() {
@@ -245,7 +273,12 @@ struct PrivacyView: View {
 
     private func clearTerminalHistory() async {
         clearingTerminal = true
-        try? await PrivacyActions.clearTerminalHistory()
+        do {
+            try await PrivacyActions.clearTerminalHistory()
+            errorMessage = nil
+        } catch {
+            errorMessage = "Couldn't clear Terminal history: \(error.localizedDescription)"
+        }
 
         await MainActor.run {
             clearingTerminal = false
@@ -254,14 +287,20 @@ struct PrivacyView: View {
 
     private func clearRecentDocuments() async {
         clearingRecents = true
-        try? await PrivacyActions.clearRecentDocuments()
+        var actionError: String?
+        do {
+            try await PrivacyActions.clearRecentDocuments()
+        } catch {
+            actionError = "Couldn't clear recent documents: \(error.localizedDescription)"
+        }
 
         await MainActor.run {
             clearingRecents = false
         }
 
-        // Refresh items
+        // Refresh items (scanPrivacy clears errorMessage, so restore after)
         await scanPrivacy()
+        if let actionError { errorMessage = actionError }
     }
 
     // MARK: - Computed

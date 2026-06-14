@@ -11,6 +11,7 @@ struct SpaceLensView: View {
     @State private var viewMode: ViewMode = .treemap
     @State private var nodeToTrash: DiskNode?
     @State private var showingTrashConfirmation = false
+    @State private var errorMessage: String?
 
     enum ViewMode: String, CaseIterable {
         case treemap = "Treemap"
@@ -24,6 +25,9 @@ struct SpaceLensView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
 
@@ -41,6 +45,23 @@ struct SpaceLensView: View {
                 emptyState
             }
         }
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -190,7 +211,7 @@ struct SpaceLensView: View {
         ) {
             Button("Move to Trash", role: .destructive) {
                 if let node = nodeToTrash {
-                    moveToTrash(node)
+                    Task { await moveToTrash(node) }
                 }
                 nodeToTrash = nil
             }
@@ -356,6 +377,7 @@ struct SpaceLensView: View {
         isScanning = true
         currentPath = []
         selectedNode = nil
+        errorMessage = nil
 
         defer { isScanning = false }
 
@@ -376,7 +398,7 @@ struct SpaceLensView: View {
                 rootNode = node
             }
         } catch {
-            print("Scan error: \(error)")
+            errorMessage = "Couldn't analyze disk: \(error.localizedDescription)"
         }
     }
 
@@ -400,28 +422,41 @@ struct SpaceLensView: View {
                 currentPath.append(detailedNode)
                 selectedNode = nil
             } catch {
-                print("Drill down error: \(error)")
+                errorMessage = "Couldn't open folder: \(error.localizedDescription)"
             }
         }
     }
 
-    private func moveToTrash(_ node: DiskNode) {
+    private func moveToTrash(_ node: DiskNode) async {
+        // Route through ScanEngine so the full safety pipeline (per-item
+        // SafetyChecker + aggregate DeletionGuard cap) vets the path, not a raw
+        // trashItem call. A blocked delete throws and is surfaced to the user.
+        let item = CleanupItem(
+            id: UUID(),
+            path: node.url,
+            size: node.size,
+            type: node.isDirectory ? .directory : .file,
+            module: "space-lens",
+            moduleName: "Space Lens"
+        )
         do {
-            try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
-
-            // Refresh current view
-            if var current = currentPath.last {
-                current.children.removeAll { $0.id == node.id }
-                currentPath[currentPath.count - 1] = current
-            } else if var root = rootNode {
-                root.children.removeAll { $0.id == node.id }
-                rootNode = root
-            }
-
-            selectedNode = nil
+            _ = try await ScanEngine().clean(items: [item], dryRun: false)
         } catch {
-            print("Trash error: \(error)")
+            errorMessage = "Couldn't move \"\(node.name)\" to Trash: \(error.localizedDescription)"
+            return
         }
+
+        // Refresh current view
+        if var current = currentPath.last {
+            current.children.removeAll { $0.id == node.id }
+            currentPath[currentPath.count - 1] = current
+        } else if var root = rootNode {
+            root.children.removeAll { $0.id == node.id }
+            rootNode = root
+        }
+
+        selectedNode = nil
+        errorMessage = nil
     }
 
     // MARK: - Helpers

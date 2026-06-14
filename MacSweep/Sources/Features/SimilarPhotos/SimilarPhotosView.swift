@@ -8,6 +8,7 @@ struct SimilarPhotosView: View {
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
     @State private var sortOrder: SortOrder = .sizeDesc
+    @State private var errorMessage: String?
 
     enum SortOrder: String, CaseIterable {
         case sizeDesc = "Largest First"
@@ -18,6 +19,9 @@ struct SimilarPhotosView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let errorMessage {
+                errorBanner(errorMessage)
+            }
             header
             Divider()
             filterBar
@@ -36,6 +40,21 @@ struct SimilarPhotosView: View {
                 footer
             }
         }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+            Text(message).font(.caption)
+            Spacer()
+            Button { errorMessage = nil } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
     }
 
     private var header: some View {
@@ -179,6 +198,7 @@ struct SimilarPhotosView: View {
         isScanning = true
         photoItems = []
         selectedItems = []
+        errorMessage = nil
         defer { isScanning = false }
 
         do {
@@ -186,7 +206,7 @@ struct SimilarPhotosView: View {
             photoItems = try await module.scan()
             selectedItems = Set(photoItems.map(\.id))
         } catch {
-            print("Similar photo scan error: \(error)")
+            errorMessage = "Couldn't scan for similar photos: \(error.localizedDescription)"
         }
     }
 
@@ -199,8 +219,10 @@ struct SimilarPhotosView: View {
         let engine = ScanEngine()
         do {
             _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            errorMessage = nil
         } catch {
-            print("Similar photo cleanup error: \(error)")
+            errorMessage = "Couldn't move photos to Trash: \(error.localizedDescription)"
+            return
         }
         photoItems.removeAll { selectedItems.contains($0.id) }
         selectedItems.removeAll()
