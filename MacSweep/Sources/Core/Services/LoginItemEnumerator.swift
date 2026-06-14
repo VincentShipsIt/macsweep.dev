@@ -55,7 +55,10 @@ actor LoginItemEnumerator {
         return parseSfltoolOutput(output)
     }
 
-    private func parseSfltoolOutput(_ output: String) -> [HeadlessLoginItem] {
+    /// `internal` (not `private`) so the pure `sfltool dumpbtm` text parser can be
+    /// exercised directly from `@testable import` unit tests without spawning the
+    /// root-only subprocess. Touches no actor state, so callers reach it via `await`.
+    func parseSfltoolOutput(_ output: String) -> [HeadlessLoginItem] {
         var result: [HeadlessLoginItem] = []
         var currentName: String?
         var currentPath: String?
