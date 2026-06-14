@@ -100,7 +100,9 @@ struct CacheAnalyzer {
     }
 
     /// Pure transform of `du -sh` tab-separated output into findings.
-    private static func parseFastScanOutput(_ output: String) -> [Finding] {
+    /// `internal` (not `private`) so the deterministic parse/categorize logic is
+    /// reachable from `@testable import` unit tests.
+    static func parseFastScanOutput(_ output: String) -> [Finding] {
         output.components(separatedBy: "\n").compactMap { line -> Finding? in
             let parts = line.components(separatedBy: "\t")
             guard parts.count == 2 else { return nil }
@@ -118,7 +120,7 @@ struct CacheAnalyzer {
         }
     }
 
-    private static func categorize(path: String) -> Category {
+    static func categorize(path: String) -> Category {
         let p = path.lowercased()
         if p.contains("code cache") || p.contains("gpucache") || p.contains("dawn") ||
            p.contains("shadercache") || p.contains("vm_bundles/warm") {

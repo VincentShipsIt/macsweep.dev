@@ -15,10 +15,23 @@ import Foundation
 /// — they are managed by their owning app through SMAppService — so a label that
 /// resolves to no plist is reported as not-found rather than silently ignored.
 actor LoginItemController {
-    private let userLaunchAgents = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/LaunchAgents")
-    private let systemLaunchAgents = URL(fileURLWithPath: "/Library/LaunchAgents")
-    private let systemLaunchDaemons = URL(fileURLWithPath: "/Library/LaunchDaemons")
+    private let userLaunchAgents: URL
+    private let systemLaunchAgents: URL
+    private let systemLaunchDaemons: URL
+
+    /// Directories are injectable so tests can point the controller at synthetic
+    /// plist fixtures in a temp dir. The defaults reproduce the previous
+    /// hardcoded production paths, so existing no-arg callers are unaffected.
+    init(
+        userLaunchAgents: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents"),
+        systemLaunchAgents: URL = URL(fileURLWithPath: "/Library/LaunchAgents"),
+        systemLaunchDaemons: URL = URL(fileURLWithPath: "/Library/LaunchDaemons")
+    ) {
+        self.userLaunchAgents = userLaunchAgents
+        self.systemLaunchAgents = systemLaunchAgents
+        self.systemLaunchDaemons = systemLaunchDaemons
+    }
 
     enum MutationError: Error {
         /// No plist in any searched directory has a matching Label.

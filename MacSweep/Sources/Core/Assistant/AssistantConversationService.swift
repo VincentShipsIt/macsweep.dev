@@ -3,12 +3,15 @@ import Combine
 
 enum AssistantConversationError: LocalizedError {
     case invalidResponse
+    case unknownProvider(AssistantProviderKind)
     case processFailed(provider: AssistantProviderKind, message: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "The provider returned an unreadable assistant plan."
+        case .unknownProvider(let provider):
+            return "No configuration found for \(provider.displayName)."
         case .processFailed(let provider, let message):
             return "\(provider.displayName) failed: \(message)"
         }
@@ -38,8 +41,12 @@ private struct AssistantPlanPayload: Codable {
 
 struct AssistantProviderDetector {
     func detect(using config: AssistantProvidersConfiguration) -> [AssistantProviderStatus] {
-        AssistantProviderKind.allCases.map { provider in
-            let providerConfig = config.providers[provider] ?? AssistantProvidersConfiguration.default.providers[provider]!
+        AssistantProviderKind.allCases.compactMap { provider -> AssistantProviderStatus? in
+            // detect() is non-throwing, so an unconfigured provider is skipped
+            // rather than crashing on a force-unwrap. The bundled default config
+            // covers every kind, so in practice nothing is dropped.
+            guard let providerConfig = config.providers[provider]
+                ?? AssistantProvidersConfiguration.default.providers[provider] else { return nil }
             let installed = executablePath(for: providerConfig.command) != nil
             let configured = configLocation(for: provider) != nil
             let state: AssistantProviderState
@@ -151,7 +158,10 @@ actor AssistantConversationService {
         existingRules: [AssistantWatchlistRule],
         config: AssistantProvidersConfiguration
     ) async throws -> AssistantScanPlan {
-        let providerConfig = config.providers[provider] ?? AssistantProvidersConfiguration.default.providers[provider]!
+        guard let providerConfig = config.providers[provider]
+            ?? AssistantProvidersConfiguration.default.providers[provider] else {
+            throw AssistantConversationError.unknownProvider(provider)
+        }
         let schemaURL = try writeSchemaFile()
         let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-assistant-\(UUID().uuidString).json")
         defer {
