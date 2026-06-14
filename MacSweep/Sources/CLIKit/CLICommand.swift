@@ -27,6 +27,14 @@ public enum CLICommand: Sendable, Equatable {
     case homebrewOutdated(CLIOutputFormat)
     case homebrewUpgrade(yes: Bool, format: CLIOutputFormat)
     case shred(path: String, level: String, yes: Bool, format: CLIOutputFormat)
+    case wifiList(CLIOutputFormat)
+    case wifiRemove(ssid: String, yes: Bool, format: CLIOutputFormat)
+    case sshList(CLIOutputFormat)
+    case sshRemove(host: String?, all: Bool, yes: Bool, format: CLIOutputFormat)
+    case processesList(sort: String, format: CLIOutputFormat)
+    case processesQuit(target: String, force: Bool, yes: Bool, format: CLIOutputFormat)
+    case privacyClear(action: String, yes: Bool, format: CLIOutputFormat)
+    case monitor(CLIOutputFormat)
     case help
 }
 
@@ -94,6 +102,14 @@ public enum CLICommandParser {
             return try parseHomebrew(arguments.dropFirst())
         case "shred":
             return try parseShred(arguments.dropFirst())
+        case "network":
+            return try parseNetwork(arguments.dropFirst())
+        case "processes", "process":
+            return try parseProcesses(arguments.dropFirst())
+        case "privacy":
+            return try parsePrivacy(arguments.dropFirst())
+        case "monitor":
+            return try parseMonitor(arguments.dropFirst())
         case "help", "--help", "-h":
             return .help
         default:
@@ -448,6 +464,237 @@ public enum CLICommandParser {
         }
         return .shred(path: resolvedPath, level: level, yes: yes, format: format)
     }
+
+    // MARK: - network
+
+    /// `network wifi …` and `network ssh …`.
+    private static func parseNetwork(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("network")
+        }
+        switch subcommand {
+        case "wifi":
+            return try parseWiFi(args.dropFirst())
+        case "ssh":
+            return try parseSSH(args.dropFirst())
+        default:
+            throw CLIParseError.unknownCommand("network \(subcommand)")
+        }
+    }
+
+    /// `network wifi list` / `network wifi remove [--ssid] <ssid>`.
+    private static func parseWiFi(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("network wifi")
+        }
+        switch subcommand {
+        case "list":
+            return .wifiList(try parseTrailingFormat(args.dropFirst()))
+        case "remove":
+            var ssid: String?
+            var yes = false
+            var format: CLIOutputFormat = .text
+            var iterator = args.dropFirst().makeIterator()
+            while let arg = iterator.next() {
+                switch arg {
+                case "--ssid":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--ssid")
+                    }
+                    ssid = value
+                case "--yes":
+                    yes = true
+                case "--format":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--format")
+                    }
+                    guard let parsed = CLIOutputFormat(rawValue: value) else {
+                        throw CLIParseError.invalidValue(flag: "--format", value: value)
+                    }
+                    format = parsed
+                default:
+                    if arg.hasPrefix("--") || ssid != nil {
+                        throw CLIParseError.unexpectedArgument(arg)
+                    }
+                    ssid = arg
+                }
+            }
+            guard let resolved = ssid else {
+                throw CLIParseError.missingValue("--ssid")
+            }
+            return .wifiRemove(ssid: resolved, yes: yes, format: format)
+        default:
+            throw CLIParseError.unknownCommand("network wifi \(subcommand)")
+        }
+    }
+
+    /// `network ssh list` / `network ssh remove (--host <h> | --all)`.
+    private static func parseSSH(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("network ssh")
+        }
+        switch subcommand {
+        case "list":
+            return .sshList(try parseTrailingFormat(args.dropFirst()))
+        case "remove":
+            var host: String?
+            var all = false
+            var yes = false
+            var format: CLIOutputFormat = .text
+            var iterator = args.dropFirst().makeIterator()
+            while let arg = iterator.next() {
+                switch arg {
+                case "--host":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--host")
+                    }
+                    host = value
+                case "--all":
+                    all = true
+                case "--yes":
+                    yes = true
+                case "--format":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--format")
+                    }
+                    guard let parsed = CLIOutputFormat(rawValue: value) else {
+                        throw CLIParseError.invalidValue(flag: "--format", value: value)
+                    }
+                    format = parsed
+                default:
+                    if arg.hasPrefix("--") || host != nil {
+                        throw CLIParseError.unexpectedArgument(arg)
+                    }
+                    host = arg
+                }
+            }
+            // Exactly one of --host / --all.
+            if all && host != nil {
+                throw CLIParseError.unexpectedArgument("--all")
+            }
+            if !all && host == nil {
+                throw CLIParseError.missingValue("--host or --all")
+            }
+            return .sshRemove(host: host, all: all, yes: yes, format: format)
+        default:
+            throw CLIParseError.unknownCommand("network ssh \(subcommand)")
+        }
+    }
+
+    // MARK: - processes
+
+    /// `processes list [--sort memory|cpu|name]` / `processes quit <pid|name> [--force]`.
+    private static func parseProcesses(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("processes")
+        }
+        switch subcommand {
+        case "list":
+            var sort = "memory"
+            var format: CLIOutputFormat = .text
+            let validSorts: Set<String> = ["memory", "cpu", "name"]
+            var iterator = args.dropFirst().makeIterator()
+            while let arg = iterator.next() {
+                switch arg {
+                case "--sort":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--sort")
+                    }
+                    let normalized = value.lowercased()
+                    guard validSorts.contains(normalized) else {
+                        throw CLIParseError.invalidValue(flag: "--sort", value: value)
+                    }
+                    sort = normalized
+                case "--format":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--format")
+                    }
+                    guard let parsed = CLIOutputFormat(rawValue: value) else {
+                        throw CLIParseError.invalidValue(flag: "--format", value: value)
+                    }
+                    format = parsed
+                default:
+                    throw CLIParseError.unexpectedArgument(arg)
+                }
+            }
+            return .processesList(sort: sort, format: format)
+        case "quit":
+            var target: String?
+            var force = false
+            var yes = false
+            var format: CLIOutputFormat = .text
+            var iterator = args.dropFirst().makeIterator()
+            while let arg = iterator.next() {
+                switch arg {
+                case "--force":
+                    force = true
+                case "--yes":
+                    yes = true
+                case "--format":
+                    guard let value = iterator.next() else {
+                        throw CLIParseError.missingValue("--format")
+                    }
+                    guard let parsed = CLIOutputFormat(rawValue: value) else {
+                        throw CLIParseError.invalidValue(flag: "--format", value: value)
+                    }
+                    format = parsed
+                default:
+                    if arg.hasPrefix("--") || target != nil {
+                        throw CLIParseError.unexpectedArgument(arg)
+                    }
+                    target = arg
+                }
+            }
+            guard let resolved = target else {
+                throw CLIParseError.missingValue("processes quit <pid|name>")
+            }
+            return .processesQuit(target: resolved, force: force, yes: yes, format: format)
+        default:
+            throw CLIParseError.unknownCommand("processes \(subcommand)")
+        }
+    }
+
+    // MARK: - privacy
+
+    /// `privacy clear-clipboard|clear-terminal-history|clear-recent-docs [--yes]`.
+    private static func parsePrivacy(_ args: ArraySlice<String>) throws -> CLICommand {
+        guard let subcommand = args.first else {
+            throw CLIParseError.missingSubcommand("privacy")
+        }
+        let validActions: Set<String> = [
+            "clear-clipboard", "clear-terminal-history", "clear-recent-docs",
+        ]
+        guard validActions.contains(subcommand) else {
+            throw CLIParseError.unknownCommand("privacy \(subcommand)")
+        }
+        var yes = false
+        var format: CLIOutputFormat = .text
+        var iterator = args.dropFirst().makeIterator()
+        while let arg = iterator.next() {
+            switch arg {
+            case "--yes":
+                yes = true
+            case "--format":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--format")
+                }
+                guard let parsed = CLIOutputFormat(rawValue: value) else {
+                    throw CLIParseError.invalidValue(flag: "--format", value: value)
+                }
+                format = parsed
+            default:
+                throw CLIParseError.unexpectedArgument(arg)
+            }
+        }
+        return .privacyClear(action: subcommand, yes: yes, format: format)
+    }
+
+    // MARK: - monitor
+
+    /// `monitor [--format json|text]` → one-shot system snapshot.
+    private static func parseMonitor(_ args: ArraySlice<String>) throws -> CLICommand {
+        return .monitor(try parseTrailingFormat(args))
+    }
 }
 
 public enum CLIHelp {
@@ -475,6 +722,16 @@ public enum CLIHelp {
       macsweep homebrew outdated [--format json|text]
       macsweep homebrew upgrade [--yes] [--format json|text]
       macsweep shred <path> [--level quick|standard|secure|paranoid] [--yes] [--format json|text]
+      macsweep network wifi list [--format json|text]
+      macsweep network wifi remove --ssid <ssid> [--yes] [--format json|text]
+      macsweep network ssh list [--format json|text]
+      macsweep network ssh remove (--host <host> | --all) [--yes] [--format json|text]
+      macsweep processes list [--sort memory|cpu|name] [--format json|text]
+      macsweep processes quit <pid|name> [--force] [--yes] [--format json|text]
+      macsweep privacy clear-clipboard [--yes] [--format json|text]
+      macsweep privacy clear-terminal-history [--yes] [--format json|text]
+      macsweep privacy clear-recent-docs [--yes] [--format json|text]
+      macsweep monitor [--format json|text]
       macsweep version [--format json|text]
     """
 }

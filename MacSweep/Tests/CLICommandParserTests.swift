@@ -268,6 +268,116 @@ struct CLICommandParserTests {
             try CLICommandParser.parse(["login-items", "frobnicate", "com.foo"])
         }
     }
+
+    // MARK: - network wifi
+
+    @Test func parsesWiFiList() throws {
+        #expect(try CLICommandParser.parse(["network", "wifi", "list"]) == .wifiList(.text))
+        #expect(try CLICommandParser.parse(["network", "wifi", "list", "--format", "json"]) == .wifiList(.json))
+    }
+
+    @Test func parsesWiFiRemoveExplicitFlag() throws {
+        #expect(try CLICommandParser.parse(["network", "wifi", "remove", "--ssid", "HomeWiFi", "--yes"])
+            == .wifiRemove(ssid: "HomeWiFi", yes: true, format: .text))
+    }
+
+    @Test func parsesWiFiRemovePositionalSSID() throws {
+        #expect(try CLICommandParser.parse(["network", "wifi", "remove", "HomeWiFi"])
+            == .wifiRemove(ssid: "HomeWiFi", yes: false, format: .text))
+    }
+
+    @Test func wifiRemoveMissingSSIDRejected() {
+        #expect(throws: CLIParseError.missingValue("--ssid")) {
+            try CLICommandParser.parse(["network", "wifi", "remove"])
+        }
+    }
+
+    // MARK: - network ssh
+
+    @Test func parsesSSHList() throws {
+        #expect(try CLICommandParser.parse(["network", "ssh", "list", "--format", "json"]) == .sshList(.json))
+    }
+
+    @Test func parsesSSHRemoveHost() throws {
+        #expect(try CLICommandParser.parse(["network", "ssh", "remove", "--host", "github.com"])
+            == .sshRemove(host: "github.com", all: false, yes: false, format: .text))
+    }
+
+    @Test func parsesSSHRemoveAll() throws {
+        #expect(try CLICommandParser.parse(["network", "ssh", "remove", "--all", "--yes"])
+            == .sshRemove(host: nil, all: true, yes: true, format: .text))
+    }
+
+    @Test func sshRemoveConflictingSelectionRejected() {
+        #expect(throws: CLIParseError.unexpectedArgument("--all")) {
+            try CLICommandParser.parse(["network", "ssh", "remove", "--host", "x", "--all"])
+        }
+    }
+
+    @Test func sshRemoveEmptySelectionRejected() {
+        #expect(throws: CLIParseError.missingValue("--host or --all")) {
+            try CLICommandParser.parse(["network", "ssh", "remove"])
+        }
+    }
+
+    @Test func networkMissingSubcommandRejected() {
+        #expect(throws: CLIParseError.missingSubcommand("network")) {
+            try CLICommandParser.parse(["network"])
+        }
+    }
+
+    // MARK: - processes
+
+    @Test func parsesProcessesListDefaultSort() throws {
+        #expect(try CLICommandParser.parse(["processes", "list"])
+            == .processesList(sort: "memory", format: .text))
+    }
+
+    @Test func parsesProcessesListSortCaseInsensitive() throws {
+        #expect(try CLICommandParser.parse(["processes", "list", "--sort", "CPU"])
+            == .processesList(sort: "cpu", format: .text))
+    }
+
+    @Test func processesListInvalidSortRejected() {
+        #expect(throws: CLIParseError.invalidValue(flag: "--sort", value: "disk")) {
+            try CLICommandParser.parse(["processes", "list", "--sort", "disk"])
+        }
+    }
+
+    @Test func parsesProcessesQuit() throws {
+        #expect(try CLICommandParser.parse(["processes", "quit", "1234", "--force", "--yes"])
+            == .processesQuit(target: "1234", force: true, yes: true, format: .text))
+    }
+
+    @Test func processesQuitMissingTargetRejected() {
+        #expect(throws: CLIParseError.missingValue("processes quit <pid|name>")) {
+            try CLICommandParser.parse(["processes", "quit"])
+        }
+    }
+
+    // MARK: - privacy
+
+    @Test func parsesPrivacyActions() throws {
+        #expect(try CLICommandParser.parse(["privacy", "clear-clipboard"])
+            == .privacyClear(action: "clear-clipboard", yes: false, format: .text))
+        #expect(try CLICommandParser.parse(["privacy", "clear-terminal-history", "--yes"])
+            == .privacyClear(action: "clear-terminal-history", yes: true, format: .text))
+        #expect(try CLICommandParser.parse(["privacy", "clear-recent-docs", "--format", "json"])
+            == .privacyClear(action: "clear-recent-docs", yes: false, format: .json))
+    }
+
+    @Test func privacyUnknownActionRejected() {
+        #expect(throws: CLIParseError.unknownCommand("privacy clear-everything")) {
+            try CLICommandParser.parse(["privacy", "clear-everything"])
+        }
+    }
+
+    // MARK: - monitor
+
+    @Test func parsesMonitor() throws {
+        #expect(try CLICommandParser.parse(["monitor"]) == .monitor(.text))
+        #expect(try CLICommandParser.parse(["monitor", "--format", "json"]) == .monitor(.json))
+    }
 }
 
 /// Exit-code contract: the mapping from a thrown error to a process exit code is
@@ -309,6 +419,22 @@ struct CLIExitCodeTests {
     @Test func serviceOperationalErrorsMapToGeneric() {
         #expect(code(HeadlessServiceError.uninstallFailed("boom")) == CLIExitCode.generic.rawValue)
         #expect(code(HeadlessServiceError.loginItemMutationFailed("boom")) == CLIExitCode.generic.rawValue)
+        #expect(code(HeadlessServiceError.networkOperationFailed("boom")) == CLIExitCode.generic.rawValue)
+    }
+
+    @Test func parityNotFoundErrorsMapToNotFound() {
+        #expect(code(HeadlessServiceError.wifiNetworkNotFound("Home")) == CLIExitCode.notFound.rawValue)
+        #expect(code(HeadlessServiceError.sshHostNotFound("github.com")) == CLIExitCode.notFound.rawValue)
+        #expect(code(HeadlessServiceError.processNotFound("Slack")) == CLIExitCode.notFound.rawValue)
+    }
+
+    @Test func parityRefusalErrorsMapToRefused() {
+        #expect(code(HeadlessServiceError.processQuitRefused("launchd (pid 1)")) == CLIExitCode.refused.rawValue)
+    }
+
+    @Test func parityUsageErrorsMapToUsage() {
+        #expect(code(HeadlessServiceError.processAmbiguous("node", ["100", "200"])) == CLIExitCode.usage.rawValue)
+        #expect(code(HeadlessServiceError.unknownPrivacyAction("nope")) == CLIExitCode.usage.rawValue)
     }
 
     @Test func unknownErrorFallsBackToGeneric() {

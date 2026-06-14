@@ -96,6 +96,46 @@ struct CLIShredOutput: Codable {
     let result: HeadlessShredResult
 }
 
+struct CLIWiFiListOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessWiFiReport
+}
+
+struct CLIWiFiRemoveOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessWiFiRemoveResult
+}
+
+struct CLISSHListOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessSSHReport
+}
+
+struct CLISSHRemoveOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessSSHRemoveResult
+}
+
+struct CLIProcessesListOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessProcessReport
+}
+
+struct CLIProcessQuitOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessProcessQuitResult
+}
+
+struct CLIPrivacyOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessPrivacyActionResult
+}
+
+struct CLIMonitorOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessMonitorReport
+}
+
 enum CLIExecutionError: Error, LocalizedError {
     case confirmationRequired
     case cleanupCancelled
@@ -368,6 +408,100 @@ public enum CLIExecutor {
             )
             try emit(output, format: format)
             return result.success ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
+        case .wifiList(let format):
+            let report = await service.wifiNetworks()
+            let output = CLIWiFiListOutput(
+                metadata: CLICommandMetadata(command: "network wifi list", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .wifiRemove(let ssid, let yes, let format):
+            if !yes {
+                try confirm("Forget saved WiFi network '\(ssid)'?")
+            }
+            let result = try await service.removeWiFiNetwork(ssid: ssid)
+            let output = CLIWiFiRemoveOutput(
+                metadata: CLICommandMetadata(command: "network wifi remove", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .sshList(let format):
+            let report = await service.sshKnownHosts()
+            let output = CLISSHListOutput(
+                metadata: CLICommandMetadata(command: "network ssh list", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .sshRemove(let host, let all, let yes, let format):
+            let result: HeadlessSSHRemoveResult
+            if all {
+                if !yes {
+                    try confirm("Clear ALL SSH known hosts? This cannot be undone.")
+                }
+                result = try await service.clearSSHKnownHosts()
+            } else {
+                // Parser guarantees host is non-nil when --all is absent.
+                let target = host ?? ""
+                if !yes {
+                    try confirm("Remove SSH known host '\(target)'?")
+                }
+                result = try await service.removeSSHKnownHost(host: target)
+            }
+            let output = CLISSHRemoveOutput(
+                metadata: CLICommandMetadata(command: "network ssh remove", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .processesList(let sort, let format):
+            let report = await service.listProcesses(sort: sort)
+            let output = CLIProcessesListOutput(
+                metadata: CLICommandMetadata(command: "processes list", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .processesQuit(let target, let force, let yes, let format):
+            if !yes {
+                try confirm("\(force ? "Force-kill (SIGKILL)" : "Quit") process '\(target)'?")
+            }
+            let result = try await service.quitProcess(target: target, force: force)
+            let output = CLIProcessQuitOutput(
+                metadata: CLICommandMetadata(command: "processes quit", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return result.terminated ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
+        case .privacyClear(let action, let yes, let format):
+            if !yes {
+                try confirm("Run privacy action '\(action)'?")
+            }
+            let result = try await service.privacyAction(action)
+            let output = CLIPrivacyOutput(
+                metadata: CLICommandMetadata(command: "privacy \(action)", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return result.success ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
+        case .monitor(let format):
+            let report = await service.systemMonitor()
+            let output = CLIMonitorOutput(
+                metadata: CLICommandMetadata(command: "monitor", timestamp: Date(), executedModules: []),
+                report: report
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
         }
     }
 
@@ -393,6 +527,14 @@ public enum CLIExecutor {
             case .conflictingSelection, .invalidModules, .unknownMaintenanceAction, .ambiguousAppMatch, .loginItemAmbiguous:
                 return CLIExitCode.usage.rawValue
             case .uninstallFailed, .loginItemMutationFailed:
+                return CLIExitCode.generic.rawValue
+            case .wifiNetworkNotFound, .sshHostNotFound, .processNotFound:
+                return CLIExitCode.notFound.rawValue
+            case .processQuitRefused:
+                return CLIExitCode.refused.rawValue
+            case .processAmbiguous, .unknownPrivacyAction:
+                return CLIExitCode.usage.rawValue
+            case .networkOperationFailed:
                 return CLIExitCode.generic.rawValue
             }
         }
@@ -688,6 +830,105 @@ public enum CLIExecutor {
                 lines.append("Errors:")
                 lines.append(contentsOf: result.errors.map { "  - \($0)" })
             }
+            return lines.joined(separator: "\n")
+
+        case let output as CLIWiFiListOutput:
+            let report = output.report
+            if report.totalNetworks == 0 {
+                return "WiFi: no saved networks."
+            }
+            var lines = ["Saved WiFi networks: \(report.totalNetworks)"]
+            if let current = report.currentSSID {
+                lines.append("Connected: \(current)")
+            }
+            lines.append(contentsOf: report.networks.map {
+                "  \($0.isConnected ? "●" : "○") \($0.ssid)"
+            })
+            return lines.joined(separator: "\n")
+
+        case let output as CLIWiFiRemoveOutput:
+            let result = output.result
+            return "WiFi network '\(result.ssid)': \(result.removed ? "forgotten" : "not removed")"
+
+        case let output as CLISSHListOutput:
+            let report = output.report
+            if report.totalHosts == 0 {
+                return "SSH known hosts: none."
+            }
+            var lines = ["SSH known hosts: \(report.totalHosts)"]
+            lines.append(contentsOf: report.hosts.map {
+                "  \($0.host) [\($0.algorithm)]\($0.isHashed ? " (hashed)" : "")"
+            })
+            return lines.joined(separator: "\n")
+
+        case let output as CLISSHRemoveOutput:
+            let result = output.result
+            if result.clearedAll {
+                return "SSH known hosts: cleared all (\(result.removedCount) removed)"
+            }
+            return "SSH known host '\(result.target)': removed \(result.removedCount)"
+
+        case let output as CLIProcessesListOutput:
+            let report = output.report
+            var lines = ["Processes: \(report.totalProcesses) (sorted by \(report.sortOrder))"]
+            lines.append(contentsOf: report.processes.map {
+                let mem = String(format: "%.0f MB", $0.memoryMB)
+                let cpu = String(format: "%.1f%%", $0.cpuPercent)
+                return "  \($0.pid)\t\(cpu)\t\(mem)\t\($0.name)"
+            })
+            return lines.joined(separator: "\n")
+
+        case let output as CLIProcessQuitOutput:
+            let result = output.result
+            let verb = result.forced ? "force-killed" : "quit"
+            return "Process \(result.name) (\(result.pid)): \(result.terminated ? verb : "not terminated")"
+
+        case let output as CLIPrivacyOutput:
+            let result = output.result
+            return "Privacy [\(result.action)]: \(result.success ? "ok" : "failed") — \(result.message)"
+
+        case let output as CLIMonitorOutput:
+            let report = output.report
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .memory
+            var lines = ["System monitor — \(report.chipName)"]
+            let cpu = report.cpu
+            var cpuLine = String(
+                format: "CPU: %.1f%% (user %.1f%% / sys %.1f%% / idle %.1f%%)",
+                cpu.totalPercent, cpu.userPercent, cpu.systemPercent, cpu.idlePercent
+            )
+            if let temp = cpu.temperatureCelsius {
+                cpuLine += String(format: " — %.0f°C", temp)
+            }
+            lines.append(cpuLine)
+            let mem = report.memory
+            lines.append(String(
+                format: "Memory: %.0f%% used (%@ / %@) — %@",
+                mem.usedPercentage,
+                formatter.string(fromByteCount: Int64(mem.usedBytes)),
+                formatter.string(fromByteCount: Int64(mem.totalBytes)),
+                mem.pressureLevel
+            ))
+            let bat = report.battery
+            if bat.hasBattery {
+                var batLine = "Battery: \(bat.percentage)% — \(bat.statusText)"
+                if let cycles = bat.cycleCount {
+                    batLine += " — \(cycles) cycles"
+                }
+                if let health = bat.healthPercent {
+                    batLine += " — \(health)% health"
+                }
+                lines.append(batLine)
+            } else {
+                lines.append("Battery: none (desktop)")
+            }
+            let net = report.network
+            lines.append(String(
+                format: "Network: ↓ %@/s ↑ %@/s%@",
+                formatter.string(fromByteCount: Int64(net.downloadSpeedBytesPerSec)),
+                formatter.string(fromByteCount: Int64(net.uploadSpeedBytesPerSec)),
+                net.isConnected ? "" : " (offline)"
+            ))
             return lines.joined(separator: "\n")
 
         default:

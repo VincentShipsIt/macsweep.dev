@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 private enum ModulePermissionCatalog {
     static func requiredPermissions(for moduleID: String) -> [HeadlessPermissionKind] {
@@ -563,6 +564,113 @@ public actor MacSweepHeadlessService {
         default: return .standard
         }
     }
+
+    // MARK: - Network: WiFi
+
+    /// Saved (preferred) WiFi networks plus the currently-connected SSID.
+    /// Backed by `WiFiNetworkManager` (synchronous `networksetup` calls); safe to
+    /// run directly on the actor since it touches no @MainActor state.
+    public func wifiNetworks() async -> HeadlessWiFiReport {
+        let current = WiFiNetworkManager.getCurrentSSID()
+        let saved = WiFiNetworkManager.savedNetworks()
+        let networks = saved.map {
+            HeadlessWiFiNetwork(ssid: $0.ssid, isConnected: $0.isCurrentlyConnected)
+        }
+        return HeadlessWiFiReport(
+            currentSSID: current,
+            totalNetworks: networks.count,
+            networks: networks
+        )
+    }
+
+    /// Forget a saved WiFi network by exact SSID. Throws `wifiNetworkNotFound`
+    /// when no preferred network matches; maps an underlying removal failure to
+    /// `networkOperationFailed`.
+    public func removeWiFiNetwork(ssid: String) async throws -> HeadlessWiFiRemoveResult {
+        let saved = WiFiNetworkManager.savedNetworks()
+        guard saved.contains(where: { $0.ssid == ssid }) else {
+            throw HeadlessServiceError.wifiNetworkNotFound(ssid)
+        }
+        do {
+            try WiFiNetworkManager.removeNetwork(ssid)
+        } catch {
+            throw HeadlessServiceError.networkOperationFailed(error.localizedDescription)
+        }
+        return HeadlessWiFiRemoveResult(ssid: ssid, removed: true)
+    }
+
+    // MARK: - Network: SSH Known Hosts
+
+    /// Parsed ~/.ssh/known_hosts entries (empty when the file is absent).
+    public func sshKnownHosts() async -> HeadlessSSHReport {
+        let hosts = SSHKnownHostsManager.getKnownHosts()
+        let mapped = hosts.map {
+            HeadlessSSHKnownHost(host: $0.host, algorithm: $0.algorithm, isHashed: $0.isHashed)
+        }
+        return HeadlessSSHReport(totalHosts: mapped.count, hosts: mapped)
+    }
+
+    /// Remove every known_hosts entry whose displayed host matches `host`.
+    /// Throws `sshHostNotFound` when nothing matches.
+    public func removeSSHKnownHost(host: String) async throws -> HeadlessSSHRemoveResult {
+        let all = SSHKnownHostsManager.getKnownHosts()
+        let matches = all.filter { $0.host == host }
+        guard !matches.isEmpty else {
+            throw HeadlessServiceError.sshHostNotFound(host)
+        }
+        do {
+            for match in matches {
+                try SSHKnownHostsManager.removeHost(match)
+            }
+        } catch {
+            throw HeadlessServiceError.networkOperationFailed(error.localizedDescription)
+        }
+        return HeadlessSSHRemoveResult(target: host, removedCount: matches.count, clearedAll: false)
+    }
+
+    /// Clear all known_hosts entries (the manager backs up first). No-ops cleanly
+    /// when the file is empty/absent — `clearAll()` would otherwise throw on a
+    /// missing source file.
+    public func clearSSHKnownHosts() async throws -> HeadlessSSHRemoveResult {
+        let all = SSHKnownHostsManager.getKnownHosts()
+        guard !all.isEmpty else {
+            return HeadlessSSHRemoveResult(target: "all", removedCount: 0, clearedAll: true)
+        }
+        do {
+            try SSHKnownHostsManager.clearAll()
+        } catch {
+            throw HeadlessServiceError.networkOperationFailed(error.localizedDescription)
+        }
+        return HeadlessSSHRemoveResult(target: "all", removedCount: all.count, clearedAll: true)
+    }
+
+    // MARK: - Processes
+
+    /// Running processes sorted by `memory` (default), `cpu`, or `name`.
+    public func listProcesses(sort: String) async -> HeadlessProcessReport {
+        await runProcessListOnMain(sort: sort)
+    }
+
+    /// Quit a process resolved by PID or case-insensitive name substring.
+    /// Refuses pid<=1 and our own pid; throws `processNotFound` / `processAmbiguous`
+    /// on resolution failures.
+    public func quitProcess(target: String, force: Bool) async throws -> HeadlessProcessQuitResult {
+        try await runProcessQuitOnMain(target: target, force: force)
+    }
+
+    // MARK: - Privacy Actions
+
+    /// Run a privacy cleanup action backed by `PrivacyActions`.
+    public func privacyAction(_ action: String) async throws -> HeadlessPrivacyActionResult {
+        try await runPrivacyActionOnMain(action: action)
+    }
+
+    // MARK: - System Monitor
+
+    /// One-shot CPU / memory / battery / network snapshot.
+    public func systemMonitor() async -> HeadlessMonitorReport {
+        await runSystemMonitorOnMain()
+    }
 }
 
 private struct SelectionSnapshot {
@@ -640,5 +748,184 @@ private func runHomebrewUpgradeOnMain() async throws -> HeadlessHomebrewUpgradeR
         upgraded: true,
         log: service.upgradeLog,
         remainingOutdated: remaining
+    )
+}
+
+// MARK: - Process bridges
+//
+// ProcessMonitor is a @MainActor ObservableObject and RunningProcess carries a
+// non-Sendable NSImage icon. These bridges run on the main actor and return ONLY
+// the Sendable Headless* projections.
+
+@MainActor
+private func runProcessListOnMain(sort: String) async -> HeadlessProcessReport {
+    let monitor = ProcessMonitor()
+    await monitor.refresh()
+    var procs = monitor.processes
+    let order: String
+    switch sort.lowercased() {
+    case "cpu":
+        procs.sort { $0.cpuPercent > $1.cpuPercent }
+        order = "cpu"
+    case "name":
+        procs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        order = "name"
+    default:
+        procs.sort { $0.memoryMB > $1.memoryMB }
+        order = "memory"
+    }
+    let mapped = procs.map { proc in
+        HeadlessProcess(
+            pid: Int32(proc.pid),
+            name: proc.name,
+            bundleID: proc.bundleID,
+            memoryMB: proc.memoryMB,
+            cpuPercent: proc.cpuPercent,
+            isActive: proc.isActive
+        )
+    }
+    return HeadlessProcessReport(sortOrder: order, totalProcesses: mapped.count, processes: mapped)
+}
+
+@MainActor
+private func runProcessQuitOnMain(target: String, force: Bool) async throws -> HeadlessProcessQuitResult {
+    let monitor = ProcessMonitor()
+    await monitor.refresh()
+    let processes = monitor.processes
+
+    // Resolve target: explicit PID first, then case-insensitive name substring.
+    let resolved: RunningProcess
+    if let pidValue = Int32(target), let match = processes.first(where: { $0.pid == pidValue }) {
+        resolved = match
+    } else {
+        let nameMatches = processes.filter {
+            $0.name.range(of: target, options: .caseInsensitive) != nil
+        }
+        if nameMatches.isEmpty {
+            throw HeadlessServiceError.processNotFound(target)
+        }
+        if nameMatches.count > 1 {
+            let labels = nameMatches.map { "\($0.name) (pid \($0.pid))" }
+            throw HeadlessServiceError.processAmbiguous(target, labels)
+        }
+        resolved = nameMatches[0]
+    }
+
+    let pid = resolved.pid
+    // Never signal init (pid 1) or our own process.
+    guard pid > 1, pid != getpid() else {
+        throw HeadlessServiceError.processQuitRefused("\(resolved.name) (pid \(pid))")
+    }
+
+    let terminated: Bool
+    if force {
+        terminated = kill(pid, SIGKILL) == 0
+    } else if let app = NSRunningApplication(processIdentifier: pid) {
+        terminated = app.terminate()
+    } else {
+        terminated = kill(pid, SIGTERM) == 0
+    }
+
+    return HeadlessProcessQuitResult(
+        pid: Int32(pid),
+        name: resolved.name,
+        forced: force,
+        terminated: terminated
+    )
+}
+
+// MARK: - Privacy bridge
+
+@MainActor
+private func runPrivacyActionOnMain(action: String) async throws -> HeadlessPrivacyActionResult {
+    switch action.lowercased() {
+    case "clear-clipboard":
+        PrivacyActions.clearClipboard()
+        return HeadlessPrivacyActionResult(
+            action: "clear-clipboard",
+            success: true,
+            message: "Clipboard cleared."
+        )
+    case "clear-terminal-history":
+        try await PrivacyActions.clearTerminalHistory()
+        return HeadlessPrivacyActionResult(
+            action: "clear-terminal-history",
+            success: true,
+            message: "Shell history files moved to Trash."
+        )
+    case "clear-recent-docs":
+        try await PrivacyActions.clearRecentDocuments()
+        return HeadlessPrivacyActionResult(
+            action: "clear-recent-docs",
+            success: true,
+            message: "Recent documents list cleared."
+        )
+    default:
+        throw HeadlessServiceError.unknownPrivacyAction(action)
+    }
+}
+
+// MARK: - System monitor bridge
+
+@MainActor
+private func runSystemMonitorOnMain() async -> HeadlessMonitorReport {
+    let monitor = SystemMonitor()
+    // init() starts a 2s polling timer; stop it for a one-shot read.
+    monitor.stopMonitoring()
+
+    let cpu = await monitor.fetchCPUUsage()
+    let mem = await monitor.fetchMemoryUsage()
+    let bat = await monitor.fetchBatteryInfo()
+
+    // Network speed is a delta between two samples: prime, wait ~1s, re-read.
+    _ = await monitor.fetchNetworkUsage()
+    try? await Task.sleep(nanoseconds: 1_000_000_000)
+    let net = await monitor.fetchNetworkUsage()
+
+    let cpuReport = HeadlessCPUReport(
+        userPercent: cpu.user,
+        systemPercent: cpu.system,
+        idlePercent: cpu.idle,
+        totalPercent: cpu.total,
+        temperatureCelsius: cpu.temperature
+    )
+    let memReport = HeadlessMemoryReport(
+        totalBytes: mem.total,
+        usedBytes: mem.used,
+        freeBytes: mem.free,
+        wiredBytes: mem.wired,
+        activeBytes: mem.active,
+        inactiveBytes: mem.inactive,
+        compressedBytes: mem.compressed,
+        availableBytes: mem.available,
+        usedPercentage: mem.usedPercentage * 100,
+        pressureLevel: mem.pressureLevel.rawValue
+    )
+    let hasBattery = bat.cycleCount != nil || bat.percentage > 0
+    let batReport = HeadlessBatteryReport(
+        hasBattery: hasBattery,
+        percentage: bat.percentage,
+        isCharging: bat.isCharging,
+        isPluggedIn: bat.isPluggedIn,
+        timeRemainingMinutes: bat.timeRemaining,
+        cycleCount: bat.cycleCount,
+        healthPercent: bat.health,
+        statusText: bat.statusText
+    )
+    let netReport = HeadlessNetworkReport(
+        downloadSpeedBytesPerSec: net.downloadSpeed,
+        uploadSpeedBytesPerSec: net.uploadSpeed,
+        totalDownloadedBytes: net.totalDownloaded,
+        totalUploadedBytes: net.totalUploaded,
+        isConnected: net.isConnected,
+        interfaceName: net.interfaceName,
+        ssid: net.ssid
+    )
+    return HeadlessMonitorReport(
+        chipName: monitor.chipName,
+        cpu: cpuReport,
+        memory: memReport,
+        battery: batReport,
+        network: netReport
     )
 }

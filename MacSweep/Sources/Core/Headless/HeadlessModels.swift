@@ -637,6 +637,285 @@ public struct HeadlessShredResult: Codable, Sendable {
     }
 }
 
+// MARK: - Network: WiFi
+
+public struct HeadlessWiFiNetwork: Codable, Sendable {
+    public let ssid: String
+    public let isConnected: Bool
+
+    public init(ssid: String, isConnected: Bool) {
+        self.ssid = ssid
+        self.isConnected = isConnected
+    }
+}
+
+public struct HeadlessWiFiReport: Codable, Sendable {
+    public let currentSSID: String?
+    public let totalNetworks: Int
+    public let networks: [HeadlessWiFiNetwork]
+
+    public init(currentSSID: String?, totalNetworks: Int, networks: [HeadlessWiFiNetwork]) {
+        self.currentSSID = currentSSID
+        self.totalNetworks = totalNetworks
+        self.networks = networks
+    }
+}
+
+public struct HeadlessWiFiRemoveResult: Codable, Sendable {
+    public let ssid: String
+    public let removed: Bool
+
+    public init(ssid: String, removed: Bool) {
+        self.ssid = ssid
+        self.removed = removed
+    }
+}
+
+// MARK: - Network: SSH Known Hosts
+
+public struct HeadlessSSHKnownHost: Codable, Sendable {
+    public let host: String
+    public let algorithm: String
+    public let isHashed: Bool
+
+    public init(host: String, algorithm: String, isHashed: Bool) {
+        self.host = host
+        self.algorithm = algorithm
+        self.isHashed = isHashed
+    }
+}
+
+public struct HeadlessSSHReport: Codable, Sendable {
+    public let totalHosts: Int
+    public let hosts: [HeadlessSSHKnownHost]
+
+    public init(totalHosts: Int, hosts: [HeadlessSSHKnownHost]) {
+        self.totalHosts = totalHosts
+        self.hosts = hosts
+    }
+}
+
+public struct HeadlessSSHRemoveResult: Codable, Sendable {
+    public let target: String
+    public let removedCount: Int
+    public let clearedAll: Bool
+
+    public init(target: String, removedCount: Int, clearedAll: Bool) {
+        self.target = target
+        self.removedCount = removedCount
+        self.clearedAll = clearedAll
+    }
+}
+
+// MARK: - Processes
+
+public struct HeadlessProcess: Codable, Sendable {
+    public let pid: Int32
+    public let name: String
+    public let bundleID: String?
+    public let memoryMB: Double
+    public let cpuPercent: Double
+    public let isActive: Bool
+
+    public init(
+        pid: Int32,
+        name: String,
+        bundleID: String?,
+        memoryMB: Double,
+        cpuPercent: Double,
+        isActive: Bool
+    ) {
+        self.pid = pid
+        self.name = name
+        self.bundleID = bundleID
+        self.memoryMB = memoryMB
+        self.cpuPercent = cpuPercent
+        self.isActive = isActive
+    }
+}
+
+public struct HeadlessProcessReport: Codable, Sendable {
+    public let sortOrder: String   // "memory" | "cpu" | "name"
+    public let totalProcesses: Int
+    public let processes: [HeadlessProcess]
+
+    public init(sortOrder: String, totalProcesses: Int, processes: [HeadlessProcess]) {
+        self.sortOrder = sortOrder
+        self.totalProcesses = totalProcesses
+        self.processes = processes
+    }
+}
+
+public struct HeadlessProcessQuitResult: Codable, Sendable {
+    public let pid: Int32
+    public let name: String
+    public let forced: Bool
+    public let terminated: Bool
+
+    public init(pid: Int32, name: String, forced: Bool, terminated: Bool) {
+        self.pid = pid
+        self.name = name
+        self.forced = forced
+        self.terminated = terminated
+    }
+}
+
+// MARK: - Privacy Actions
+
+public struct HeadlessPrivacyActionResult: Codable, Sendable {
+    public let action: String   // "clear-clipboard" | "clear-terminal-history" | "clear-recent-docs"
+    public let success: Bool
+    public let message: String
+
+    public init(action: String, success: Bool, message: String) {
+        self.action = action
+        self.success = success
+        self.message = message
+    }
+}
+
+// MARK: - System Monitor
+
+public struct HeadlessCPUReport: Codable, Sendable {
+    public let userPercent: Double
+    public let systemPercent: Double
+    public let idlePercent: Double
+    public let totalPercent: Double
+    public let temperatureCelsius: Double?
+
+    public init(
+        userPercent: Double,
+        systemPercent: Double,
+        idlePercent: Double,
+        totalPercent: Double,
+        temperatureCelsius: Double?
+    ) {
+        self.userPercent = userPercent
+        self.systemPercent = systemPercent
+        self.idlePercent = idlePercent
+        self.totalPercent = totalPercent
+        self.temperatureCelsius = temperatureCelsius
+    }
+}
+
+public struct HeadlessMemoryReport: Codable, Sendable {
+    public let totalBytes: UInt64
+    public let usedBytes: UInt64
+    public let freeBytes: UInt64
+    public let wiredBytes: UInt64
+    public let activeBytes: UInt64
+    public let inactiveBytes: UInt64
+    public let compressedBytes: UInt64
+    public let availableBytes: UInt64
+    public let usedPercentage: Double
+    public let pressureLevel: String   // "normal" | "warning" | "critical"
+
+    public init(
+        totalBytes: UInt64,
+        usedBytes: UInt64,
+        freeBytes: UInt64,
+        wiredBytes: UInt64,
+        activeBytes: UInt64,
+        inactiveBytes: UInt64,
+        compressedBytes: UInt64,
+        availableBytes: UInt64,
+        usedPercentage: Double,
+        pressureLevel: String
+    ) {
+        self.totalBytes = totalBytes
+        self.usedBytes = usedBytes
+        self.freeBytes = freeBytes
+        self.wiredBytes = wiredBytes
+        self.activeBytes = activeBytes
+        self.inactiveBytes = inactiveBytes
+        self.compressedBytes = compressedBytes
+        self.availableBytes = availableBytes
+        self.usedPercentage = usedPercentage
+        self.pressureLevel = pressureLevel
+    }
+}
+
+public struct HeadlessBatteryReport: Codable, Sendable {
+    public let hasBattery: Bool
+    public let percentage: Int
+    public let isCharging: Bool
+    public let isPluggedIn: Bool
+    public let timeRemainingMinutes: Int?
+    public let cycleCount: Int?
+    public let healthPercent: Int?
+    public let statusText: String
+
+    public init(
+        hasBattery: Bool,
+        percentage: Int,
+        isCharging: Bool,
+        isPluggedIn: Bool,
+        timeRemainingMinutes: Int?,
+        cycleCount: Int?,
+        healthPercent: Int?,
+        statusText: String
+    ) {
+        self.hasBattery = hasBattery
+        self.percentage = percentage
+        self.isCharging = isCharging
+        self.isPluggedIn = isPluggedIn
+        self.timeRemainingMinutes = timeRemainingMinutes
+        self.cycleCount = cycleCount
+        self.healthPercent = healthPercent
+        self.statusText = statusText
+    }
+}
+
+public struct HeadlessNetworkReport: Codable, Sendable {
+    public let downloadSpeedBytesPerSec: UInt64
+    public let uploadSpeedBytesPerSec: UInt64
+    public let totalDownloadedBytes: UInt64
+    public let totalUploadedBytes: UInt64
+    public let isConnected: Bool
+    public let interfaceName: String?
+    public let ssid: String?
+
+    public init(
+        downloadSpeedBytesPerSec: UInt64,
+        uploadSpeedBytesPerSec: UInt64,
+        totalDownloadedBytes: UInt64,
+        totalUploadedBytes: UInt64,
+        isConnected: Bool,
+        interfaceName: String?,
+        ssid: String?
+    ) {
+        self.downloadSpeedBytesPerSec = downloadSpeedBytesPerSec
+        self.uploadSpeedBytesPerSec = uploadSpeedBytesPerSec
+        self.totalDownloadedBytes = totalDownloadedBytes
+        self.totalUploadedBytes = totalUploadedBytes
+        self.isConnected = isConnected
+        self.interfaceName = interfaceName
+        self.ssid = ssid
+    }
+}
+
+public struct HeadlessMonitorReport: Codable, Sendable {
+    public let chipName: String
+    public let cpu: HeadlessCPUReport
+    public let memory: HeadlessMemoryReport
+    public let battery: HeadlessBatteryReport
+    public let network: HeadlessNetworkReport
+
+    public init(
+        chipName: String,
+        cpu: HeadlessCPUReport,
+        memory: HeadlessMemoryReport,
+        battery: HeadlessBatteryReport,
+        network: HeadlessNetworkReport
+    ) {
+        self.chipName = chipName
+        self.cpu = cpu
+        self.memory = memory
+        self.battery = battery
+        self.network = network
+    }
+}
+
 public enum HeadlessServiceError: Error, LocalizedError, Sendable {
     case conflictingSelection
     case invalidModules([String])
@@ -651,6 +930,13 @@ public enum HeadlessServiceError: Error, LocalizedError, Sendable {
     case loginItemNotFound(String)
     case loginItemAmbiguous(String, [String])
     case loginItemMutationFailed(String)
+    case wifiNetworkNotFound(String)
+    case sshHostNotFound(String)
+    case processNotFound(String)
+    case processQuitRefused(String)
+    case processAmbiguous(String, [String])
+    case unknownPrivacyAction(String)
+    case networkOperationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -680,6 +966,20 @@ public enum HeadlessServiceError: Error, LocalizedError, Sendable {
             return "Multiple login item plists match '\(label)': \(paths.joined(separator: ", ")). Remove or rename the duplicate."
         case .loginItemMutationFailed(let reason):
             return "Login item update failed: \(reason)."
+        case .wifiNetworkNotFound(let ssid):
+            return "No saved WiFi network matched: \(ssid). Use the exact SSID from 'network wifi list'."
+        case .sshHostNotFound(let host):
+            return "No SSH known host matched: \(host). Use the exact host from 'network ssh list'."
+        case .processNotFound(let query):
+            return "No running process matched: \(query)."
+        case .processQuitRefused(let reason):
+            return "Refusing to quit \(reason)."
+        case .processAmbiguous(let query, let matches):
+            return "Multiple processes match '\(query)': \(matches.joined(separator: ", ")). Use the exact PID."
+        case .unknownPrivacyAction(let action):
+            return "Unknown privacy action: \(action). Valid: clear-clipboard, clear-terminal-history, clear-recent-docs."
+        case .networkOperationFailed(let reason):
+            return "Network operation failed: \(reason)."
         }
     }
 }
