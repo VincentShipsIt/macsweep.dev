@@ -16,7 +16,7 @@ public enum CLICommand: Sendable, Equatable {
     case modulesList(CLIOutputFormat)
     case version(CLIOutputFormat)
     case space(CLIOutputFormat)
-    case spaceLens(path: String?, depth: Int, format: CLIOutputFormat)
+    case spaceLens(path: String?, depth: Int, minSize: Int64, format: CLIOutputFormat)
     case loginItemsList(CLIOutputFormat)
     case loginItemSet(label: String, enabled: Bool, yes: Bool, format: CLIOutputFormat)
     case loginItemRemove(label: String, yes: Bool, format: CLIOutputFormat)
@@ -26,6 +26,8 @@ public enum CLICommand: Sendable, Equatable {
     case malwareScan(useAI: Bool, format: CLIOutputFormat)
     case homebrewOutdated(CLIOutputFormat)
     case homebrewUpgrade(yes: Bool, format: CLIOutputFormat)
+    case homebrewCleanup(yes: Bool, format: CLIOutputFormat)
+    case homebrewLeaves(CLIOutputFormat)
     case shred(path: String, level: String, yes: Bool, format: CLIOutputFormat)
     case wifiList(CLIOutputFormat)
     case wifiRemove(ssid: String, yes: Bool, format: CLIOutputFormat)
@@ -230,6 +232,7 @@ public enum CLICommandParser {
     private static func parseSpaceLens(_ args: ArraySlice<String>) throws -> CLICommand {
         var path: String?
         var depth = 2
+        var minSize: Int64 = 0
         var format: CLIOutputFormat = .text
 
         var iterator = args.makeIterator()
@@ -243,6 +246,14 @@ public enum CLICommandParser {
                     throw CLIParseError.invalidValue(flag: "--depth", value: value)
                 }
                 depth = parsed
+            case "--min-size":
+                guard let value = iterator.next() else {
+                    throw CLIParseError.missingValue("--min-size")
+                }
+                guard let parsed = parseByteSize(value) else {
+                    throw CLIParseError.invalidValue(flag: "--min-size", value: value)
+                }
+                minSize = parsed
             case "--format":
                 guard let value = iterator.next() else {
                     throw CLIParseError.missingValue("--format")
@@ -258,7 +269,28 @@ public enum CLICommandParser {
                 path = arg
             }
         }
-        return .spaceLens(path: path, depth: depth, format: format)
+        return .spaceLens(path: path, depth: depth, minSize: minSize, format: format)
+    }
+
+    /// Parses a human byte-size token into bytes. Accepts a bare integer (bytes) or
+    /// a value with a binary suffix: K/KB, M/MB, G/GB, T/TB (base 1024, matching
+    /// `du -h`). Case-insensitive. Returns nil on any malformed input.
+    static func parseByteSize(_ raw: String) -> Int64? {
+        let token = raw.trimmingCharacters(in: .whitespaces).uppercased()
+        guard !token.isEmpty else { return nil }
+
+        let multipliers: [(suffix: String, factor: Int64)] = [
+            ("TB", 1 << 40), ("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10),
+            ("T", 1 << 40), ("G", 1 << 30), ("M", 1 << 20), ("K", 1 << 10), ("B", 1)
+        ]
+        for (suffix, factor) in multipliers where token.hasSuffix(suffix) {
+            let numberPart = String(token.dropLast(suffix.count))
+            guard let value = Double(numberPart), value >= 0 else { return nil }
+            return Int64(value * Double(factor))
+        }
+        // No recognized suffix → treat as a raw byte count.
+        guard let bytes = Int64(token), bytes >= 0 else { return nil }
+        return bytes
     }
 
     private static func parseLoginItems(_ args: ArraySlice<String>) throws -> CLICommand {
@@ -416,6 +448,19 @@ public enum CLICommandParser {
                 }
             }
             return .homebrewUpgrade(yes: yes, format: try parseTrailingFormat(ArraySlice(rest)))
+        case "cleanup":
+            var yes = false
+            var rest: [String] = []
+            for arg in args.dropFirst() {
+                if arg == "--yes" {
+                    yes = true
+                } else {
+                    rest.append(arg)
+                }
+            }
+            return .homebrewCleanup(yes: yes, format: try parseTrailingFormat(ArraySlice(rest)))
+        case "leaves":
+            return .homebrewLeaves(try parseTrailingFormat(args.dropFirst()))
         default:
             throw CLIParseError.unknownCommand("homebrew \(subcommand)")
         }
@@ -710,7 +755,7 @@ public enum CLIHelp {
       macsweep permissions status [--format json|text]
       macsweep modules list [--format json|text]
       macsweep space [--format json|text]
-      macsweep space lens [path] [--depth 1-6] [--format json|text]
+      macsweep space lens [path] [--depth 1-6] [--min-size SIZE] [--format json|text]
       macsweep login-items list [--format json|text]
       macsweep login-items enable <label> [--yes] [--format json|text]
       macsweep login-items disable <label> [--yes] [--format json|text]
@@ -721,6 +766,8 @@ public enum CLIHelp {
       macsweep malware scan [--ai] [--format json|text]
       macsweep homebrew outdated [--format json|text]
       macsweep homebrew upgrade [--yes] [--format json|text]
+      macsweep homebrew cleanup [--yes] [--format json|text]
+      macsweep homebrew leaves [--format json|text]
       macsweep shred <path> [--level quick|standard|secure|paranoid] [--yes] [--format json|text]
       macsweep network wifi list [--format json|text]
       macsweep network wifi remove --ssid <ssid> [--yes] [--format json|text]

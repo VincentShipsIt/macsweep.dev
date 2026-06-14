@@ -79,6 +79,12 @@ struct CacheAnalyzer {
           -o -path "*/.pnpm-store" \
           -o -path "*/.cache/pip" \
           -o -path "*/.cache/uv" \
+          -o -path "*/.cargo/registry" \
+          -o -path "*/.cargo/git" \
+          -o -path "*/go/pkg/mod" \
+          -o -path "*/.cache/go-build" \
+          -o -path "*/.gradle/caches" \
+          -o -path "*/.m2/repository" \
           -o -path "*/.claude/debug" \
           -o -path "*/.claude/paste-cache" \
           -o -path "*/.claude/telemetry" \
@@ -119,7 +125,9 @@ struct CacheAnalyzer {
             return .electronChromium
         }
         if p.contains(".npm") || p.contains(".bun") || p.contains(".yarn") ||
-           p.contains(".pnpm") || p.contains(".cache/pip") || p.contains(".cache/uv") {
+           p.contains(".pnpm") || p.contains(".cache/pip") || p.contains(".cache/uv") ||
+           p.contains(".cargo") || p.contains("/go/pkg/mod") || p.contains("go-build") ||
+           p.contains(".gradle/caches") || p.contains(".m2/repository") {
             return .packageManager
         }
         if p.contains(".claude") || p.contains(".codex") {

@@ -91,6 +91,16 @@ struct CLIHomebrewUpgradeOutput: Codable {
     let result: HeadlessHomebrewUpgradeResult
 }
 
+struct CLIHomebrewCleanupOutput: Codable {
+    let metadata: CLICommandMetadata
+    let result: HeadlessHomebrewCleanupResult
+}
+
+struct CLIHomebrewLeavesOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessHomebrewLeavesReport
+}
+
 struct CLIShredOutput: Codable {
     let metadata: CLICommandMetadata
     let result: HeadlessShredResult
@@ -278,8 +288,8 @@ public enum CLIExecutor {
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
 
-        case .spaceLens(let path, let depth, let format):
-            let tree = try await service.diskTree(path: path, depth: depth)
+        case .spaceLens(let path, let depth, let minSize, let format):
+            let tree = try await service.diskTree(path: path, depth: depth, minSize: minSize)
             let output = CLISpaceLensOutput(
                 metadata: CLICommandMetadata(command: "space lens", timestamp: Date(), executedModules: []),
                 tree: tree
@@ -393,6 +403,27 @@ public enum CLIExecutor {
             let output = CLIHomebrewUpgradeOutput(
                 metadata: CLICommandMetadata(command: "homebrew upgrade", timestamp: Date(), executedModules: []),
                 result: result
+            )
+            try emit(output, format: format)
+            return CLIExitCode.success.rawValue
+
+        case .homebrewCleanup(let yes, let format):
+            if !yes {
+                try confirm("Remove stale Homebrew downloads and old versions?")
+            }
+            let result = try await service.homebrewCleanup()
+            let output = CLIHomebrewCleanupOutput(
+                metadata: CLICommandMetadata(command: "homebrew cleanup", timestamp: Date(), executedModules: []),
+                result: result
+            )
+            try emit(output, format: format)
+            return result.success ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
+        case .homebrewLeaves(let format):
+            let report = try await service.homebrewLeaves()
+            let output = CLIHomebrewLeavesOutput(
+                metadata: CLICommandMetadata(command: "homebrew leaves", timestamp: Date(), executedModules: []),
+                report: report
             )
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
@@ -814,6 +845,22 @@ public enum CLIExecutor {
                     "  \($0.name): \($0.currentVersion) → \($0.latestVersion)"
                 })
             }
+            return lines.joined(separator: "\n")
+
+        case let output as CLIHomebrewCleanupOutput:
+            let result = output.result
+            if !result.success {
+                return "Homebrew cleanup: failed."
+            }
+            return result.reclaimedText ?? "Homebrew cleanup: complete. Nothing to reclaim."
+
+        case let output as CLIHomebrewLeavesOutput:
+            let report = output.report
+            if report.count == 0 {
+                return "Homebrew leaves: none."
+            }
+            var lines = ["Homebrew leaves: \(report.count) top-level formulae"]
+            lines.append(contentsOf: report.leaves.map { "  \($0)" })
             return lines.joined(separator: "\n")
 
         case let output as CLIShredOutput:

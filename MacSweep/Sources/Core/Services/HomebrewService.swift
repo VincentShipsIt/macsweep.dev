@@ -81,7 +81,30 @@ class HomebrewService: ObservableObject {
         isAnalyzingAI = true
         defer { isAnalyzingAI = false }
 
-        let packageList = packages.map { ["name": $0.name, "from": $0.currentVersion, "to": $0.latestVersion] }
+        // Resolve REAL dependency edges among the outdated set so the model orders
+        // upgrades from actual `brew deps`, not a guess. Casks have no `brew deps`
+        // graph, so the cask suffix is stripped before querying.
+        let cleanNames = packages.map { $0.name.replacingOccurrences(of: " (cask)", with: "") }
+        let outdatedSet = Set(cleanNames)
+        var depsByName: [String: [String]] = [:]
+        for name in cleanNames {
+            let raw = shell("\(brewPath()) deps \(name) 2>/dev/null")
+            let deps = raw.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            // Only edges WITHIN the outdated set matter for ordering this batch.
+            depsByName[name] = deps.filter { outdatedSet.contains($0) }
+        }
+
+        let packageList: [[String: Any]] = packages.map { pkg in
+            let clean = pkg.name.replacingOccurrences(of: " (cask)", with: "")
+            return [
+                "name": pkg.name,
+                "from": pkg.currentVersion,
+                "to": pkg.latestVersion,
+                "dependsOn": depsByName[clean] ?? []
+            ]
+        }
         guard let packagesJSON = try? JSONSerialization.data(withJSONObject: packageList),
               let packagesString = String(data: packagesJSON, encoding: .utf8) else { return }
 
@@ -91,7 +114,9 @@ You are a macOS Homebrew expert. For each outdated package, analyze the version 
 - Whether there are breaking changes (true/false)
 - If breaking: what specifically breaks
 - Upgrade recommendation: "Safe" or "Review first"
-- Upgrade order (1=upgrade first as other packages may depend on it)
+- Upgrade order (1=upgrade first). Derive the order STRICTLY from the `dependsOn` field:
+  a package must be upgraded AFTER every package listed in its `dependsOn`. Packages
+  with an empty `dependsOn` can go first. Do NOT guess dependencies — use only `dependsOn`.
 
 Packages: \(packagesString)
 Return JSON array in same order: [{"changesSummary":"...","hasBreakingChanges":false,"breakingChangesDetail":null,"upgradeRecommendation":"Safe","upgradeOrder":1}]
@@ -108,6 +133,32 @@ Only return the JSON array, no other text.
         } catch {
             self.error = "AI analysis failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Reclaim disk by removing stale downloads and old installed versions
+    /// (`brew cleanup -s`). Returns the full log plus the reclaimed-space line Brew
+    /// prints, when present. Read-mostly: brew only deletes its own cached artifacts.
+    func cleanup() async -> (success: Bool, reclaimedText: String?, log: String) {
+        guard brewExists() else { return (false, nil, "brew_not_found") }
+        let output = shell("\(brewPath()) cleanup -s 2>&1")
+        // Brew emits e.g. "==> This operation has freed approximately 1.2GB of disk space."
+        let reclaimed = output
+            .components(separatedBy: .newlines)
+            .first { $0.lowercased().contains("freed approximately") }?
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "==> ", with: "")
+        return (true, reclaimed, output)
+    }
+
+    /// Top-level formulae — installed packages that are NOT a dependency of any other
+    /// installed formula (`brew leaves`). These are the packages the user explicitly
+    /// wanted; everything else is a pulled-in dependency.
+    func leaves() async -> [String] {
+        guard brewExists() else { return [] }
+        let output = shell("\(brewPath()) leaves 2>/dev/null")
+        return output.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     // MARK: - Private

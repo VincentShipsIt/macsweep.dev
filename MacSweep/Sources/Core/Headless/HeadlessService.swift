@@ -296,7 +296,7 @@ public actor MacSweepHeadlessService {
 
     /// Build a depth-bounded disk-usage tree rooted at `path` (defaults to the
     /// user's home directory). Read-only — sizing and enumeration only.
-    public func diskTree(path: String?, depth: Int) async throws -> HeadlessDiskTree {
+    public func diskTree(path: String?, depth: Int, minSize: Int64 = 0) async throws -> HeadlessDiskTree {
         let expanded: String
         if let path, !path.isEmpty {
             expanded = (path as NSString).expandingTildeInPath
@@ -318,20 +318,33 @@ public actor MacSweepHeadlessService {
             rootPath: url.path,
             depth: clampedDepth,
             totalBytes: node.size,
-            root: Self.serializeDiskNode(node)
+            // The root is always emitted; `minSize` prunes its descendants so the
+            // serialized tree only carries branches worth a human/agent's attention.
+            root: Self.serializeDiskNode(node, minSize: minSize)
         )
     }
 
-    private static func serializeDiskNode(_ node: DiskNode) -> HeadlessDiskNode {
-        HeadlessDiskNode(
+    private static func serializeDiskNode(_ node: DiskNode, minSize: Int64) -> HeadlessDiskNode {
+        // Parent size >= child size, so dropping children below the threshold can
+        // never hide a large descendant — the whole subtree under a small dir is
+        // itself small. Keeps large branches, prunes the long tail of noise.
+        let keptChildren = minSize > 0 ? node.children.filter { $0.size >= minSize } : node.children
+        return HeadlessDiskNode(
             name: node.name,
             path: node.url.path,
             size: node.size,
             isDirectory: node.isDirectory,
+            fileType: node.isDirectory ? "directory" : Self.fileType(for: node.url),
             lastModified: node.lastModified,
-            childCount: node.children.count,
-            children: node.children.map { serializeDiskNode($0) }
+            childCount: keptChildren.count,
+            children: keptChildren.map { serializeDiskNode($0, minSize: minSize) }
         )
+    }
+
+    /// Lowercased file extension, or "file" when the leaf has none.
+    private static func fileType(for url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        return ext.isEmpty ? "file" : ext
     }
 
     // MARK: - App Uninstall
@@ -504,6 +517,14 @@ public actor MacSweepHeadlessService {
 
     public func homebrewUpgrade() async throws -> HeadlessHomebrewUpgradeResult {
         try await runHomebrewUpgradeOnMain()
+    }
+
+    public func homebrewCleanup() async throws -> HeadlessHomebrewCleanupResult {
+        try await runHomebrewCleanupOnMain()
+    }
+
+    public func homebrewLeaves() async throws -> HeadlessHomebrewLeavesReport {
+        try await runHomebrewLeavesOnMain()
     }
 
     // MARK: - Shred
@@ -749,6 +770,30 @@ private func runHomebrewUpgradeOnMain() async throws -> HeadlessHomebrewUpgradeR
         log: service.upgradeLog,
         remainingOutdated: remaining
     )
+}
+
+@MainActor
+private func runHomebrewCleanupOnMain() async throws -> HeadlessHomebrewCleanupResult {
+    let service = HomebrewService()
+    guard service.brewExists() else {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    let result = await service.cleanup()
+    return HeadlessHomebrewCleanupResult(
+        success: result.success,
+        reclaimedText: result.reclaimedText,
+        log: result.log
+    )
+}
+
+@MainActor
+private func runHomebrewLeavesOnMain() async throws -> HeadlessHomebrewLeavesReport {
+    let service = HomebrewService()
+    guard service.brewExists() else {
+        throw HeadlessServiceError.homebrewNotInstalled
+    }
+    let leaves = await service.leaves()
+    return HeadlessHomebrewLeavesReport(count: leaves.count, leaves: leaves)
 }
 
 // MARK: - Process bridges

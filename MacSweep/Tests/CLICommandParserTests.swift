@@ -93,12 +93,30 @@ struct CLICommandParserTests {
 
     @Test func parsesSpaceLensDefaults() throws {
         #expect(try CLICommandParser.parse(["space", "lens"])
-            == .spaceLens(path: nil, depth: 2, format: .text))
+            == .spaceLens(path: nil, depth: 2, minSize: 0, format: .text))
     }
 
     @Test func parsesSpaceLensPathDepthFormat() throws {
         #expect(try CLICommandParser.parse(["space", "lens", "/tmp", "--depth", "4", "--format", "json"])
-            == .spaceLens(path: "/tmp", depth: 4, format: .json))
+            == .spaceLens(path: "/tmp", depth: 4, minSize: 0, format: .json))
+    }
+
+    @Test func parsesSpaceLensMinSizeSuffixes() throws {
+        #expect(try CLICommandParser.parse(["space", "lens", "--min-size", "100MB"])
+            == .spaceLens(path: nil, depth: 2, minSize: 100 * 1024 * 1024, format: .text))
+        #expect(try CLICommandParser.parse(["space", "lens", "/tmp", "--min-size", "2G", "--format", "json"])
+            == .spaceLens(path: "/tmp", depth: 2, minSize: 2 * 1024 * 1024 * 1024, format: .json))
+    }
+
+    @Test func parsesSpaceLensMinSizeBareBytes() throws {
+        #expect(try CLICommandParser.parse(["space", "lens", "--min-size", "4096"])
+            == .spaceLens(path: nil, depth: 2, minSize: 4096, format: .text))
+    }
+
+    @Test func invalidMinSizeRejected() {
+        #expect(throws: CLIParseError.invalidValue(flag: "--min-size", value: "huge")) {
+            try CLICommandParser.parse(["space", "lens", "--min-size", "huge"])
+        }
     }
 
     // MARK: - login-items
@@ -173,6 +191,18 @@ struct CLICommandParserTests {
     @Test func parsesHomebrewUpgradeWithYes() throws {
         #expect(try CLICommandParser.parse(["homebrew", "upgrade", "--yes"])
             == .homebrewUpgrade(yes: true, format: .text))
+    }
+
+    @Test func parsesHomebrewCleanup() throws {
+        #expect(try CLICommandParser.parse(["homebrew", "cleanup"])
+            == .homebrewCleanup(yes: false, format: .text))
+        #expect(try CLICommandParser.parse(["brew", "cleanup", "--yes", "--format", "json"])
+            == .homebrewCleanup(yes: true, format: .json))
+    }
+
+    @Test func parsesHomebrewLeaves() throws {
+        #expect(try CLICommandParser.parse(["homebrew", "leaves"]) == .homebrewLeaves(.text))
+        #expect(try CLICommandParser.parse(["brew", "leaves", "--format", "json"]) == .homebrewLeaves(.json))
     }
 
     // MARK: - shred

@@ -328,9 +328,13 @@ public struct HeadlessDiskNode: Codable, Sendable {
     public let path: String
     public let size: Int64
     public let isDirectory: Bool
+    /// Coarse type classifier: "directory" for folders, otherwise the lowercased
+    /// file extension (e.g. "log", "zip") or "file" when there is none. Lets agents
+    /// reason about what a large leaf node is without re-stat'ing the path.
+    public let fileType: String
     public let lastModified: Date?
-    /// Number of direct children discovered (the `children` array is the full,
-    /// depth-bounded set; consumers may truncate for display).
+    /// Number of direct children retained after any `--min-size` pruning (the
+    /// `children` array is the full, depth-bounded, post-filter set).
     public let childCount: Int
     public let children: [HeadlessDiskNode]
 
@@ -339,6 +343,7 @@ public struct HeadlessDiskNode: Codable, Sendable {
         path: String,
         size: Int64,
         isDirectory: Bool,
+        fileType: String,
         lastModified: Date?,
         childCount: Int,
         children: [HeadlessDiskNode]
@@ -347,6 +352,7 @@ public struct HeadlessDiskNode: Codable, Sendable {
         self.path = path
         self.size = size
         self.isDirectory = isDirectory
+        self.fileType = fileType
         self.lastModified = lastModified
         self.childCount = childCount
         self.children = children
@@ -604,6 +610,28 @@ public struct HeadlessHomebrewUpgradeResult: Codable, Sendable {
         self.upgraded = upgraded
         self.log = log
         self.remainingOutdated = remainingOutdated
+    }
+}
+
+public struct HeadlessHomebrewCleanupResult: Codable, Sendable {
+    public let success: Bool
+    public let reclaimedText: String?
+    public let log: String
+
+    public init(success: Bool, reclaimedText: String?, log: String) {
+        self.success = success
+        self.reclaimedText = reclaimedText
+        self.log = log
+    }
+}
+
+public struct HeadlessHomebrewLeavesReport: Codable, Sendable {
+    public let count: Int
+    public let leaves: [String]
+
+    public init(count: Int, leaves: [String]) {
+        self.count = count
+        self.leaves = leaves
     }
 }
 
