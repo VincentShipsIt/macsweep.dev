@@ -6,7 +6,7 @@ struct AssistantWatchlistModule: ScanModule {
     let id = Self.moduleID
     let name = "Assistant Watchlists"
     let description = "Assistant-managed scan targets and persistent watchlists"
-    let icon = "bubble.left.and.sparkles"
+    let icon = "bubble.left"
 
     private let targets: [AssistantScanTarget]
     private let checker = SafetyChecker()

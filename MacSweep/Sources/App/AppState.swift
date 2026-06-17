@@ -307,7 +307,7 @@ enum Feature: String, CaseIterable, Identifiable {
         switch self {
         // Main
         case .smartScan: return "sparkles.rectangle.stack"
-        case .assistant: return "bubble.left.and.sparkles"
+        case .assistant: return "bubble.left"
 
         // Cleanup
         case .systemJunk: return "gearshape.2"

@@ -9,8 +9,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowObserver: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Start as accessory (menu bar only, no dock icon)
-        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
 
         // Observe window visibility changes
         windowObserver = NotificationCenter.default.addObserver(

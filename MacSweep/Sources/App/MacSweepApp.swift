@@ -9,6 +9,24 @@ struct MacSweepApp: App {
     @State private var showingOnboarding = false
 
     var body: some Scene {
+        // Default launch window.
+        WindowGroup {
+            mainWindowContent
+        }
+        .defaultSize(width: 900, height: 600)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
+
+        // Main window with ID for programmatic opening from the menu bar extra.
+        WindowGroup(id: "main") {
+            mainWindowContent
+        }
+        .defaultSize(width: 900, height: 600)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
+
         // Menu bar widget
         MenuBarExtra {
             MenuBarView()
@@ -18,40 +36,33 @@ struct MacSweepApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // Main window with ID for programmatic opening
-        WindowGroup(id: "main") {
-            ContentView()
-                .environmentObject(appState)
-                .sheet(isPresented: $showingOnboarding) {
-                    OnboardingView(isPresented: $showingOnboarding)
-                }
-                .onAppear {
-                    if !hasCompletedOnboarding {
-                        showingOnboarding = true
-                    }
-                    // Show dock icon when main window appears
-                    AppDelegate.showDockIcon()
-                }
-                .task {
-                    // Register and schedule weekly background scan
-                    ScanScheduler.shared.register()
-                    NotificationManager.shared.requestPermission()
-                }
-                .onChange(of: showingOnboarding) { newValue in
-                    if !newValue {
-                        hasCompletedOnboarding = true
-                    }
-                }
-        }
-        .defaultSize(width: 900, height: 600)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-        }
-
         // Settings window
         Settings {
             SettingsView()
                 .environmentObject(appState)
         }
+    }
+
+    private var mainWindowContent: some View {
+        ContentView()
+            .environmentObject(appState)
+            .sheet(isPresented: $showingOnboarding) {
+                OnboardingView(isPresented: $showingOnboarding)
+            }
+            .onAppear {
+                if !hasCompletedOnboarding {
+                    showingOnboarding = true
+                }
+                AppDelegate.showDockIcon()
+            }
+            .task {
+                ScanScheduler.shared.register()
+                NotificationManager.shared.requestPermission()
+            }
+            .onChange(of: showingOnboarding) { newValue in
+                if !newValue {
+                    hasCompletedOnboarding = true
+                }
+            }
     }
 }

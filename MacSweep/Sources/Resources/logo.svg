@@ -1,41 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Background -->
-  <rect width="512" height="512" rx="100" fill="#1a1a2e"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">MacSweep logo</title>
+  <desc id="desc">A polished macOS-style app icon with a desktop window, sweeping aqua motion, and cleanup sparkles.</desc>
+  <defs>
+    <linearGradient id="bg" x1="118" y1="88" x2="890" y2="936" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#262a35"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#05070d"/>
+    </linearGradient>
+    <linearGradient id="window" x1="246" y1="230" x2="718" y2="612" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eef6fb"/>
+      <stop offset="0.47" stop-color="#d8e2ea"/>
+      <stop offset="1" stop-color="#8f9aa8"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="287" y1="278" x2="691" y2="546" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#233142"/>
+      <stop offset="1" stop-color="#0c1622"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="278" y1="664" x2="775" y2="378" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1ec9d0"/>
+      <stop offset="0.55" stop-color="#54f0dd"/>
+      <stop offset="1" stop-color="#d8fff5"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="583" y1="226" x2="770" y2="678" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8b95a"/>
+      <stop offset="0.48" stop-color="#b9762b"/>
+      <stop offset="1" stop-color="#674016"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="30" stdDeviation="32" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
 
-  <!-- Mac Monitor -->
-  <rect x="100" y="100" width="220" height="160" rx="12" fill="#e0e0e0"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <path d="M172 794C295 899 697 898 850 734C758 868 318 934 172 794Z" fill="#020617" opacity="0.38"/>
 
-  <!-- Screen -->
-  <rect x="112" y="112" width="196" height="124" rx="6" fill="#2d3748"/>
+  <g filter="url(#softShadow)">
+    <path d="M244 236H696C731.346 236 760 264.654 760 300V576C760 611.346 731.346 640 696 640H244C208.654 640 180 611.346 180 576V300C180 264.654 208.654 236 244 236Z" fill="url(#window)"/>
+    <path d="M236 286H704C721.673 286 736 300.327 736 318V528C736 545.673 721.673 560 704 560H236C218.327 560 204 545.673 204 528V318C204 300.327 218.327 286 236 286Z" fill="url(#screen)"/>
+    <path d="M180 542H760V578C760 612.242 732.242 640 698 640H242C207.758 640 180 612.242 180 578V542Z" fill="#e6edf2"/>
+    <circle cx="470" cy="592" r="13" fill="#9ba7b2"/>
+    <path d="M420 640H520L536 706H404L420 640Z" fill="#cbd5dd"/>
+    <ellipse cx="470" cy="724" rx="132" ry="27" fill="#d8e1e7"/>
+  </g>
 
-  <!-- Monitor chin -->
-  <rect x="100" y="248" width="220" height="24" rx="0" fill="#e0e0e0"/>
+  <path d="M268 681C414 685 582 621 716 501" fill="none" stroke="url(#sweep)" stroke-width="72" stroke-linecap="round" opacity="0.95" filter="url(#glow)"/>
+  <path d="M302 711C444 709 615 640 753 516" fill="none" stroke="#72fff0" stroke-width="22" stroke-linecap="round" opacity="0.64"/>
 
-  <!-- Chin button -->
-  <circle cx="210" cy="260" r="4" fill="#a0a0a0"/>
+  <g filter="url(#softShadow)">
+    <rect x="642" y="178" width="42" height="438" rx="20" fill="url(#handle)" transform="rotate(39 663 397)"/>
+    <rect x="647" y="538" width="46" height="78" rx="13" fill="#71441a" transform="rotate(39 670 577)"/>
+    <path d="M704 623C748 607 822 643 878 728C837 752 797 783 755 819C721 748 692 674 704 623Z" fill="#19c7c4"/>
+    <path d="M735 636C774 645 823 690 856 740C826 759 797 782 768 807C748 757 728 690 735 636Z" fill="#65f2e2"/>
+    <path d="M718 651C767 666 811 701 846 746" fill="none" stroke="#0f766e" stroke-width="12" stroke-linecap="round" opacity="0.42"/>
+  </g>
 
-  <!-- Stand neck -->
-  <rect x="185" y="272" width="50" height="20" fill="#d0d0d0"/>
-
-  <!-- Stand base -->
-  <ellipse cx="210" cy="300" rx="50" ry="10" fill="#d0d0d0"/>
-
-  <!-- Broom handle -->
-  <rect x="300" y="80" width="14" height="160" rx="4" fill="#8B5A2B" transform="rotate(40, 307, 160)"/>
-
-  <!-- Broom band -->
-  <rect x="300" y="220" width="14" height="10" rx="2" fill="#6B4423" transform="rotate(40, 307, 225)"/>
-
-  <!-- Broom bristles (simple) -->
-  <path d="M340 280 L420 360 L440 340 L380 280 Q360 260 340 280 Z" fill="#4ECDC4"/>
-
-  <!-- Sparkles (simple stars) -->
-  <circle cx="150" cy="150" r="6" fill="#4ECDC4"/>
-  <circle cx="200" cy="180" r="4" fill="#4ECDC4"/>
-  <circle cx="160" cy="200" r="5" fill="#4ECDC4"/>
-
-  <!-- Small dust dots -->
-  <circle cx="420" cy="400" r="8" fill="#4a5568"/>
-  <circle cx="450" cy="420" r="6" fill="#4a5568"/>
-  <circle cx="440" cy="380" r="5" fill="#4a5568"/>
+  <g fill="#67f6e7" filter="url(#glow)">
+    <path d="M305 350L321 384L357 392L323 408L315 444L299 410L263 402L297 386Z"/>
+    <circle cx="414" cy="408" r="13"/>
+    <circle cx="334" cy="465" r="16"/>
+    <circle cx="788" cy="343" r="10" opacity="0.78"/>
+    <circle cx="826" cy="386" r="7" opacity="0.54"/>
+  </g>
 </svg>
