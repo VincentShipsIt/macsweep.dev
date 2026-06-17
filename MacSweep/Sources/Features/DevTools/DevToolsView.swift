@@ -39,8 +39,12 @@ struct BuildArtifactsView: View {
     @EnvironmentObject var appState: AppState
     @State private var isScanning = false
     @State private var projects: [ProjectInfo] = []
+    @State private var projectCleanupItems: [CleanupItem] = []
     @State private var systemArtifacts: [CleanupItem] = []
+    @State private var gitArtifacts: [GitCleanupItem] = []
     @State private var selectedItems: Set<UUID> = []
+    @State private var selectedGitItems: Set<UUID> = []
+    @State private var gitToolStatus: GitToolStatus?
     @State private var showingConfirmation = false
     @State private var viewMode: ViewMode = .projects
     @State private var filterType: ProjectType? = nil
@@ -58,13 +62,13 @@ struct BuildArtifactsView: View {
 
             if isScanning {
                 scanningView
-            } else if projects.isEmpty && systemArtifacts.isEmpty {
+            } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
                 emptyState
             } else {
                 contentView
             }
 
-            if (!projects.isEmpty || !systemArtifacts.isEmpty) && !isScanning {
+            if (!projects.isEmpty || !systemArtifacts.isEmpty || !gitArtifacts.isEmpty) && !isScanning {
                 Divider()
                 footer
             }
@@ -81,7 +85,7 @@ struct BuildArtifactsView: View {
                         .font(.title)
                         .fontWeight(.bold)
 
-                    Text("Clean build artifacts and dependencies")
+                    Text("Clean build artifacts, stale worktrees, and branches")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -126,6 +130,23 @@ struct BuildArtifactsView: View {
                     .padding(.horizontal, 4)
                 }
             }
+
+            if let gitToolStatus {
+                HStack(spacing: 8) {
+                    Label(
+                        gitToolStatus.canUseGitHubCLI ? "GitHub CLI connected" : (gitToolStatus.ghPath == nil ? "GitHub CLI unavailable" : "GitHub CLI installed"),
+                        systemImage: gitToolStatus.canUseGitHubCLI ? "checkmark.circle.fill" : "terminal"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(gitToolStatus.canUseGitHubCLI ? .green : .secondary)
+
+                    Text(gitToolStatus.canUseGitHubCLI ? "PR state can help identify merged or closed stale branches." : "Local Git checks still protect branch and worktree cleanup.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+
+                    Spacer()
+                }
+            }
         }
         .padding()
     }
@@ -152,11 +173,7 @@ struct BuildArtifactsView: View {
                     ForEach(filteredProjects) { project in
                         ProjectRow(
                             project: project,
-                            isSelected: project.artifactPaths.allSatisfy { path in
-                                selectedItems.contains(where: { id in
-                                    projects.first { $0.artifactPaths.contains(path) }?.id == project.id
-                                })
-                            },
+                            isSelected: cleanupItemIDs(for: project).allSatisfy { selectedItems.contains($0) },
                             onToggle: {
                                 toggleProject(project)
                             }
@@ -174,6 +191,20 @@ struct BuildArtifactsView: View {
                     }
                 }
             }
+
+            if !gitArtifacts.isEmpty {
+                Section("Stale Git Worktrees & Branches") {
+                    ForEach(gitArtifacts) { item in
+                        GitArtifactRow(
+                            item: item,
+                            isSelected: selectedGitItems.contains(item.id),
+                            onToggle: {
+                                toggleGitItem(item)
+                            }
+                        )
+                    }
+                }
+            }
         }
         .listStyle(.inset)
     }
@@ -187,7 +218,7 @@ struct BuildArtifactsView: View {
                         ForEach(typeProjects) { project in
                             ProjectRow(
                                 project: project,
-                                isSelected: false,
+                                isSelected: cleanupItemIDs(for: project).allSatisfy { selectedItems.contains($0) },
                                 onToggle: { toggleProject(project) }
                             )
                         }
@@ -209,9 +240,27 @@ struct BuildArtifactsView: View {
 
     private var allItemsView: some View {
         List(selection: $selectedItems) {
-            ForEach(allCleanupItems) { item in
-                ArtifactRow(item: item, isSelected: selectedItems.contains(item.id))
-                    .tag(item.id)
+            if !allCleanupItems.isEmpty {
+                Section("Build Artifacts") {
+                    ForEach(allCleanupItems) { item in
+                        ArtifactRow(item: item, isSelected: selectedItems.contains(item.id))
+                            .tag(item.id)
+                    }
+                }
+            }
+
+            if !gitArtifacts.isEmpty {
+                Section("Stale Git Worktrees & Branches") {
+                    ForEach(gitArtifacts) { item in
+                        GitArtifactRow(
+                            item: item,
+                            isSelected: selectedGitItems.contains(item.id),
+                            onToggle: {
+                                toggleGitItem(item)
+                            }
+                        )
+                    }
+                }
             }
         }
         .listStyle(.inset)
@@ -228,7 +277,7 @@ struct BuildArtifactsView: View {
             Text("Find Developer Artifacts")
                 .font(.headline)
 
-            Text("Scan to find node_modules, DerivedData, and other build artifacts")
+            Text("Scan to find node_modules, DerivedData, stale worktrees, and merged branches")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -266,7 +315,7 @@ struct BuildArtifactsView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text("\(selectedItems.count) selected")
+                    Text("\(selectedCount) selected")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -293,6 +342,7 @@ struct BuildArtifactsView: View {
             // Quick actions
             Button("Select All") {
                 selectedItems = Set(allCleanupItems.map(\.id))
+                selectedGitItems = Set(gitArtifacts.map(\.id))
             }
             .glassButton()
 
@@ -307,15 +357,15 @@ struct BuildArtifactsView: View {
             }
             .glassButton(prominent: true)
             .tint(.red)
-            .disabled(selectedItems.isEmpty)
+            .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
         .confirmationDialog(
-            "Clean \(selectedItems.count) items?",
+            "Clean \(selectedCount) items?",
             isPresented: $showingConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Move to Trash", role: .destructive) {
+            Button("Clean Selected", role: .destructive) {
                 Task {
                     await cleanSelected()
                 }
@@ -323,9 +373,9 @@ struct BuildArtifactsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if recentlyModifiedCount > 0 {
-                Text("Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move \(selectedSize) of developer artifacts to Trash.")
+                Text("Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move build artifacts to Trash and remove selected stale Git worktrees or branches.")
             } else {
-                Text("This will move \(selectedSize) of developer artifacts to Trash.")
+                Text("This will move build artifacts to Trash and remove selected stale Git worktrees or branches.")
             }
         }
     }
@@ -335,14 +385,18 @@ struct BuildArtifactsView: View {
     private func scan() async {
         isScanning = true
         projects = []
+        projectCleanupItems = []
         systemArtifacts = []
+        gitArtifacts = []
         selectedItems = []
+        selectedGitItems = []
 
         defer { isScanning = false }
 
         // Scan for projects
         let scanner = ProjectScanner()
         projects = await scanner.discoverProjects(in: FileManager.default.homeDirectoryForCurrentUser)
+        projectCleanupItems = await buildCleanupItems(for: projects)
 
         // Scan for system artifacts (DerivedData, etc.)
         let module = DevToolsModule()
@@ -351,19 +405,28 @@ struct BuildArtifactsView: View {
         // Filter out duplicates
         let projectPaths = Set(projects.flatMap(\.artifactPaths).map(\.path))
         systemArtifacts = systemArtifacts.filter { !projectPaths.contains($0.path.path) }
+
+        let gitScanner = GitArtifactScanner()
+        gitToolStatus = await gitScanner.toolStatus()
+        gitArtifacts = await gitScanner.discoverStaleArtifacts()
     }
 
     private func toggleProject(_ project: ProjectInfo) {
-        // Create cleanup items for project artifacts
-        for path in project.artifactPaths {
-            let item = allCleanupItems.first { $0.path == path }
-            if let item = item {
-                if selectedItems.contains(item.id) {
-                    selectedItems.remove(item.id)
-                } else {
-                    selectedItems.insert(item.id)
-                }
-            }
+        let itemIDs = cleanupItemIDs(for: project)
+        guard !itemIDs.isEmpty else { return }
+
+        if itemIDs.allSatisfy({ selectedItems.contains($0) }) {
+            selectedItems.subtract(itemIDs)
+        } else {
+            selectedItems.formUnion(itemIDs)
+        }
+    }
+
+    private func toggleGitItem(_ item: GitCleanupItem) {
+        if selectedGitItems.contains(item.id) {
+            selectedGitItems.remove(item.id)
+        } else {
+            selectedGitItems.insert(item.id)
         }
     }
 
@@ -381,6 +444,7 @@ struct BuildArtifactsView: View {
         let systemIds = Set(systemArtifacts.map(\.id))
 
         selectedItems = staleProjectIds.union(systemIds)
+        selectedGitItems = Set(gitArtifacts.map(\.id))
     }
 
     private func selectCachesOnly() {
@@ -395,15 +459,25 @@ struct BuildArtifactsView: View {
 
     private func cleanSelected() async {
         let itemsToClean = allCleanupItems.filter { selectedItems.contains($0.id) }
+        let gitItemsToClean = gitArtifacts.filter { selectedGitItems.contains($0.id) }
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
-        let engine = ScanEngine()
-        do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
-        } catch {
-            print("Dev tools cleanup error: \(error)")
+        if !itemsToClean.isEmpty {
+            let engine = ScanEngine()
+            do {
+                _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            } catch {
+                print("Dev tools cleanup error: \(error)")
+            }
+        }
+
+        if !gitItemsToClean.isEmpty {
+            let result = await GitArtifactCleaner().clean(items: gitItemsToClean, dryRun: false)
+            if !result.errors.isEmpty {
+                print("Git cleanup errors: \(result.errors)")
+            }
         }
 
         // Refresh
@@ -425,34 +499,22 @@ struct BuildArtifactsView: View {
     }
 
     private var allCleanupItems: [CleanupItem] {
-        var items: [CleanupItem] = []
-
-        // Convert projects to cleanup items
-        for project in projects {
-            for path in project.artifactPaths {
-                let size = (try? FileManager.default.attributesOfItem(atPath: path.path)[.size] as? Int64) ?? 0
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: path,
-                    size: size,
-                    type: .directory,
-                    module: "dev-tools",
-                    moduleName: "\(project.type.rawValue) - \(project.name)"
-                ))
-            }
-        }
-
-        // Add system artifacts
-        items.append(contentsOf: systemArtifacts)
-
-        return items.sorted { $0.size > $1.size }
+        (projectCleanupItems + systemArtifacts).sorted { $0.size > $1.size }
     }
 
     private var selectedSize: String {
-        let total = allCleanupItems
+        let cleanupTotal = allCleanupItems
             .filter { selectedItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
+        let gitTotal = gitArtifacts
+            .filter { selectedGitItems.contains($0.id) }
+            .reduce(0) { $0 + $1.size }
+        let total = cleanupTotal + gitTotal
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+
+    private var selectedCount: Int {
+        selectedItems.count + selectedGitItems.count
     }
 
     private var recentlyModifiedCount: Int {
@@ -472,6 +534,30 @@ struct BuildArtifactsView: View {
     private func totalSizeForType(_ type: ProjectType) -> String {
         let total = projects.filter { $0.type == type }.reduce(0) { $0 + $1.artifactSize }
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+
+    private func cleanupItemIDs(for project: ProjectInfo) -> Set<UUID> {
+        Set(projectCleanupItems.filter { project.artifactPaths.contains($0.path) }.map(\.id))
+    }
+
+    private func buildCleanupItems(for projects: [ProjectInfo]) async -> [CleanupItem] {
+        var items: [CleanupItem] = []
+        for project in projects {
+            for path in project.artifactPaths {
+                let size = (try? await DiskAnalyzer.directorySize(at: path)) ?? 0
+                let lastModified = try? path.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                items.append(CleanupItem(
+                    id: UUID(),
+                    path: path,
+                    size: size,
+                    type: .directory,
+                    module: "dev-tools",
+                    moduleName: "\(project.type.rawValue) - \(project.name)",
+                    lastModified: lastModified
+                ))
+            }
+        }
+        return items
     }
 }
 
@@ -670,6 +756,101 @@ struct ArtifactRow: View {
                 .font(.headline)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Git Artifact Row
+
+struct GitArtifactRow: View {
+    let item: GitCleanupItem
+    let isSelected: Bool
+    let onToggle: () -> Void
+    @State private var showingCommand = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isSelected ? .blue : .secondary)
+                .onTapGesture { onToggle() }
+
+            Image(systemName: item.kind.icon)
+                .foregroundStyle(item.kind == .worktree ? .teal : .indigo)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(item.name)
+                        .lineLimit(1)
+
+                    Text(item.kind.rawValue)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background((item.kind == .worktree ? Color.teal : Color.indigo).opacity(0.16), in: Capsule())
+                        .foregroundStyle(item.kind == .worktree ? .teal : .indigo)
+                }
+
+                HStack(spacing: 8) {
+                    if let timeSince = item.timeSinceActivity {
+                        Text(timeSince)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Text(item.reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Text((item.displayPath ?? item.repositoryPath).path)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+            }
+
+            Spacer()
+
+            Text(item.formattedSize)
+                .font(.headline)
+
+            Button {
+                showingCommand.toggle()
+            } label: {
+                Image(systemName: "terminal")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .popover(isPresented: $showingCommand) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cleanup command:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text(item.commandPreview)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
+
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(item.commandPreview, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy to clipboard")
+                    }
+                }
+                .padding()
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { onToggle() }
     }
 }
 

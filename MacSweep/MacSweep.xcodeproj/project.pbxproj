@@ -128,6 +128,8 @@
 		DFF8B727F944B0C2B6F689F8 /* MetricGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127335B89003A611DF28B844 /* MetricGraph.swift */; };
 		E0B558E410437125884225B8 /* SystemMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF35B6EC00737A48EEE330C /* SystemMonitor.swift */; };
 		E106687BB21CF03479F03592 /* CLICommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2B12C483BEFA064667A415 /* CLICommand.swift */; };
+		E2F4A7C9D5B8C631A09E4D22 /* SchedulerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F4A7C9D5B8C631A09E4D21 /* SchedulerConfig.swift */; };
+		E2F4A7C9D5B8C631A09E4D23 /* SchedulerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F4A7C9D5B8C631A09E4D21 /* SchedulerConfig.swift */; };
 		E46F42BBE55BCB97044E78B4 /* ServiceWorkerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFE4FDD7AF6AD8B35EE7A522 /* ServiceWorkerModule.swift */; };
 		E5226AEFBC381C00EE70AE5B /* LastScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A475F44172F777C0A972740 /* LastScanStore.swift */; };
 		E6606D26B4216ED59B0A8031 /* StorageDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5C9FF45CF0417996607DD4 /* StorageDetailView.swift */; };
@@ -235,6 +237,7 @@
 		D922FDDDD0DCE526933E8B1B /* MalwareScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MalwareScannerService.swift; sourceTree = "<group>"; };
 		D9E1165CC0384EBFF4A498CA /* NetworkModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModule.swift; sourceTree = "<group>"; };
 		DD9D2DF7DAD8C66F026DFF16 /* CacheAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheAnalyzer.swift; sourceTree = "<group>"; };
+		E2F4A7C9D5B8C631A09E4D21 /* SchedulerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerConfig.swift; sourceTree = "<group>"; };
 		DF3AE981FE2340BE71D937F9 /* LargeFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFilesView.swift; sourceTree = "<group>"; };
 		E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacSweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EBE2479AB4E241B2B6097371 /* BatteryMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryMonitorView.swift; sourceTree = "<group>"; };
@@ -433,6 +436,7 @@
 				8F0932341271CA26B5877E05 /* LoginItemEnumerator.swift */,
 				8596547FDDFCC2EE1391ED19 /* MalwareScannerModels.swift */,
 				D922FDDDD0DCE526933E8B1B /* MalwareScannerService.swift */,
+				E2F4A7C9D5B8C631A09E4D21 /* SchedulerConfig.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -942,6 +946,7 @@
 				A64DF5C20B8630AFC4AE6036 /* PrivacyView.swift in Sources */,
 				8300C00CE42C11FCDF8EBA69 /* ProcessMonitor.swift in Sources */,
 				E71D3D51ACFEF6A32523DAF7 /* SafetyChecker.swift in Sources */,
+				E2F4A7C9D5B8C631A09E4D22 /* SchedulerConfig.swift in Sources */,
 				1116D40D7423683E07063604 /* ScanEngine.swift in Sources */,
 				5869114B87440E7667809E80 /* ScanModule.swift in Sources */,
 				F1347577E42311E7CB6220A2 /* ScanScheduler.swift in Sources */,
@@ -998,6 +1003,7 @@
 				7627F43356F8F7CAB61758F5 /* PrivacyModule.swift in Sources */,
 				0FE36D622782CCCB3884DFAD /* ProcessMonitor.swift in Sources */,
 				878DCAF648A5B7BC2F61E976 /* SafetyChecker.swift in Sources */,
+				E2F4A7C9D5B8C631A09E4D23 /* SchedulerConfig.swift in Sources */,
 				C3BA5A5271CF6A49843C0DED /* ScanEngine.swift in Sources */,
 				2479951865FCD6A571C06DFF /* ScanModule.swift in Sources */,
 				C5C7D6A2A3D942AC754EAB13 /* SecureDelete.swift in Sources */,

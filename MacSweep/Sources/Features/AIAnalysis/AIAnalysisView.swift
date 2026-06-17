@@ -4,6 +4,7 @@ struct AIAnalysisView: View {
     @StateObject private var service = AIAnalysisService()
     @State private var apiKeyInput = ""
     @State private var hasApiKey = false
+    @State private var hasLocalAIProvider = false
     @State private var showKeyField = false
     @State private var keySaveError = false
 
@@ -37,7 +38,7 @@ struct AIAnalysisView: View {
         }
         .background(Color(NSColor.windowBackgroundColor))
         .onAppear {
-            hasApiKey = AIKeychainService.shared.loadKey() != nil
+            refreshProviderState()
         }
     }
 
@@ -52,7 +53,7 @@ struct AIAnalysisView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AI Analysis")
                     .font(.headline)
-                Text("Claude-powered cache scanner")
+                Text("Claude/Codex-powered cache scanner")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -63,9 +64,9 @@ struct AIAnalysisView: View {
             Button {
                 showKeyField.toggle()
             } label: {
-                Label(hasApiKey ? "API Key ✓" : "Add API Key", systemImage: "key")
+                Label(providerStatusLabel, systemImage: hasLocalAIProvider ? "terminal" : "key")
                     .font(.caption)
-                    .foregroundStyle(hasApiKey ? .green : .orange)
+                    .foregroundStyle(hasLocalAIProvider || hasApiKey ? .green : .orange)
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showKeyField) {
@@ -89,15 +90,15 @@ struct AIAnalysisView: View {
 
     private var apiKeyPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Claude API Key")
+            Text("Anthropic API Key Fallback")
                 .font(.headline)
 
-            Text("Stored securely in the macOS Keychain. Never written to disk in plain text.")
+            Text("MacSweep uses signed-in Claude or Codex CLIs first. A key is only needed as a fallback when local CLIs are unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)
 
-            Text("When AI analysis runs, item details — names, paths, sizes, and metadata — are sent to Anthropic's API (api.anthropic.com) for evaluation. File contents are never uploaded. Leave the key empty to keep all analysis on-device.")
+            Text("If the fallback API is used, item details — names, paths, sizes, and metadata — are sent to Anthropic's API (api.anthropic.com) for evaluation. File contents are never uploaded.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280, alignment: .leading)
@@ -117,7 +118,7 @@ struct AIAnalysisView: View {
                 if hasApiKey {
                     Button("Delete Key", role: .destructive) {
                         AIKeychainService.shared.deleteKey()
-                        hasApiKey = false
+                        refreshProviderState()
                         apiKeyInput = ""
                         showKeyField = false
                     }
@@ -128,7 +129,7 @@ struct AIAnalysisView: View {
                     let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { return }
                     if AIKeychainService.shared.saveKey(trimmed) {
-                        hasApiKey = true
+                        refreshProviderState()
                         apiKeyInput = ""
                         showKeyField = false
                         keySaveError = false
@@ -159,17 +160,17 @@ struct AIAnalysisView: View {
                     .font(.title3)
                     .fontWeight(.semibold)
 
-                Text("Click Scan to find cache directories.\nPhase 1 is instant. Phase 2 uses Claude API for deeper analysis.")
+                Text("Click Scan to find cache directories.\nPhase 1 is instant. Phase 2 uses Claude or Codex CLI for deeper analysis.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
-            if !hasApiKey {
+            if !hasLocalAIProvider && !hasApiKey {
                 HStack(spacing: 8) {
                     Image(systemName: "key.fill")
                         .foregroundStyle(.orange)
-                    Text("Add a Claude API key for AI-powered deep scan")
+                    Text("Install or sign in to Claude/Codex CLI, or add an API key fallback")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -326,6 +327,28 @@ struct AIAnalysisView: View {
         if !messages.isEmpty {
             service.error = messages.joined(separator: "; ")
         }
+    }
+
+    private var providerStatusLabel: String {
+        if hasLocalAIProvider { return "Local CLI ✓" }
+        if hasApiKey { return "API Key ✓" }
+        return "Add Fallback"
+    }
+
+    private func refreshProviderState() {
+        hasApiKey = AIKeychainService.shared.loadKey() != nil
+        hasLocalAIProvider = Self.executablePath(for: "claude") != nil || Self.executablePath(for: "codex") != nil
+    }
+
+    private static func executablePath(for command: String) -> String? {
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for directory in path.split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(command).path
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
     }
 }
 
