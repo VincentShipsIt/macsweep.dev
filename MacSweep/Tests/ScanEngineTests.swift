@@ -213,6 +213,18 @@ struct ScanEngineTests {
 
     struct ScanFailure: Error {}
 
+    actor ProgressRecorder {
+        private var updates: [ScanProgressUpdate] = []
+
+        func record(_ update: ScanProgressUpdate) {
+            updates.append(update)
+        }
+
+        func allUpdates() -> [ScanProgressUpdate] {
+            updates
+        }
+    }
+
     /// A module whose scan() either throws or returns a fixed set of items,
     /// for exercising partial-scan capture without touching the real filesystem.
     struct ScanOutcomeModule: ScanModule {
@@ -305,6 +317,28 @@ struct ScanEngineTests {
         // Back-compat shim returns only the items, swallowing the failure.
         let items = try await engine.scan()
         #expect(items == [healthyItem])
+    }
+
+    @Test func scanWithDiagnosticsReportsModuleProgress() async {
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(id: "alpha", name: "Alpha", description: "Alpha",
+                              shouldThrow: false, itemsToReturn: []),
+            ScanOutcomeModule(id: "beta", name: "Beta", description: "Beta",
+                              shouldThrow: true, itemsToReturn: []),
+        ])
+        let recorder = ProgressRecorder()
+
+        _ = await engine.scanWithDiagnostics { update in
+            await recorder.record(update)
+        }
+
+        let updates = await recorder.allUpdates()
+        #expect(updates.first?.completedModules == 0)
+        #expect(updates.first?.totalModules == 2)
+        #expect(updates.last?.completedModules == 2)
+        #expect(updates.last?.totalModules == 2)
+        #expect(updates.last?.fractionCompleted == 1)
+        #expect(Set(updates.compactMap(\.moduleID)) == ["alpha", "beta"])
     }
 
     @Test func cleanAllowsOversizedDryRunPreview() async throws {

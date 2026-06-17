@@ -31,6 +31,21 @@ struct PartialScanResult: Sendable {
     var isPartial: Bool { !failures.isEmpty }
 }
 
+/// A coarse progress update emitted as scan modules finish.
+struct ScanProgressUpdate: Sendable, Equatable {
+    let completedModules: Int
+    let totalModules: Int
+    let moduleID: String?
+    let moduleName: String?
+
+    var fractionCompleted: Double {
+        guard totalModules > 0 else { return 0 }
+        return min(1, max(0, Double(completedModules) / Double(totalModules)))
+    }
+}
+
+typealias ScanProgressHandler = @Sendable (ScanProgressUpdate) async -> Void
+
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
@@ -114,8 +129,8 @@ actor ScanEngine {
         }
     }
 
-    func smartCareScan() async throws -> [CleanupItem] {
-        try await scan(modules: SmartCareDefaults.moduleIDs)
+    func smartCareScan(progress: ScanProgressHandler? = nil) async throws -> [CleanupItem] {
+        try await scan(modules: SmartCareDefaults.moduleIDs, progress: progress)
     }
 
     /// Scan all modules or specific ones, returning only the items.
@@ -125,8 +140,8 @@ actor ScanEngine {
     /// partial (to warn the user) should use ``scanWithDiagnostics(modules:)``.
     /// Retains `throws` purely so existing `try await` call sites stay valid;
     /// the body itself never throws.
-    func scan(modules moduleIDs: [String]? = nil) async throws -> [CleanupItem] {
-        await scanWithDiagnostics(modules: moduleIDs).items
+    func scan(modules moduleIDs: [String]? = nil, progress: ScanProgressHandler? = nil) async throws -> [CleanupItem] {
+        await scanWithDiagnostics(modules: moduleIDs, progress: progress).items
     }
 
     /// Scan all modules or specific ones, capturing per-module failures.
@@ -134,7 +149,7 @@ actor ScanEngine {
     /// Unlike ``scan(modules:)``, a thrown module error is recorded as a
     /// ``ModuleScanFailure`` rather than silently swallowed, so the caller can
     /// surface that the result is partial.
-    func scanWithDiagnostics(modules moduleIDs: [String]? = nil) async -> PartialScanResult {
+    func scanWithDiagnostics(modules moduleIDs: [String]? = nil, progress: ScanProgressHandler? = nil) async -> PartialScanResult {
         let modulesToScan: [any ScanModule]
 
         if let ids = moduleIDs {
@@ -146,9 +161,17 @@ actor ScanEngine {
         // Each task returns either the module's safe items or a captured failure;
         // a failing module never tears down the whole group.
         enum ModuleOutcome: Sendable {
-            case items([CleanupItem])
-            case failure(ModuleScanFailure)
+            case items(moduleID: String, moduleName: String, items: [CleanupItem])
+            case failure(ModuleScanFailure, moduleName: String)
         }
+
+        let totalModules = modulesToScan.count
+        await progress?(ScanProgressUpdate(
+            completedModules: 0,
+            totalModules: totalModules,
+            moduleID: nil,
+            moduleName: nil
+        ))
 
         return await withTaskGroup(of: ModuleOutcome.self) { group in
             for module in modulesToScan {
@@ -159,24 +182,39 @@ actor ScanEngine {
                         let safe = items.filter { item in
                             self.safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
                         }
-                        return .items(safe)
+                        return .items(moduleID: module.id, moduleName: module.name, items: safe)
                     } catch {
                         return .failure(ModuleScanFailure(
                             moduleID: module.id,
                             message: error.localizedDescription
-                        ))
+                        ), moduleName: module.name)
                     }
                 }
             }
 
             var allItems: [CleanupItem] = []
             var failures: [ModuleScanFailure] = []
+            var completedModules = 0
             for await outcome in group {
+                completedModules += 1
+
                 switch outcome {
-                case .items(let items):
+                case .items(let moduleID, let moduleName, let items):
                     allItems.append(contentsOf: items)
-                case .failure(let failure):
+                    await progress?(ScanProgressUpdate(
+                        completedModules: completedModules,
+                        totalModules: totalModules,
+                        moduleID: moduleID,
+                        moduleName: moduleName
+                    ))
+                case .failure(let failure, let moduleName):
                     failures.append(failure)
+                    await progress?(ScanProgressUpdate(
+                        completedModules: completedModules,
+                        totalModules: totalModules,
+                        moduleID: failure.moduleID,
+                        moduleName: moduleName
+                    ))
                 }
             }
             return PartialScanResult(items: allItems, failures: failures)

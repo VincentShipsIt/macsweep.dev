@@ -62,15 +62,11 @@ struct SystemCleanupView: View {
     private var emptyState: some View {
         VStack(spacing: 20) {
             if appState.isScanning {
-                ProgressView()
-                    .scaleEffect(1.5)
-
-                Text("Scanning...")
-                    .font(.headline)
-
-                Text("Finding files that can be safely removed")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                ScanProgressStatusView(
+                    progress: appState.scanProgress,
+                    message: appState.currentScanModule ?? "Scanning"
+                )
+                .frame(maxWidth: 320)
             } else {
                 Image(systemName: "sparkles")
                     .font(.system(size: 64))
