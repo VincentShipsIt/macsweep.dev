@@ -4,8 +4,9 @@ import Foundation
 ///
 /// Ported from the GUI-only `AIAnalysisService` into Core so the headless/CLI
 /// layer can drive the same logic. The fast scan is pure deterministic shell
-/// discovery and always runs; the AI scan is gated on an Anthropic key stored in
-/// the Keychain and only runs when `deep` is requested. No state is mutated and
+/// discovery and always runs; the AI scan prefers local assistant CLIs
+/// (`claude -p`, then `codex exec`) and falls back to an Anthropic key stored in
+/// the Keychain only when no local provider succeeds. No state is mutated and
 /// nothing is deleted — this is read-only reconnaissance.
 struct CacheAnalyzer {
 
@@ -35,10 +36,10 @@ struct CacheAnalyzer {
         let errors: [String]
     }
 
-    /// Run the deterministic fast scan (always) plus, when `deep` is true and an
-    /// Anthropic key is present in the Keychain, an AI semantic scan. AI results
-    /// are deduplicated against fast-scan paths. Errors are collected rather than
-    /// thrown so a failed AI call still returns the deterministic findings.
+    /// Run the deterministic fast scan (always) plus, when `deep` is true, an AI
+    /// semantic scan using local CLIs before falling back to the stored API key.
+    /// AI results are deduplicated against fast-scan paths. Errors are collected
+    /// rather than thrown so a failed AI call still returns deterministic findings.
     func analyze(deep: Bool) async -> Result {
         var errors: [String] = []
         let fast = await runFastScan()
@@ -46,14 +47,26 @@ struct CacheAnalyzer {
         var aiRan = false
 
         if deep {
-            if let key = AIKeychainService.shared.loadKey() {
-                let (aiFindings, aiError) = await runAIScan(apiKey: key)
+            let dirList = await largestApplicationSupportDirectories()
+            let prompt = makeAIPrompt(dirList: dirList)
+            let local = await runLocalAIScan(prompt: prompt)
+
+            if local.provider != nil {
                 let existing = Set(findings.map { $0.path })
-                findings.append(contentsOf: aiFindings.filter { !existing.contains($0.path) })
+                findings.append(contentsOf: local.findings.filter { !existing.contains($0.path) })
                 aiRan = true
-                if let aiError { errors.append(aiError) }
+                if let error = local.error { errors.append(error) }
+            } else if let key = AIKeychainService.shared.loadKey() {
+                let anthropic = await runAnthropicScan(apiKey: key, prompt: prompt)
+                let existing = Set(findings.map { $0.path })
+                findings.append(contentsOf: anthropic.findings.filter { !existing.contains($0.path) })
+                aiRan = true
+                if let error = anthropic.error { errors.append(error) }
             } else {
-                errors.append("AI scan requested but no Anthropic API key is stored. Add one in the MacSweep app.")
+                if let error = local.error {
+                    errors.append(error)
+                }
+                errors.append("AI scan requested but no Claude/Codex CLI or Anthropic API key is available.")
             }
         }
 
@@ -143,15 +156,14 @@ struct CacheAnalyzer {
 
     // MARK: - AI Scan
 
-    /// POST the largest `~/Library/Application Support` directories to the
-    /// Anthropic Messages API and parse the JSON array of suggested cache dirs.
-    /// Returns `(findings, error?)` — errors are surfaced, never thrown.
-    private func runAIScan(apiKey: String) async -> ([Finding], String?) {
-        let dirList = await Task.detached(priority: .userInitiated) {
+    private func largestApplicationSupportDirectories() async -> String {
+        await Task.detached(priority: .userInitiated) {
             Self.shell(#"du -sh ~/Library/Application\ Support/*/ 2>/dev/null | sort -rh | head -50"#)
         }.value
+    }
 
-        let prompt = """
+    private func makeAIPrompt(dirList: String) -> String {
+        """
         You are a disk cleanup scanner for macOS developer machines.
 
         Here are the largest directories in ~/Library/Application Support:
@@ -168,6 +180,68 @@ struct CacheAnalyzer {
         Respond ONLY with a JSON array (no markdown):
         [{"path":"...","size_estimate":"...","category":"Electron/Chromium|Package Manager|Dev Debug Logs|AI Tool Cache|Other","regenerates_automatically":true,"reason":"..."}]
         """
+    }
+
+    private func runLocalAIScan(prompt: String) async -> (findings: [Finding], provider: String?, error: String?) {
+        var errors: [String] = []
+
+        if Self.executablePath(for: "claude") != nil {
+            let result = Self.runProcess([
+                "claude",
+                "-p",
+                "--json-schema", Self.aiSchemaString,
+                prompt
+            ])
+            if result.status == 0 {
+                if let findings = Self.parseAIFindings(result.output, source: "AI Analysis") {
+                    return (findings, "Claude CLI", nil)
+                }
+                errors.append("Claude CLI returned an unparseable AI scan response.")
+            } else {
+                errors.append(Self.processError("Claude CLI", result))
+            }
+        }
+
+        if Self.executablePath(for: "codex") != nil {
+            let schemaURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-schema-\(UUID().uuidString).json")
+            let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-\(UUID().uuidString).json")
+            do {
+                try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
+                let result = Self.runProcess([
+                    "codex",
+                    "exec",
+                    "--skip-git-repo-check",
+                    "--sandbox", "read-only",
+                    "--ephemeral",
+                    "--output-schema", schemaURL.path,
+                    "-o", outputURL.path,
+                    prompt
+                ])
+                if result.status == 0 {
+                    let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
+                    if let findings = Self.parseAIFindings(text, source: "AI Analysis") {
+                        try? FileManager.default.removeItem(at: schemaURL)
+                        try? FileManager.default.removeItem(at: outputURL)
+                        return (findings, "Codex CLI", nil)
+                    }
+                    errors.append("Codex CLI returned an unparseable AI scan response.")
+                } else {
+                    errors.append(Self.processError("Codex CLI", result))
+                }
+            } catch {
+                errors.append("Codex CLI scan failed: \(error.localizedDescription)")
+            }
+            try? FileManager.default.removeItem(at: schemaURL)
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+
+        return ([], nil, errors.isEmpty ? nil : errors.joined(separator: " "))
+    }
+
+    /// POST the largest `~/Library/Application Support` directories to the
+    /// Anthropic Messages API and parse the JSON array of suggested cache dirs.
+    /// Returns `(findings, error?)` — errors are surfaced, never thrown.
+    private func runAnthropicScan(apiKey: String, prompt: String) async -> (findings: [Finding], error: String?) {
 
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             return ([], "AI scan failed: invalid endpoint URL.")
@@ -195,24 +269,8 @@ struct CacheAnalyzer {
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let content = (json["content"] as? [[String: Any]])?.first,
                   let text = content["text"] as? String,
-                  let arrayData = text.data(using: .utf8),
-                  let items = try? JSONSerialization.jsonObject(with: arrayData) as? [[String: Any]] else {
+                  let findings = Self.parseAIFindings(text, source: "AI Analysis") else {
                 return ([], "AI scan returned an unparseable response.")
-            }
-            let findings = items.compactMap { item -> Finding? in
-                guard let path = item["path"] as? String else { return nil }
-                let size = item["size_estimate"] as? String ?? "Unknown"
-                let cat = item["category"] as? String ?? "Other"
-                let regen = item["regenerates_automatically"] as? Bool ?? true
-                let reason = item["reason"] as? String
-                return Finding(
-                    path: path,
-                    sizeText: size,
-                    category: Category(rawValue: cat) ?? .other,
-                    regeneratesAutomatically: regen,
-                    source: "AI Analysis",
-                    reason: reason
-                )
             }
             return (findings, nil)
         } catch {
@@ -220,7 +278,81 @@ struct CacheAnalyzer {
         }
     }
 
+    private static func parseAIFindings(_ text: String, source: String) -> [Finding]? {
+        let cleaned = stripMarkdownFence(text)
+        guard let arrayData = cleaned.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: arrayData) as? [[String: Any]] else {
+            return nil
+        }
+
+        return items.compactMap { item -> Finding? in
+            guard let path = item["path"] as? String else { return nil }
+            let size = item["size_estimate"] as? String ?? "Unknown"
+            let cat = item["category"] as? String ?? "Other"
+            let regen = item["regenerates_automatically"] as? Bool ?? true
+            let reason = item["reason"] as? String
+            return Finding(
+                path: path,
+                sizeText: size,
+                category: Category(rawValue: cat) ?? .other,
+                regeneratesAutomatically: regen,
+                source: source,
+                reason: reason
+            )
+        }
+    }
+
+    private static func stripMarkdownFence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("```") else { return trimmed }
+        var lines = trimmed.components(separatedBy: .newlines)
+        if !lines.isEmpty { lines.removeFirst() }
+        if lines.last?.trimmingCharacters(in: .whitespacesAndNewlines) == "```" {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Shell helper
+
+    private static func executablePath(for command: String) -> String? {
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for directory in path.split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(command).path
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func runProcess(_ arguments: [String]) -> AIProcessResult {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        task.arguments = arguments
+        let stdout = Pipe()
+        let stderr = Pipe()
+        task.standardOutput = stdout
+        task.standardError = stderr
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return AIProcessResult(status: 127, output: "", error: error.localizedDescription)
+        }
+        return AIProcessResult(
+            status: task.terminationStatus,
+            output: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
+            error: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        )
+    }
+
+    private static func processError(_ provider: String, _ result: AIProcessResult) -> String {
+        let message = result.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            : result.error.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(provider) scan failed: \(message)"
+    }
 
     private static func shell(_ cmd: String) -> String {
         let task = Process()
@@ -233,4 +365,32 @@ struct CacheAnalyzer {
         task.waitUntilExit()
         return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
+
+    private static var aiSchemaString: String {
+        """
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "size_estimate", "category", "regenerates_automatically"],
+            "properties": {
+              "path": { "type": "string" },
+              "size_estimate": { "type": "string" },
+              "category": {
+                "type": "string",
+                "enum": ["Electron/Chromium", "Package Manager", "Dev Debug Logs", "AI Tool Cache", "Other"]
+              },
+              "regenerates_automatically": { "type": "boolean" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+        """
+    }
+}
+
+private struct AIProcessResult: Sendable {
+    let status: Int32
+    let output: String
+    let error: String
 }

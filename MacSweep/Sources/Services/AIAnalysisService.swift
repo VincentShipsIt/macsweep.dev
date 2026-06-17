@@ -12,25 +12,20 @@ class AIAnalysisService: ObservableObject {
         findings = []
         error = nil
 
-        // Phase 1: deterministic fast scan
-        phase = "Fast scan..."
-        let fastFindings = await runFastScan()
-        findings.append(contentsOf: fastFindings)
-
-        // Phase 2: AI semantic scan
-        guard let apiKey = AIKeychainService.shared.loadKey() else {
-            phase = "No API key — showing fast scan results only"
-            isScanning = false
-            return
+        phase = "Scanning caches..."
+        let result = await CacheAnalyzer().analyze(deep: true)
+        findings = result.findings.map { finding in
+            CacheFinding(
+                path: finding.path,
+                size: finding.sizeText,
+                category: CacheCategory(rawValue: finding.category.rawValue) ?? .other,
+                regeneratesAutomatically: finding.regeneratesAutomatically,
+                source: finding.source == "Fast Scan" ? .deterministic : .ai,
+                reason: finding.reason
+            )
         }
-        phase = "AI analysis..."
-        let aiFindings = await runAIScan(apiKey: apiKey)
-
-        // Deduplicate by path
-        let existingPaths = Set(findings.map { $0.path })
-        findings.append(contentsOf: aiFindings.filter { !existingPaths.contains($0.path) })
-
-        phase = "Done"
+        error = result.errors.isEmpty ? nil : result.errors.joined(separator: "; ")
+        phase = result.aiRan ? "Done" : "Fast scan results only"
         isScanning = false
     }
 
