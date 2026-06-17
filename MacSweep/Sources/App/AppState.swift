@@ -40,6 +40,8 @@ final class AppState: ObservableObject {
     let scanEngine = ScanEngine()
     let safetyChecker = SafetyChecker()
     let assistant = AssistantCoordinator()
+    private var activeScanTask: Task<Void, Never>?
+    private var activeScanID: UUID?
 
     // MARK: - Initialization
     init() {
@@ -51,16 +53,16 @@ final class AppState: ObservableObject {
     // MARK: - Actions
 
     func quickScan() async {
-        await performScan(
-            moduleScan: { try await self.scanEngine.smartCareScan() },
+        await startScan(
+            moduleScan: { progress in try await self.scanEngine.smartCareScan(progress: progress) },
             modules: SmartCareDefaults.moduleIDs,
             assistantTargets: assistant.enabledTargets
         )
     }
 
     func scan(modules: [String]? = nil) async {
-        await performScan(
-            moduleScan: { try await self.scanEngine.scan(modules: modules) },
+        await startScan(
+            moduleScan: { progress in try await self.scanEngine.scan(modules: modules, progress: progress) },
             modules: modules,
             assistantTargets: modules == nil ? assistant.enabledTargets : []
         )
@@ -122,10 +124,10 @@ final class AppState: ObservableObject {
     }
 
     func runAssistantPlan(_ plan: AssistantScanPlan) async {
-        await performScan(
-            moduleScan: { [scanEngine] in
+        await startScan(
+            moduleScan: { [scanEngine] progress in
                 guard !plan.modules.isEmpty else { return [] }
-                return try await scanEngine.scan(modules: plan.modules)
+                return try await scanEngine.scan(modules: plan.modules, progress: progress)
             },
             modules: plan.modules,
             assistantTargets: plan.customTargets
@@ -145,27 +147,78 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func startScan(
+        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
+        modules: [String]?,
+        assistantTargets: [AssistantScanTarget]
+    ) async {
+        if let activeScanTask {
+            await activeScanTask.value
+            return
+        }
+
+        let scanID = UUID()
+        activeScanID = scanID
+
+        let task = Task { @MainActor in
+            await self.performScan(
+                moduleScan: moduleScan,
+                modules: modules,
+                assistantTargets: assistantTargets
+            )
+
+            if self.activeScanID == scanID {
+                self.activeScanTask = nil
+                self.activeScanID = nil
+            }
+        }
+
+        activeScanTask = task
+        await task.value
+    }
+
     private func performScan(
-        moduleScan: @escaping () async throws -> [CleanupItem],
+        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
         modules: [String]?,
         assistantTargets: [AssistantScanTarget]
     ) async {
         isScanning = true
         scanProgress = 0
+        currentScanModule = "Preparing scan"
         scanResults = []
         selectedItems = []
         smartCareSummary = nil
         lastError = nil
 
-        defer { isScanning = false }
+        defer {
+            isScanning = false
+            currentScanModule = nil
+        }
+
+        let progressHandler: ScanProgressHandler = { update in
+            await MainActor.run {
+                self.scanProgress = update.fractionCompleted
+
+                if let moduleName = update.moduleName {
+                    self.currentScanModule = "Completed \(moduleName)"
+                } else if update.totalModules > 0 {
+                    self.currentScanModule = "Scanning \(update.totalModules) modules"
+                } else {
+                    self.currentScanModule = "Preparing scan"
+                }
+            }
+        }
 
         do {
-            async let primaryItems = moduleScan()
+            async let primaryItems = moduleScan(progressHandler)
             async let watchlistItems = scanEngine.scanAssistantTargets(assistantTargets)
             let scannedItems = try await primaryItems
+            currentScanModule = assistantTargets.isEmpty ? "Finalizing results" : "Checking assistant watchlist"
+            scanProgress = max(scanProgress, 0.95)
             let persistentItems = try await watchlistItems
             let combined = deduplicated(items: scannedItems + persistentItems)
             applyScanResults(combined, modules: modules)
+            scanProgress = 1
         } catch {
             // Surface to the UI instead of swallowing into a console log.
             lastError = "Scan failed: \(error.localizedDescription)"

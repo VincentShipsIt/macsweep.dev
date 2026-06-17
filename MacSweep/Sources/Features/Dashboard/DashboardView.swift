@@ -134,7 +134,7 @@ struct DashboardView: View {
                                 await appState.quickScan()
                             }
                         } label: {
-                            Label(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan", systemImage: "sparkles")
+                            Label(appState.isScanning ? "Scanning" : (appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan"), systemImage: "sparkles")
                         }
                         .glassButton(prominent: true)
                         .disabled(appState.isScanning)
@@ -148,6 +148,13 @@ struct DashboardView: View {
                         }
                         .glassButton()
                         .disabled(appState.selectedItems.isEmpty || appState.isScanning)
+                    }
+
+                    if appState.isScanning {
+                        ScanProgressStatusView(
+                            progress: appState.scanProgress,
+                            message: appState.currentScanModule ?? "Scanning"
+                        )
                     }
 
                     if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
@@ -298,6 +305,9 @@ struct DashboardView: View {
     }
 
     private var smartCareHeadline: String {
+        if appState.isScanning {
+            return "Scan in progress."
+        }
         if let summary = appState.smartCareSummary {
             return summary.score >= 85 ? "Your Mac is in good shape." : "Your Mac has cleanup opportunities."
         }
@@ -305,6 +315,9 @@ struct DashboardView: View {
     }
 
     private var smartCareDescription: String {
+        if appState.isScanning {
+            return appState.currentScanModule ?? "MacSweep is scanning in the background."
+        }
         if let summary = appState.smartCareSummary {
             return "\(summary.issueCount) items found across \(summary.findings.count) categories. Recommended items are preselected for a safer one-click cleanup."
         }
@@ -580,6 +593,38 @@ struct RecommendationCard: View {
         .padding()
         .frame(width: 180, height: 180)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct ScanProgressStatusView: View {
+    let progress: Double
+    let message: String
+    var compact = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Text(message)
+                    .font(compact ? .caption : .subheadline)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("\(Int(progress * 100))%")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: progress)
+                .tint(.purple)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Scan progress")
+        .accessibilityValue("\(Int(progress * 100)) percent, \(message)")
     }
 }
 

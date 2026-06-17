@@ -147,7 +147,7 @@ struct MenuBarView: View {
             SystemStatCard(
                 icon: "magnifyingglass",
                 title: "Smart Care",
-                subtitle: appState.isScanning ? "Scanning..." : "Run one-click cleanup",
+                subtitle: appState.isScanning ? "\(Int(appState.scanProgress * 100))% complete" : "Run one-click cleanup",
                 accentColor: .purple,
                 actionLabel: appState.isScanning ? nil : "Scan",
                 action: {
@@ -213,6 +213,15 @@ struct MenuBarView: View {
 
     private var quickActions: some View {
         VStack(spacing: 8) {
+            if appState.isScanning {
+                ScanProgressStatusView(
+                    progress: appState.scanProgress,
+                    message: appState.currentScanModule ?? "Scanning",
+                    compact: true
+                )
+                .padding(.horizontal, 4)
+            }
+
             if !appState.scanResults.isEmpty {
                 HStack {
                     Text("\(appState.scanResults.count) items found")
