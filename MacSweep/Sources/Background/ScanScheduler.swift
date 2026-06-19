@@ -3,7 +3,12 @@ import Foundation
 // Note: BackgroundTasks framework is iOS/iPadOS. On macOS, we use a timer-based approach
 // with UserDefaults to track last scan date and schedule via app lifecycle.
 
-class ScanScheduler {
+// MainActor-isolated so the rescheduled Timer is always installed on the main
+// run loop. runBackgroundScan() awaits the ScanEngine actor and would otherwise
+// resume on a cooperative-pool thread, scheduling the next Timer on a run loop
+// that never runs — so the weekly scan would fire only once.
+@MainActor
+final class ScanScheduler {
     static let shared = ScanScheduler()
     static let taskIdentifier = "com.vincentshipsit.macsweep.weeklyscan"
 
@@ -69,11 +74,9 @@ class ScanScheduler {
             itemCount: itemCount
         )
 
-        // Notify if > 100MB found
+        // Notify if > 100MB found (already on the main actor).
         if totalSize > 100_000_000 {
-            await MainActor.run {
-                NotificationManager.shared.sendScanComplete(bytesFound: totalSize)
-            }
+            NotificationManager.shared.sendScanComplete(bytesFound: totalSize)
         }
 
         // Schedule next scan

@@ -42,7 +42,7 @@ SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 # --- extractors: each prints the single version string from one source ----------
 yml_version()     { grep 'MARKETING_VERSION:' "$PROJECT_YML" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
 swift_version()   { grep 'static let current' "$VERSION_SWIFT" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
-formula_version() { grep 'url ' "$FORMULA" | head -1 | sed 's|.*/v\(.*\)\.tar\.gz.*|\1|'; }
+formula_version() { grep -m1 -E '^[[:space:]]*url ' "$FORMULA" | sed -E 's|.*/tags/v([0-9.]+)\.tar\.gz.*|\1|'; }
 # pbxproj has the value on multiple targets; assert they're uniform and print one.
 pbxproj_version() {
   grep 'MARKETING_VERSION = ' "$PBXPROJ" | sed 's/.*= \(.*\);/\1/' | sort -u

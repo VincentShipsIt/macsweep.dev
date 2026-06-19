@@ -479,7 +479,8 @@ struct CLIExitCodeTests {
 
     @Test func executionErrorsMap() {
         #expect(code(CLIExecutionError.confirmationRequired) == CLIExitCode.confirmationRequired.rawValue)
-        #expect(code(CLIExecutionError.cleanupCancelled) == CLIExitCode.generic.rawValue)
+        // A user declining at the prompt is distinct from an operational failure.
+        #expect(code(CLIExecutionError.cleanupCancelled) == CLIExitCode.cancelled.rawValue)
     }
 
     @Test func serviceNotFoundErrorsMapToNotFound() {

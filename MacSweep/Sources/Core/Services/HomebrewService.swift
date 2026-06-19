@@ -6,6 +6,10 @@ class HomebrewService: ObservableObject {
     @Published var isLoading = false
     @Published var isUpgrading = false
     @Published var upgradeLog = ""
+    /// Real exit status of the last `brew upgrade` run by `runUpgrade(args:)`
+    /// (true == exit 0). Read by the headless bridge so `homebrew upgrade` can
+    /// report failure instead of always claiming success. nil until a run completes.
+    @Published var lastUpgradeSucceeded: Bool?
     @Published var error: String?
     @Published var isAnalyzingAI = false
 
@@ -140,14 +144,15 @@ Only return the JSON array, no other text.
     /// prints, when present. Read-mostly: brew only deletes its own cached artifacts.
     func cleanup() async -> (success: Bool, reclaimedText: String?, log: String) {
         guard brewExists() else { return (false, nil, "brew_not_found") }
-        let output = shell("\(brewPath()) cleanup -s 2>&1")
+        let (output, status) = shellWithStatus("\(brewPath()) cleanup -s 2>&1")
         // Brew emits e.g. "==> This operation has freed approximately 1.2GB of disk space."
         let reclaimed = output
             .components(separatedBy: .newlines)
             .first { $0.lowercased().contains("freed approximately") }?
             .trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "==> ", with: "")
-        return (true, reclaimed, output)
+        // Success reflects brew's real exit status, not merely that brew exists.
+        return (status == 0, reclaimed, output)
     }
 
     /// Top-level formulae — installed packages that are NOT a dependency of any other
@@ -171,8 +176,10 @@ Only return the JSON array, no other text.
     /// the headless layer can map the absence to the right exit code.
     func selfUpgrade() async -> (success: Bool, log: String) {
         guard brewExists() else { return (false, "brew_not_found") }
-        let output = shell("\(brewPath()) upgrade vincentshipsit/macsweep/macsweep 2>&1")
-        return (true, output)
+        let (output, status) = shellWithStatus("\(brewPath()) upgrade vincentshipsit/macsweep/macsweep 2>&1")
+        // Success reflects brew's real exit status — a failed upgrade must not
+        // report applied:true to the headless/CLI layer.
+        return (status == 0, output)
     }
 
     // MARK: - Private
@@ -180,6 +187,7 @@ Only return the JSON array, no other text.
     private func runUpgrade(args: String) async {
         isUpgrading = true
         upgradeLog = ""
+        lastUpgradeSucceeded = nil
         defer { isUpgrading = false }
 
         let cmd = args.isEmpty ? "\(brewPath()) upgrade" : "\(brewPath()) upgrade \(args)"
@@ -207,8 +215,12 @@ Only return the JSON array, no other text.
             try process.run()
             process.waitUntilExit()
             handle.readabilityHandler = nil
+            // Record the real exit status so the headless layer can report a
+            // failed upgrade rather than hardcoding success.
+            lastUpgradeSucceeded = process.terminationStatus == 0
             upgradeLog += "\n✅ Done (exit code: \(process.terminationStatus))"
         } catch {
+            lastUpgradeSucceeded = false
             upgradeLog += "\n❌ Error: \(error.localizedDescription)"
         }
 
@@ -265,15 +277,27 @@ Only return the JSON array, no other text.
     }
 
     private func shell(_ cmd: String) -> String {
+        shellWithStatus(cmd).output
+    }
+
+    /// Like `shell(_:)` but also surfaces the process exit status, so callers that
+    /// must report success/failure (cleanup, self-upgrade) can gate on the real
+    /// `brew` exit code instead of merely "brew exists". A failed `run()` yields
+    /// status 1 so it reads as a failure.
+    private func shellWithStatus(_ cmd: String) -> (output: String, status: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", cmd]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try? process.run()
+        do {
+            try process.run()
+        } catch {
+            return ("", 1)
+        }
         process.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+        return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
     }
 }

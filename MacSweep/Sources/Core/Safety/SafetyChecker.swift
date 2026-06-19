@@ -20,6 +20,7 @@ struct SafetyChecker: Sendable {
     // Module IDs that own explicit allow-zones below.
     private static let trashModuleID = "trash-bins"
     private static let privacyModuleID = "privacy"
+    private static let aiAnalysisModuleID = "ai-analysis"
     private static let packageManagerModuleIDs: Set<String> = ["package-managers", "dev-tools"]
 
     // MARK: - Validation
@@ -53,37 +54,67 @@ struct SafetyChecker: Sendable {
     ///   • the system / app-data / credential / cloud roots in `neverDelete`.
     /// Files *inside* the user document roots stay shreddable.
     func validateForShred(_ url: URL) -> ValidationResult {
-        let standardized = url.standardized
-        let path = standardized.path
+        validateBlocklist(url, action: .shred)
+    }
 
-        // Never follow a symlink: FileHandle(forWritingTo:) opens through it and
-        // would overwrite the link target's bytes, not the link the user dropped.
+    /// Validate a path the user has *explicitly* selected to move to the Trash from
+    /// an arbitrary location (e.g. the Space Lens disk map). Like `validateForShred`
+    /// this is a **blocklist**, not the default-deny cleanup allowlist: an
+    /// unrecognized user path is allowed (that is the feature), but the
+    /// system/app-data/credential/cloud roots and whole user-folder roots stay
+    /// protected. The action is recoverable (Trash), but still gated so a stray
+    /// click — or a parent symlink pointing into a protected root — can't nuke a
+    /// critical path.
+    func validateForTrash(_ url: URL) -> ValidationResult {
+        validateBlocklist(url, action: .trash)
+    }
+
+    private enum BlocklistAction {
+        case shred, trash
+        var verb: String { self == .shred ? "shred" : "move to Trash" }
+    }
+
+    /// Shared blocklist used by shred and explicit move-to-Trash. The shredder's and
+    /// disk-map's whole purpose is acting on arbitrary user-chosen files, so an
+    /// unrecognized path is *allowed*; we only refuse the catastrophic targets.
+    private func validateBlocklist(_ url: URL, action: BlocklistAction) -> ValidationResult {
+        let standardized = url.standardized
+
+        // Never follow a symlink as the FINAL component: a write/overwrite opens
+        // through it and would destroy the link target's bytes, not the link the
+        // user selected.
         if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
-            return .symlink(reason: "Symlink — shredding would destroy the link target, not the link")
+            return .symlink(reason: "Symlink — would affect the link target, not the link")
         }
+
+        // Evaluate protections against the REAL target: resolve parent-directory
+        // symlinks so a path whose *parent* links into a protected root (e.g.
+        // ~/link/secret where `link` -> /System) cannot masquerade as an
+        // unrecognized-but-safe path while the op follows the link to the real file.
+        let path = Self.realParentPath(url)
 
         // Refuse the filesystem root and the home directory itself.
         let home = FileManager.default.homeDirectoryForCurrentUser.standardized.path
         if path == "/" || path == home {
-            return .protected(reason: "Refusing to shred the home directory or filesystem root")
+            return .protected(reason: "Refusing to \(action.verb) the home directory or filesystem root")
         }
 
-        // Carve out the user document roots so files *inside* them shred, but
-        // refuse a request to shred a whole root folder (e.g. all of ~/Documents).
+        // Carve out the user document roots so files *inside* them are allowed, but
+        // refuse a request to act on a whole root folder (e.g. all of ~/Documents).
         for root in ProtectedPaths.userManagedRoots where path == expandedPathValue(for: root) {
-            return .protected(reason: "Refusing to shred an entire user folder")
+            return .protected(reason: "Refusing to \(action.verb) an entire user folder")
         }
         if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
             return .safe
         }
 
-        // Everything else in neverDelete (system dirs, app data, credential
-        // dirs, cloud roots) is off-limits even for explicit shredding.
+        // Everything else in neverDelete (system dirs, app data, credential dirs,
+        // cloud roots) is off-limits even for an explicit user action.
         if isUnder(path, anyOf: ProtectedPaths.neverDelete) {
             return .protected(reason: "System, application-data, or credential path")
         }
 
-        // Arbitrary user-selected file outside every protected root: shreddable.
+        // Arbitrary user-selected file outside every protected root: allowed.
         return .safe
     }
 
@@ -92,8 +123,14 @@ struct SafetyChecker: Sendable {
         //    like `~/Library/Caches/../../Documents/secret.txt` is evaluated as
         //    `~/Documents/secret.txt` and cannot escape into a protected root.
         let standardized = url.standardized
-        let path = standardized.path
-        let components = standardized.pathComponents
+        // Resolve PARENT-directory symlinks so every protection/allow decision is
+        // made against the real target a delete would actually hit. Without this a
+        // path like ~/link/Cache/x (with `link` -> /System) matches no protected
+        // prefix lexically yet `removeItem` follows the link and deletes the real
+        // file. The final component is left unresolved (a final-component symlink is
+        // handled at step 3 below).
+        let path = Self.realParentPath(url)
+        let components = (path as NSString).pathComponents
         let profile = ModuleSafetyProfile(moduleID: context.moduleID)
 
         // 2. Sensitive file patterns (keys, credentials, databases) — block always,
@@ -165,6 +202,18 @@ struct SafetyChecker: Sendable {
             return .safe
         }
 
+        // 6d. AI-Analysis / CacheAnalyzer findings: developer + AI-tool caches and
+        //     logs that live OUTSIDE ~/Library/Caches and so aren't covered by
+        //     safeCacheRoots/safeDirectoryNames (~/.npm/_npx, ~/.cache/pip,
+        //     ~/.claude/debug, ~/.codex/log, …). Only the AI-analysis cleanup may
+        //     remove them, and only the exact roots CacheAnalyzer surfaces. None
+        //     overlap a neverDelete root (already arbitrated at step 5).
+        if context.moduleID == Self.aiAnalysisModuleID,
+           isUnder(path, anyOf: ProtectedPaths.aiAnalysisCacheRoots)
+               || isUnder(path, anyOf: ProtectedPaths.packageManagerCacheRoots) {
+            return .safe
+        }
+
         // 7. Generic safe directory names (Cache/GPUCache/node_modules/DerivedData…).
         //    Safe here because any path under a protected root already returned at
         //    step 5; this only matches caches in non-protected locations.
@@ -188,6 +237,35 @@ struct SafetyChecker: Sendable {
 
     private func expandedPathValue(for protectedPath: String) -> String {
         (protectedPath as NSString).expandingTildeInPath
+    }
+
+    /// `url` with parent-directory symlinks resolved, so protection checks see the
+    /// real target a destructive op would actually hit. The final path component is
+    /// deliberately NOT resolved — a final-component symlink is handled separately,
+    /// and resolving it could turn a refusable link into its (possibly safe-looking)
+    /// target. Non-existent parent components are left as-is.
+    private static func realParentPath(_ url: URL) -> String {
+        let standardized = url.standardized
+        if standardized.path == "/" { return "/" }
+        let fm = FileManager.default
+        let lastComponent = standardized.lastPathComponent
+
+        // `resolvingSymlinksInPath` only resolves a path whose full target exists, so
+        // for a not-yet-existent leaf it would leave a symlinked PARENT unresolved.
+        // Resolve the deepest EXISTING ancestor directory and re-append the missing
+        // tail, so ~/link/Cache/x (link -> /System) resolves even when Cache/x is
+        // absent on disk.
+        var existing = standardized.deletingLastPathComponent()
+        var missing: [String] = []
+        while existing.path != "/" && !fm.fileExists(atPath: existing.path) {
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing = existing.deletingLastPathComponent()
+        }
+
+        var resolved = existing.resolvingSymlinksInPath()
+        for component in missing { resolved.appendPathComponent(component) }
+        resolved.appendPathComponent(lastComponent)
+        return resolved.path
     }
 
     /// Length (in characters) of the longest entry in `roots` that is a path-boundary
@@ -478,6 +556,34 @@ struct ProtectedPaths {
         // mise download/metadata cache (XDG ~/.cache). NOT ~/.local/share/mise/installs,
         // which holds installed toolchains and must never be auto-cleaned.
         "~/.cache/mise",
+    ]
+
+    /// Developer + AI-tool cache/log roots surfaced by `CacheAnalyzer` and cleaned
+    /// from the AI-Analysis view. They live outside ~/Library/Caches and are not
+    /// covered by `safeDirectoryNames`. Only the `ai-analysis` cleanup may remove
+    /// them; none overlap a `neverDelete` root. Kept in sync with the discovery
+    /// roots in `CacheAnalyzer.runFastScan`.
+    static let aiAnalysisCacheRoots: Set<String> = [
+        "~/.npm/_cacache",
+        "~/.npm/_npx",
+        "~/.npm/_logs",
+        "~/.bun/install/cache",
+        "~/.yarn/cache",
+        "~/.pnpm-store",
+        "~/.cache/pip",
+        "~/.cache/uv",
+        "~/.cache/go-build",
+        "~/.cargo/registry",
+        "~/.cargo/git",
+        "~/go/pkg/mod",
+        "~/.gradle/caches",
+        "~/.m2/repository",
+        "~/.claude/debug",
+        "~/.claude/paste-cache",
+        "~/.claude/telemetry",
+        "~/.claude/shell-snapshots",
+        "~/.codex/log",
+        "~/.codex/archived_sessions",
     ]
 
     /// Directory names that are generally safe to delete
