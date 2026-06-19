@@ -190,6 +190,10 @@ public enum CLIExitCode: Int32 {
     // exist" (like `git diff --exit-code`) without parsing output. Zero outdated
     // → success. Not in `exitCode(for:)`: it's a success-path result, not an error.
     case updatesAvailable = 7
+    // The user declined an interactive confirmation (typed N). Distinct from
+    // `generic` so an agent can tell a deliberate user cancellation apart from an
+    // operational failure — nothing went wrong, the operation just didn't run.
+    case cancelled = 8
 }
 
 public enum CLIExecutor {
@@ -362,7 +366,11 @@ public enum CLIExecutor {
                     "Uninstall \(preview.appName) and \(preview.leftovers.count) leftover item(s), moving \(formatter.string(fromByteCount: preview.bytesFreed)) to Trash?"
                 )
             }
-            let result = try await service.uninstall(app: app, dryRun: false)
+            // Execute against the SAME bundle the preview resolved/priced, not the
+            // raw query: passing the resolved bundle id makes matchApp take its
+            // exact-id branch, closing the small TOCTOU where a re-resolution of an
+            // ambiguous/substring query could land on a different app.
+            let result = try await service.uninstall(app: preview.appID, dryRun: false)
             let output = CLIUninstallOutput(
                 metadata: CLICommandMetadata(command: "uninstall", timestamp: Date(), executedModules: []),
                 result: result
@@ -415,7 +423,8 @@ public enum CLIExecutor {
                 result: result
             )
             try emit(output, format: format)
-            return CLIExitCode.success.rawValue
+            // Gate on the real brew exit status, mirroring `homebrew cleanup`.
+            return result.upgraded ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .homebrewCleanup(let yes, let format):
             if !yes {
@@ -491,7 +500,9 @@ public enum CLIExecutor {
                 // Parser guarantees host is non-nil when --all is absent.
                 let target = host ?? ""
                 if !yes {
-                    try confirm("Remove SSH known host '\(target)'?")
+                    // Removal deletes EVERY known_hosts entry matching the target,
+                    // so the prompt must not imply a single entry.
+                    try confirm("Remove all SSH known_hosts entries for '\(target)'?")
                 }
                 result = try await service.removeSSHKnownHost(host: target)
             }
@@ -571,7 +582,10 @@ public enum CLIExecutor {
                 result: result
             )
             try emit(output, format: format)
-            return CLIExitCode.success.rawValue
+            // Without --yes we only printed the command (applied:false) → success.
+            // With --yes, gate on the real brew exit status so a failed upgrade is
+            // not reported as success.
+            return (apply && !result.applied) ? CLIExitCode.generic.rawValue : CLIExitCode.success.rawValue
         }
     }
 
@@ -585,7 +599,9 @@ public enum CLIExecutor {
             case .confirmationRequired:
                 return CLIExitCode.confirmationRequired.rawValue
             case .cleanupCancelled:
-                return CLIExitCode.generic.rawValue
+                // A user-declined confirmation is a deliberate cancellation, not an
+                // operational failure — give it its own code so agents can branch.
+                return CLIExitCode.cancelled.rawValue
             }
         }
         if let serviceError = error as? HeadlessServiceError {

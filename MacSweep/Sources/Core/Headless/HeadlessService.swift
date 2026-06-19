@@ -802,8 +802,10 @@ private func runHomebrewUpgradeOnMain() async throws -> HeadlessHomebrewUpgradeR
             latestVersion: package.latestVersion
         )
     }
+    // Reflect brew's real exit status rather than hardcoding success; a failed
+    // `brew upgrade` must surface as upgraded:false (and a nonzero CLI exit).
     return HeadlessHomebrewUpgradeResult(
-        upgraded: true,
+        upgraded: service.lastUpgradeSucceeded ?? false,
         log: service.upgradeLog,
         remainingOutdated: remaining
     )

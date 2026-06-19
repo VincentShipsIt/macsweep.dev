@@ -108,6 +108,23 @@ struct SafetyCheckerTests {
         #expect(!result.isSafe)
     }
 
+    // MARK: - AI-Analysis allow-zone
+
+    @Test func aiAnalysisCachesAllowedForAIAnalysisModule() {
+        for path in ["~/.npm/_npx/abc", "~/.cache/pip/http", "~/.claude/debug/x.log",
+                     "~/.codex/log/session", "~/.m2/repository/org"] {
+            #expect(checker.validateForCleanup(url(path), moduleID: "ai-analysis").isSafe,
+                    "\(path) should be cleanable by ai-analysis")
+        }
+    }
+
+    @Test func aiAnalysisCachesBlockedForOtherModuleAndSensitiveStillBlocked() {
+        // Same paths are NOT cleanable without the ai-analysis module id …
+        #expect(!checker.validateForCleanup(url("~/.claude/debug/x.log"), moduleID: "system-cache").isSafe)
+        // … and a sensitive file inside an allowed root is still blocked.
+        #expect(!checker.validateForCleanup(url("~/.npm/_cacache/leaked.key"), moduleID: "ai-analysis").isSafe)
+    }
+
     // MARK: - Privacy allow-zone
 
     @Test func privacyArtifactsAllowedForPrivacyModule() {
@@ -190,7 +207,9 @@ struct SafetyCheckerTests {
     }
 
     @Test func shredAllowsArbitraryNonProtectedFiles() {
-        for path in ["/tmp/macsweep/junk.bin", "~/code/proj/build/out.o"] {
+        // Arbitrary files outside every protected root stay shreddable — that is the
+        // whole point of the shredder.
+        for path in ["/tmp/macsweep/junk.bin", "~/code/proj/build/out.o", "~/scratch/dump.bin"] {
             #expect(checker.validateForShred(url(path)).isSafe, "\(path) should be shreddable")
         }
     }
@@ -210,5 +229,47 @@ struct SafetyCheckerTests {
         let result = checker.validateForShred(link)
         #expect(!result.isSafe)
         if case .symlink = result {} else { Issue.record("Expected .symlink, got \(result)") }
+    }
+
+    @Test func shredRefusesParentSymlinkIntoProtectedRoot() throws {
+        // The critical case: a path whose PARENT is a symlink into a protected root.
+        // The final component is not itself a symlink, so the final-component guard
+        // misses it; protection must follow the parent link to the real target.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macsweep-shred-parent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let link = dir.appendingPathComponent("linkdir")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/System"))
+
+        let victim = link.appendingPathComponent("victim.txt")
+        #expect(!checker.validateForShred(victim).isSafe,
+                "A file under a parent symlink into /System must be refused")
+    }
+
+    @Test func cleanupRefusesParentSymlinkIntoProtectedRoot() throws {
+        // Same bypass on the cleanup allowlist: a generic safe directory name
+        // (`Cache`) under a parent symlink into a protected root must NOT be cleaned.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macsweep-clean-parent-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let link = dir.appendingPathComponent("appdir")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/System"))
+
+        let target = link.appendingPathComponent("Cache/x")
+        #expect(!checker.validateForCleanup(target, moduleID: "system-cache", itemType: .directory).isSafe,
+                "A `Cache` dir under a parent symlink into /System must be refused")
+    }
+
+    // MARK: - Explicit move-to-Trash blocklist (validateForTrash)
+
+    @Test func trashAllowsArbitraryUserFileButBlocksProtectedRoots() {
+        #expect(checker.validateForTrash(url("~/code/proj/build/out.o")).isSafe)
+        for path in ["/System/Library/x", "~/.ssh/id_rsa", "~/Documents"] {
+            #expect(!checker.validateForTrash(url(path)).isSafe, "\(path) must be refused")
+        }
     }
 }

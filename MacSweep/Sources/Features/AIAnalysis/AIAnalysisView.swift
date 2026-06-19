@@ -298,8 +298,12 @@ struct AIAnalysisView: View {
             let url = URL(fileURLWithPath: path)
 
             // AI suggestions are advisory — they MUST pass the same safety gate as
-            // every other cleanup path before anything is touched.
-            guard safety.validateForCleanup(url).isSafe else {
+            // every other cleanup path before anything is touched. Pass the
+            // `ai-analysis` module id so the dedicated allow-zone (the developer +
+            // AI-tool cache roots CacheAnalyzer surfaces, which live outside
+            // ~/Library/Caches) is reachable; without it those findings fail closed
+            // and the feature's own results can't be cleaned.
+            guard safety.validateForCleanup(url, moduleID: "ai-analysis").isSafe else {
                 blockedPaths.append(path)
                 continue
             }

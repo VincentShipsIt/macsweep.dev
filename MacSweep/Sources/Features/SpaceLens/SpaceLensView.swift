@@ -428,19 +428,19 @@ struct SpaceLensView: View {
     }
 
     private func moveToTrash(_ node: DiskNode) async {
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) vets the path, not a raw
-        // trashItem call. A blocked delete throws and is surfaced to the user.
-        let item = CleanupItem(
-            id: UUID(),
-            path: node.url,
-            size: node.size,
-            type: node.isDirectory ? .directory : .file,
-            module: "space-lens",
-            moduleName: "Space Lens"
-        )
+        // Space Lens lets the user trash an ARBITRARY path they drilled into, so the
+        // default-deny cleanup allowlist (ScanEngine.clean, which also silently
+        // no-ops on an unregistered module id) is the wrong gate. Use the blocklist
+        // gate instead: refuse system/credential/cloud roots and whole user folders,
+        // allow arbitrary user files, then move to Trash (recoverable). Surface any
+        // failure and do NOT drop the node from the map unless the trash succeeded.
+        let validation = SafetyChecker().validateForTrash(node.url)
+        guard validation.isSafe else {
+            errorMessage = "Can't move \"\(node.name)\" to Trash: \(validation.reason ?? "protected path")"
+            return
+        }
         do {
-            _ = try await ScanEngine().clean(items: [item], dryRun: false)
+            try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
         } catch {
             errorMessage = "Couldn't move \"\(node.name)\" to Trash: \(error.localizedDescription)"
             return

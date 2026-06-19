@@ -104,7 +104,7 @@ struct CacheAnalyzer {
           -o -path "*/.claude/shell-snapshots" \
           -o -path "*/.codex/log" \
           -o -path "*/.codex/archived_sessions" \
-        \) -maxdepth 8 -type d -prune 2>/dev/null | xargs du -sh 2>/dev/null | sort -rh
+        \) -maxdepth 8 -type d -prune -print0 2>/dev/null | xargs -0 du -sh 2>/dev/null | sort -rh
         """#
         return await Task.detached(priority: .userInitiated) {
             let result = Self.shell(script)

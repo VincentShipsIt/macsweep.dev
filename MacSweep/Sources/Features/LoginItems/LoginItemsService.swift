@@ -175,7 +175,9 @@ final class LoginItemsService: ObservableObject {
         let plistURL = plistURL(for: item)
         if let url = plistURL {
             do {
-                try FileManager.default.removeItem(at: url)
+                // Move to Trash (recoverable) rather than a hard delete, matching
+                // LoginItemController.remove and the rest of the cleanup modules.
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             } catch {
                 errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"
                 return

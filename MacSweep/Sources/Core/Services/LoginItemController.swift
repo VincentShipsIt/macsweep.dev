@@ -58,15 +58,20 @@ actor LoginItemController {
     func setEnabled(_ enabled: Bool, label: String) throws -> Outcome {
         let match = try locate(label: label)
 
+        // Capture the plist's on-disk format so we can write it back unchanged.
+        // Reading with `format: nil` always succeeds for either xml or binary, but
+        // unconditionally re-serializing as `.xml` would silently convert a binary
+        // plist; round-tripping through the captured format preserves it.
+        var format = PropertyListSerialization.PropertyListFormat.xml
         guard let data = try? Data(contentsOf: match.url),
-              var plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+              var plist = try? PropertyListSerialization.propertyList(from: data, format: &format) as? [String: Any]
         else {
             throw MutationError.failed("Could not read plist at \(match.url.path).")
         }
 
         plist["Disabled"] = !enabled
 
-        guard let newData = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else {
+        guard let newData = try? PropertyListSerialization.data(fromPropertyList: plist, format: format, options: 0) else {
             throw MutationError.failed("Could not serialize plist at \(match.url.path).")
         }
 
@@ -98,6 +103,17 @@ actor LoginItemController {
 
     /// Resolve a launchd Label to the single plist that declares it, parsing each
     /// plist's `Label` (falling back to the filename, matching the enumerator).
+    ///
+    /// launchd Labels are case-sensitive identifiers, so we match exactly first and
+    /// only fall back to a case-insensitive pass when no exact match exists — an
+    /// exact match must never be shadowed by a differently-cased plist.
+    ///
+    /// This also scopes resolution to *real launchd plists* in the LaunchAgents /
+    /// LaunchDaemons directories. SMAppService ("appService") items live in a
+    /// different identity namespace (their SMAppService display `name`) and have no
+    /// editable plist here, so they cannot be mutated through this path. The only
+    /// residual risk is a launchd Label that *coincidentally* equals an appService
+    /// name; exact-Label matching above is the mitigation that minimizes it.
     private func locate(label: String) throws -> (url: URL, kind: HeadlessLoginItemKind) {
         let searchOrder: [(URL, HeadlessLoginItemKind)] = [
             (userLaunchAgents, .launchAgent),
@@ -105,7 +121,8 @@ actor LoginItemController {
             (systemLaunchDaemons, .launchDaemon)
         ]
 
-        var matches: [(url: URL, kind: HeadlessLoginItemKind)] = []
+        var exactMatches: [(url: URL, kind: HeadlessLoginItemKind)] = []
+        var caseInsensitiveMatches: [(url: URL, kind: HeadlessLoginItemKind)] = []
         for (directory, kind) in searchOrder {
             guard let files = try? FileManager.default.contentsOfDirectory(
                 at: directory,
@@ -118,11 +135,17 @@ actor LoginItemController {
                 else { continue }
 
                 let plistLabel = plist["Label"] as? String ?? url.deletingPathExtension().lastPathComponent
-                if plistLabel.caseInsensitiveCompare(label) == .orderedSame {
-                    matches.append((url, kind))
+                if plistLabel == label {
+                    exactMatches.append((url, kind))
+                } else if plistLabel.caseInsensitiveCompare(label) == .orderedSame {
+                    caseInsensitiveMatches.append((url, kind))
                 }
             }
         }
+
+        // Prefer exact matches; only consult the case-insensitive pass when no
+        // exact-cased plist declares the Label.
+        let matches = exactMatches.isEmpty ? caseInsensitiveMatches : exactMatches
 
         if matches.isEmpty { throw MutationError.notFound }
         if matches.count > 1 { throw MutationError.ambiguous(matches.map { $0.url.path }) }

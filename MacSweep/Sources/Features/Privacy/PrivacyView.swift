@@ -248,11 +248,16 @@ struct PrivacyView: View {
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
+        // module's own delete. The aggregate DeletionGuard veto throws; per-item
+        // SafetyChecker failures come back in result.errors with nothing deleted.
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            if !result.errors.isEmpty {
+                let count = result.errors.count
+                cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleared and were kept."
+            }
         } catch {
             cleanupError = "Couldn't clear privacy items: \(error.localizedDescription)"
         }

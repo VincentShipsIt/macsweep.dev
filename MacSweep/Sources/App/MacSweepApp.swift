@@ -8,6 +8,13 @@ struct MacSweepApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showingOnboarding = false
 
+    /// App-global run-once guard for lifecycle side effects (scheduler
+    /// registration, notification permission). Static rather than `@State`
+    /// because there are two `WindowGroup`s rendering `mainWindowContent`, and
+    /// reopening the main window instantiates a fresh view with its own `@State`
+    /// — a static flag dedupes across every window instance, not just one.
+    @MainActor private static var didRunLaunchSideEffects = false
+
     var body: some Scene {
         // Default launch window.
         WindowGroup {
@@ -56,6 +63,10 @@ struct MacSweepApp: App {
                 AppDelegate.showDockIcon()
             }
             .task {
+                // Run only once per app launch, even if a second window
+                // instantiates this content (reopening the closed main window).
+                guard !Self.didRunLaunchSideEffects else { return }
+                Self.didRunLaunchSideEffects = true
                 ScanScheduler.shared.register()
                 NotificationManager.shared.requestPermission()
             }

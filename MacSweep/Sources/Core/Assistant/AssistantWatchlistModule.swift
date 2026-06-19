@@ -141,24 +141,57 @@ struct AssistantWatchlistModule: ScanModule {
                 continue
             }
 
-            do {
-                if item.type == .directory {
-                    let contents = try FileManager.default.contentsOfDirectory(at: item.path, includingPropertiesForKeys: nil)
-                    for content in contents {
-                        try CleanupFileRemover.recoverable(content)
-                    }
-                } else {
-                    try CleanupFileRemover.recoverable(item.path)
+            if item.type == .directory {
+                // Trash children individually: a directory target is partly cleanable,
+                // so one child failing must not discard the bytes already reclaimed by
+                // the children that did get trashed.
+                let contents: [URL]
+                do {
+                    contents = try FileManager.default.contentsOfDirectory(at: item.path, includingPropertiesForKeys: nil)
+                } catch {
+                    errors.append(CleanupError(
+                        path: item.path,
+                        message: "Failed to delete: \(error.localizedDescription)",
+                        underlyingError: error
+                    ))
+                    continue
                 }
 
-                processedCount += 1
-                bytesFreed += item.size
-            } catch {
-                errors.append(CleanupError(
-                    path: item.path,
-                    message: "Failed to delete: \(error.localizedDescription)",
-                    underlyingError: error
-                ))
+                var trashedAnyChild = contents.isEmpty
+                for content in contents {
+                    // Measure the child before removal so freed bytes are attributed only
+                    // to children that were actually trashed; a sizing failure falls back
+                    // to 0 rather than aborting the loop.
+                    let childSize = (try? await DiskAnalyzer.size(of: content)) ?? 0
+                    do {
+                        try CleanupFileRemover.recoverable(content)
+                        bytesFreed += childSize
+                        trashedAnyChild = true
+                    } catch {
+                        errors.append(CleanupError(
+                            path: content,
+                            message: "Failed to delete: \(error.localizedDescription)",
+                            underlyingError: error
+                        ))
+                    }
+                }
+
+                // Count the directory as processed if it was already empty or at least
+                // one child was trashed; if every child failed, the per-child errors above
+                // are the only thing reported.
+                if trashedAnyChild { processedCount += 1 }
+            } else {
+                do {
+                    try CleanupFileRemover.recoverable(item.path)
+                    processedCount += 1
+                    bytesFreed += item.size
+                } catch {
+                    errors.append(CleanupError(
+                        path: item.path,
+                        message: "Failed to delete: \(error.localizedDescription)",
+                        underlyingError: error
+                    ))
+                }
             }
         }
 
