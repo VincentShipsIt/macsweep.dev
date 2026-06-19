@@ -6,7 +6,7 @@
 > Contributions and feedback welcome!
 
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
-[![macOS 14+](https://img.shields.io/badge/macOS-14+-blue.svg)](https://www.apple.com/macos/)
+[![macOS 26+](https://img.shields.io/badge/macOS-26+-blue.svg)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with a beautiful SwiftUI interface.
@@ -32,7 +32,7 @@ A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with 
 
 ## Requirements
 
-- macOS 14.0 (Sonoma) or later
+- macOS 26.0 (Tahoe) or later
 - Full Disk Access permission (for scanning protected folders)
 
 ## Installation

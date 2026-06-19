@@ -26,7 +26,7 @@ class Macsweep < Formula
   license "MIT"
   head "https://github.com/VincentShipsIt/macsweep.git", branch: "master"
 
-  depends_on macos: :ventura # macOS 13+ (matches Package.swift .macOS(.v13))
+  depends_on macos: :tahoe # macOS 26+ (matches Package.swift .macOS(.v26))
 
   def install
     # The SwiftPM package root is the `MacSweep/` subdirectory, not the repo

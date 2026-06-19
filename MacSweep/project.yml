@@ -2,7 +2,7 @@ name: MacSweep
 options:
   bundleIdPrefix: com.vincentshipsit
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "26.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
@@ -35,7 +35,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
-        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
         # Disable sandbox for full disk access
         ENABLE_APP_SANDBOX: NO
         # Hardened runtime required for notarization
@@ -56,7 +56,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep.core
         SWIFT_VERSION: "5.9"
-        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
 
   MacSweepCLI:
     type: tool
@@ -71,7 +71,7 @@ targets:
         PRODUCT_NAME: macsweep
         PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep.cli
         SWIFT_VERSION: "5.9"
-        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
 
 schemes:
   MacSweep:

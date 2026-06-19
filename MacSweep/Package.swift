@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // MARK: - Running the tests
@@ -21,7 +21,7 @@ import PackageDescription
 let package = Package(
     name: "MacSweep",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v26)
     ],
     products: [
         .library(name: "MacSweepCore", targets: ["MacSweepCore"]),
@@ -48,8 +48,10 @@ let package = Package(
             path: "Tests"
         )
     ],
-    // Keep targets in Swift 5 language mode. The tools-version bump to 6.0 is
-    // only to get SwiftPM's swift-testing test runner; the existing sources are
-    // not audited for Swift 6 strict concurrency and must keep compiling as-is.
+    // Keep targets in Swift 5 language mode. The tools-version is 6.2 — required
+    // both for SwiftPM's swift-testing test runner and for the `.macOS(.v26)`
+    // platform, which PackageDescription only exposes at 6.2+. The language mode
+    // stays at .v5: the existing sources are not audited for Swift 6 strict
+    // concurrency and must keep compiling as-is.
     swiftLanguageModes: [.v5]
 )
