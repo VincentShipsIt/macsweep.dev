@@ -38,6 +38,8 @@ enum LiquidGlass {
 private struct GlassButtonModifier: ViewModifier {
     let prominent: Bool
 
+    /// Selects the prominent glass style for the single primary action, or the
+    /// standard glass style for secondary actions.
     func body(content: Content) -> some View {
         if prominent {
             content.buttonStyle(.glassProminent)
@@ -57,6 +59,7 @@ private struct GlassControlModifier<S: Shape>: ViewModifier {
     let tint: Color?
     let interactive: Bool
 
+    /// Applies the configured glass material clipped to `shape`.
     func body(content: Content) -> some View {
         content.glassEffect(
             LiquidGlass.make(tint: tint, interactive: interactive),
