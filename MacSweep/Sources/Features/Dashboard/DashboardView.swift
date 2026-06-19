@@ -586,8 +586,7 @@ struct RecommendationCard: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .glassButton(prominent: true)
-            .tint(iconColor)
+            .glassButton()
             .disabled(isLoading)
         }
         .padding()

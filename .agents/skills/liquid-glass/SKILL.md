@@ -114,6 +114,11 @@ instead of clipping at the edge.
 
 ## Availability gating (mixed-OS targets)
 
+> MacSweep's own minimum deployment target is **macOS 26**, so it does **not**
+> need any of this — the helpers in `LiquidGlass.swift` call the glass APIs
+> unconditionally. The pattern below is retained as general guidance for the
+> reusable skill, and only applies if a project supports a target below macOS 26.
+
 Glass APIs are macOS 26.0+. For an app with a lower deployment target (e.g.
 macOS 13), **centralize** the gate in reusable modifiers so `if #available` lives
 in one file, not scattered across every view. Any function that names the `Glass`
@@ -154,12 +159,14 @@ view's `cacheDisplay` bitmap for a no-permission offscreen approximation).
 
 ## MacSweep helpers (this repo)
 
-`MacSweep/Sources/App/LiquidGlass.swift` provides the centralized, gated helpers —
-use these instead of writing raw `if #available` blocks in views:
+`MacSweep/Sources/App/LiquidGlass.swift` provides the centralized helpers — the
+app's minimum is macOS 26, so they call the glass APIs unconditionally (no
+`if #available`, no pre-26 fallback). Use these instead of raw glass APIs:
 
-- `.glassButton(prominent: Bool = false)` — `.glassProminent` / `.glass` on 26+,
-  `.borderedProminent` / `.bordered` fallback below.
-- `.glassControl(in:tint:interactive:)` — raw glass on a custom control shape,
-  `.ultraThinMaterial` fallback.
+- `.glassButton(prominent: Bool = false)` — native `.glassProminent` (the single
+  primary CTA) / `.glass` (secondary). Tint only the one prominent action.
+- `.glassControl(in:tint:interactive:)` — raw `.glassEffect` on a custom control
+  shape. Pass `interactive: true` only on tappable controls.
 - `GradientBackground` is the brand accent — keep it subtle and behind content,
-  never behind the sidebar.
+  never behind the sidebar (it's currently unused; reserved for content-only
+  accents).

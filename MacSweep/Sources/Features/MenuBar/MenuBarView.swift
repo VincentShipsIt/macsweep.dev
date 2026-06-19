@@ -447,8 +447,7 @@ struct SystemStatCard: View {
             if let label = actionLabel, let action = action {
                 Button(label, action: action)
                     .font(.caption2)
-                    .glassButton(prominent: true)
-                    .tint(accentColor)
+                    .glassButton()
                     .controlSize(.small)
             }
         }

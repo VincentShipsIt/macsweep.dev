@@ -511,7 +511,6 @@ struct SSHHostsView: View {
                 showingClearAllConfirmation = true
             }
             .glassButton()
-            .tint(.orange)
 
             Button("Remove Selected") {
                 showingConfirmation = true
