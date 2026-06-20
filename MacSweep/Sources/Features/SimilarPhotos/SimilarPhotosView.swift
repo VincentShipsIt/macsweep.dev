@@ -152,6 +152,7 @@ struct SimilarPhotosView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     private var footer: some View {

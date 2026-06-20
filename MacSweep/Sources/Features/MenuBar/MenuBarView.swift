@@ -117,7 +117,7 @@ struct MenuBarView: View {
                 icon: monitor.batteryInfo.icon,
                 title: "Battery",
                 subtitle: monitor.batteryInfo.statusText,
-                value: "\(monitor.batteryInfo.percentage)%",
+                value: monitor.batteryInfo.hasBattery ? "\(monitor.batteryInfo.percentage)%" : "AC",
                 accentColor: batteryColor,
                 onTap: { toggleWidget(.battery) }
             )
@@ -355,21 +355,16 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
-        // Show dock icon first
-        AppDelegate.showDockIcon()
-
-        // Find existing main window (not menu bar panel)
-        let mainWindow = NSApplication.shared.windows.first { window in
-            guard window.level == .normal else { return false }
-            guard window.styleMask.contains(.titled) else { return false }
-            return true
+        if !AppDelegate.focusMainWindow() {
+            openWindow(id: "main")
         }
 
-        if let window = mainWindow {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            // No main window exists - open one using SwiftUI's openWindow
-            openWindow(id: "main")
+        DispatchQueue.main.async {
+            AppDelegate.focusMainWindow()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            AppDelegate.focusMainWindow()
         }
     }
 
@@ -382,6 +377,7 @@ struct MenuBarView: View {
     }
 
     private var batteryColor: Color {
+        if !monitor.batteryInfo.hasBattery { return .green }
         if monitor.batteryInfo.isCharging { return .green }
         if monitor.batteryInfo.percentage < 20 { return .red }
         if monitor.batteryInfo.percentage < 50 { return .orange }

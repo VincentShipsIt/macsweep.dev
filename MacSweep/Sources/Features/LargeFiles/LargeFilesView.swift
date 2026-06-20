@@ -252,6 +252,7 @@ struct LargeFilesView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Footer

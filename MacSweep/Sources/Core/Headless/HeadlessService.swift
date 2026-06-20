@@ -1011,9 +1011,8 @@ private func runSystemMonitorOnMain() async -> HeadlessMonitorReport {
         usedPercentage: mem.usedPercentage * 100,
         pressureLevel: mem.pressureLevel.rawValue
     )
-    let hasBattery = bat.cycleCount != nil || bat.percentage > 0
     let batReport = HeadlessBatteryReport(
-        hasBattery: hasBattery,
+        hasBattery: bat.hasBattery,
         percentage: bat.percentage,
         isCharging: bat.isCharging,
         isPluggedIn: bat.isPluggedIn,

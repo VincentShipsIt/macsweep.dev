@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Main content view with CleanMyMac-style sidebar navigation
+/// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -10,7 +10,13 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
-            detailView
+            ZStack {
+                MacSweepDetailBackground()
+                    .ignoresSafeArea()
+
+                detailView
+            }
+            .navigationTitle(appState.selectedFeature.rawValue)
         }
         .navigationSplitViewStyle(.balanced)
         // No full-window gradient: it would bleed across the sidebar and leave the
@@ -19,7 +25,7 @@ struct ContentView: View {
         // for subtle, content-only accents elsewhere.
     }
 
-    // MARK: - Sidebar (CleanMyMac style)
+    // MARK: - Sidebar
 
     private var sidebar: some View {
         List(selection: $appState.selectedFeature) {
@@ -232,8 +238,8 @@ struct AppIllustration: View {
                 .frame(width: 80, height: 20)
                 .offset(y: 80)
 
-            // Broom icon
-            Image(systemName: "paintbrush.pointed")
+            // Smart Care icon
+            Image(systemName: "sparkles.rectangle.stack")
                 .font(.system(size: 60))
                 .foregroundStyle(.white.opacity(0.9))
                 .rotationEffect(.degrees(-45))

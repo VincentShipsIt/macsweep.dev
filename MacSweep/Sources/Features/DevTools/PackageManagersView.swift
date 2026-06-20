@@ -27,6 +27,7 @@ struct PackageManagersView: View {
                 footer
             }
         }
+        .background(Color.clear)
         .task {
             await scan()
         }
@@ -59,6 +60,7 @@ struct PackageManagersView: View {
             .disabled(isScanning)
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - Content View
@@ -78,6 +80,7 @@ struct PackageManagersView: View {
             }
             .padding()
         }
+        .background(Color.clear)
     }
 
     private var packageManagersSection: some View {
@@ -197,7 +200,7 @@ struct PackageManagersView: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepPanel()
     }
 
     // MARK: - Empty State
@@ -270,6 +273,7 @@ struct PackageManagersView: View {
             .disabled(selectedItems.isEmpty)
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
         .confirmationDialog(
             "Clean \(selectedItems.count) Caches?",
             isPresented: $showingConfirmation,
@@ -449,7 +453,7 @@ struct PackageManagerCard: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepPanel()
     }
 
     private func toggleAll() {
@@ -496,7 +500,7 @@ struct DockerStatCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .macSweepPanel(radius: MacSweepTheme.smallRadius)
     }
 }
 
@@ -544,7 +548,7 @@ struct DockerActionButton: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .macSweepPanel(radius: MacSweepTheme.smallRadius)
         }
         .buttonStyle(.plain)
         .foregroundStyle(isDestructive ? .red : .primary)

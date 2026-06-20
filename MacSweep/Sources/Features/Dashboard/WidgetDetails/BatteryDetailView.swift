@@ -8,7 +8,8 @@ struct BatteryDetailView: View {
     private var alertLevel: MetricAlertLevel {
         MetricThresholds.battery(
             percent: monitor.batteryInfo.percentage,
-            isCharging: monitor.batteryInfo.isCharging
+            isCharging: monitor.batteryInfo.isCharging,
+            hasBattery: monitor.batteryInfo.hasBattery
         )
     }
 
@@ -33,8 +34,26 @@ struct BatteryDetailView: View {
         .padding()
     }
 
+    @ViewBuilder
     private var batteryIndicator: some View {
-        VStack(spacing: 12) {
+        if !monitor.batteryInfo.hasBattery {
+            VStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.green.opacity(0.35), lineWidth: 3)
+                        .frame(width: 120, height: 60)
+
+                    Image(systemName: "powerplug.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(.green)
+                }
+
+                Text("Desktop Power")
+                    .font(.headline)
+                    .foregroundStyle(.green)
+            }
+        } else {
+            VStack(spacing: 12) {
             // Large battery icon
             ZStack {
                 // Battery outline
@@ -90,6 +109,7 @@ struct BatteryDetailView: View {
             Text(monitor.batteryInfo.statusText)
                 .font(.headline)
                 .foregroundStyle(alertLevel.color)
+            }
         }
     }
 
@@ -116,7 +136,7 @@ struct BatteryDetailView: View {
                 Image(systemName: monitor.batteryInfo.isPluggedIn ? "powerplug.fill" : "battery.100")
                     .font(.title3)
                     .foregroundStyle(monitor.batteryInfo.isPluggedIn ? .green : .orange)
-                Text(monitor.batteryInfo.isPluggedIn ? "AC Power" : "Battery")
+                Text(monitor.batteryInfo.hasBattery ? (monitor.batteryInfo.isPluggedIn ? "AC Power" : "Battery") : "AC Power")
                     .font(.caption)
                     .fontWeight(.medium)
                 Text("Power Source")
@@ -169,7 +189,19 @@ struct BatteryDetailView: View {
             }
 
             // Condition
-            if let health = monitor.batteryInfo.health {
+            if !monitor.batteryInfo.hasBattery {
+                HStack {
+                    Image(systemName: "desktopcomputer")
+                        .foregroundStyle(.green)
+
+                    Text("This Mac has no internal battery, so health and cycle metrics do not apply.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+                .padding(.top, 4)
+            } else if let health = monitor.batteryInfo.health {
                 HStack {
                     Image(systemName: conditionIcon(for: health))
                         .foregroundStyle(healthColor)
@@ -187,7 +219,17 @@ struct BatteryDetailView: View {
 
     private var tipsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if alertLevel == .critical {
+            if !monitor.batteryInfo.hasBattery {
+                HStack(spacing: 8) {
+                    Image(systemName: "lightbulb.fill")
+                        .foregroundStyle(.green)
+                    Text("Mac Studio runs from external power, so battery runtime warnings are hidden.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            } else if alertLevel == .critical {
                 HStack(spacing: 8) {
                     Image(systemName: "lightbulb.fill")
                         .foregroundStyle(.yellow)

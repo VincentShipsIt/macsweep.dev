@@ -23,6 +23,7 @@ struct AssistantView: View {
                     .frame(minWidth: 300, idealWidth: 340)
             }
         }
+        .background(Color.clear)
     }
 
     private var header: some View {
@@ -69,7 +70,7 @@ struct AssistantView: View {
                 }
                 .padding()
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(MacSweepTheme.panel.opacity(0.65))
 
             Divider()
 
@@ -118,7 +119,7 @@ struct AssistantView: View {
             }
             .padding()
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.clear)
     }
 
     private var providerSection: some View {
@@ -158,7 +159,7 @@ struct AssistantView: View {
                     }
                 }
                 .padding(12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .macSweepPanel()
             }
         }
     }
@@ -216,7 +217,7 @@ struct AssistantView: View {
                     }
                 }
                 .padding(12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .macSweepPanel()
             }
         }
     }
@@ -267,9 +268,9 @@ struct AssistantView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
-                    }
-                    .padding(12)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(12)
+                .macSweepPanel()
                 }
             }
         }

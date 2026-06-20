@@ -327,6 +327,7 @@ extension SystemMonitor {
 // MARK: - Battery Info
 
 struct BatteryInfo: Sendable {
+    var hasBattery: Bool = false
     var percentage: Int = 0
     var isCharging: Bool = false
     var isPluggedIn: Bool = false
@@ -336,7 +337,9 @@ struct BatteryInfo: Sendable {
     var temperature: Double? = nil
 
     var statusText: String {
-        if isCharging {
+        if !hasBattery {
+            return "No Battery"
+        } else if isCharging {
             return "Charging"
         } else if isPluggedIn {
             return "Fully charged"
@@ -350,6 +353,9 @@ struct BatteryInfo: Sendable {
     }
 
     var icon: String {
+        if !hasBattery {
+            return "powerplug.fill"
+        }
         if isCharging || isPluggedIn {
             return "battery.100.bolt"
         }
@@ -372,8 +378,16 @@ extension SystemMonitor {
 
         for source in sources {
             if let description = IOPSGetPowerSourceDescription(snapshot, source).takeUnretainedValue() as? [String: Any] {
+                let sourceType = description[kIOPSTypeKey] as? String
+                if let sourceType, sourceType != kIOPSInternalBatteryType {
+                    continue
+                }
+
+                info.hasBattery = true
+
                 if let capacity = description[kIOPSCurrentCapacityKey] as? Int,
-                   let maxCapacity = description[kIOPSMaxCapacityKey] as? Int {
+                   let maxCapacity = description[kIOPSMaxCapacityKey] as? Int,
+                   maxCapacity > 0 {
                     info.percentage = (capacity * 100) / maxCapacity
                 }
 
@@ -389,6 +403,11 @@ extension SystemMonitor {
                     info.timeRemaining = timeToEmpty
                 }
             }
+        }
+
+        guard info.hasBattery else {
+            info.isPluggedIn = true
+            return info
         }
 
         // Get cycle count from system_profiler

@@ -218,7 +218,8 @@ struct MetricThresholds {
         return .normal
     }
 
-    static func battery(percent: Int, isCharging: Bool) -> MetricAlertLevel {
+    static func battery(percent: Int, isCharging: Bool, hasBattery: Bool = true) -> MetricAlertLevel {
+        guard hasBattery else { return .normal }
         if isCharging { return .normal }
         if percent < 20 { return .critical }
         if percent < 50 { return .warning }

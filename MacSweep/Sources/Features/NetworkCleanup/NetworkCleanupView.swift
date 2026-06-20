@@ -144,6 +144,7 @@ struct WiFiNetworksView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Empty State
@@ -456,6 +457,7 @@ struct SSHHostsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Empty State

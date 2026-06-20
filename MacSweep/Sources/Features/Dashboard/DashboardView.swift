@@ -5,7 +5,7 @@ enum WidgetType: String, CaseIterable {
     case storage, memory, battery, cpu, network, system
 }
 
-/// Main dashboard view matching CleanMyMac style
+/// Main dashboard view in the native, list-driven house style used by Inbox.
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
@@ -14,29 +14,88 @@ struct DashboardView: View {
     @State private var showFDABanner = true
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // FDA Warning Banner
-                if !hasFullDiskAccess && showFDABanner {
-                    fdaBanner
+        VStack(spacing: 0) {
+            if !hasFullDiskAccess && showFDABanner {
+                fdaBanner
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+            }
+
+            List {
+                Section("Smart Care") {
+                    smartCareHeaderRow
+
+                    if appState.isScanning {
+                        ScanProgressStatusView(
+                            progress: appState.scanProgress,
+                            message: appState.currentScanModule ?? "Scanning",
+                            compact: true
+                        )
+                        .padding(.vertical, 4)
+                    }
+
+                    if let lastError = appState.lastError {
+                        StatusMessageRow(
+                            icon: "exclamationmark.triangle",
+                            tint: .orange,
+                            title: "Scan Failed",
+                            detail: lastError
+                        )
+                    }
+
+                    if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
+                        ForEach(summary.findings.prefix(5)) { finding in
+                            SmartCareFindingRow(finding: finding) {
+                                if let feature = appState.feature(for: finding.moduleID) {
+                                    appState.selectedFeature = feature
+                                }
+                            }
+                        }
+                    }
                 }
 
-                smartCareSection
+                Section("Recommendations") {
+                    recommendationRows
+                }
 
-                // Recommendations Section
-                recommendationsSection
+                Section("Mac Overview") {
+                    overviewRows
+                }
 
-                // Mac Overview Section
-                macOverviewSection
-
-                // Recent Activity
                 if appState.lastCleanup != nil || !appState.scanResults.isEmpty {
-                    recentActivitySection
+                    Section("Recent Activity") {
+                        recentActivityRows
+                    }
                 }
             }
-            .padding(24)
+            .listStyle(.inset)
+            .macSweepListSurface()
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.clear)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    Task {
+                        await appState.quickScan()
+                    }
+                } label: {
+                    Image(systemName: appState.isScanning ? "hourglass" : "arrow.clockwise")
+                }
+                .disabled(appState.isScanning)
+                .help(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan")
+
+                Button {
+                    Task {
+                        _ = try? await appState.deleteSelected()
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(appState.selectedItems.isEmpty || appState.isScanning)
+                .help("Clean Recommended")
+            }
+        }
         .onAppear {
             hasFullDiskAccess = FullDiskAccess.hasAccess
         }
@@ -47,8 +106,9 @@ struct DashboardView: View {
     private var fdaBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(.orange)
+                .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Full Disk Access Required")
@@ -64,7 +124,8 @@ struct DashboardView: View {
             Button("Grant Access") {
                 FullDiskAccess.openSystemPreferences()
             }
-            .glassButton(prominent: true)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
             .tint(.orange)
 
             Button {
@@ -73,228 +134,81 @@ struct DashboardView: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Dismiss")
         }
-        .padding()
-        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
+        .padding(12)
+        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        }
     }
 
-    // MARK: - Recommendations Section
+    // MARK: - Smart Care
 
-    private var smartCareSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Smart Care")
-                .font(.title2)
-                .fontWeight(.semibold)
+    private var smartCareHeaderRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            DashboardRowIcon(systemName: "sparkles.rectangle.stack", tint: smartCareScoreColor)
 
-            HStack(alignment: .top, spacing: 20) {
-                VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.secondary.opacity(0.16), lineWidth: 12)
-                        Circle()
-                            .trim(from: 0, to: Double((appState.smartCareSummary?.score ?? 100)) / 100)
-                            .stroke(smartCareScoreColor.gradient, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(smartCareHeadline)
+                    .font(.headline)
 
-                        VStack(spacing: 2) {
-                            Text("\(appState.smartCareSummary?.score ?? 100)")
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
-                            Text("Score")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                Text(smartCareDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                HStack(spacing: 8) {
+                    Button {
+                        Task {
+                            await appState.quickScan()
                         }
+                    } label: {
+                        Label(appState.isScanning ? "Scanning" : (appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan"), systemImage: "arrow.clockwise")
                     }
-                    .frame(width: 120, height: 120)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(appState.isScanning)
 
-                    if let summary = appState.smartCareSummary {
-                        Text("\(summary.formattedBytes) reclaimable")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    Button {
+                        Task {
+                            _ = try? await appState.deleteSelected()
+                        }
+                    } label: {
+                        Label("Clean Recommended", systemImage: "trash")
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(appState.selectedItems.isEmpty || appState.isScanning)
                 }
+                .padding(.top, 4)
+            }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(smartCareHeadline)
-                        .font(.headline)
+            Spacer(minLength: 16)
 
-                    Text(smartCareDescription)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(appState.smartCareSummary?.score ?? 100)")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+
+                Text("Score")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let summary = appState.smartCareSummary {
+                    Text(summary.formattedBytes)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    HStack(spacing: 10) {
-                        Button {
-                            Task {
-                                await appState.quickScan()
-                            }
-                        } label: {
-                            Label(appState.isScanning ? "Scanning" : (appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan"), systemImage: "sparkles")
-                        }
-                        .glassButton(prominent: true)
-                        .disabled(appState.isScanning)
-
-                        Button {
-                            Task {
-                                _ = try? await appState.deleteSelected()
-                            }
-                        } label: {
-                            Label("Clean Recommended", systemImage: "trash")
-                        }
-                        .glassButton()
-                        .disabled(appState.selectedItems.isEmpty || appState.isScanning)
-                    }
-
-                    if appState.isScanning {
-                        ScanProgressStatusView(
-                            progress: appState.scanProgress,
-                            message: appState.currentScanModule ?? "Scanning"
-                        )
-                    }
-
-                    if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(summary.findings.prefix(4)) { finding in
-                                Button {
-                                    if let feature = appState.feature(for: finding.moduleID) {
-                                        appState.selectedFeature = feature
-                                    }
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(finding.title)
-                                                .font(.subheadline)
-                                                .fontWeight(.semibold)
-                                                .foregroundStyle(.primary)
-                                            Text("\(finding.itemCount) items • \(finding.formattedBytes)")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-
-                                        Spacer()
-
-                                        if finding.autoCleanRecommended {
-                                            Text("Recommended")
-                                                .font(.caption2)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 4)
-                                                .background(.green.opacity(0.12), in: Capsule())
-                                                .foregroundStyle(.green)
-                                        }
-                                    }
-                                    .padding(12)
-                                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
                 }
             }
-            .padding(20)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
         }
-    }
-
-    private var recommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Recommendations")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    RecommendationCard(
-                        icon: "magnifyingglass.circle.fill",
-                        iconColor: .purple,
-                        title: "Run Deep Scan",
-                        description: "Find junk files, caches, and large files",
-                        buttonTitle: "Scan Now",
-                        isLoading: appState.isScanning
-                    ) {
-                        Task {
-                            await appState.scan()
-                        }
-                    }
-
-                    RecommendationCard(
-                        icon: "trash.circle.fill",
-                        iconColor: .red,
-                        title: "Uninstall Apps",
-                        description: "Remove apps you don't use anymore",
-                        buttonTitle: "Go to Apps"
-                    ) {
-                        appState.selectedFeature = .uninstaller
-                    }
-
-                    RecommendationCard(
-                        icon: "doc.badge.ellipsis",
-                        iconColor: .orange,
-                        title: "Large Files",
-                        description: "Find files taking up space",
-                        buttonTitle: "Find Files"
-                    ) {
-                        appState.selectedFeature = .largeOldFiles
-                    }
-
-                    RecommendationCard(
-                        icon: "hammer.circle.fill",
-                        iconColor: .blue,
-                        title: "Developer Tools",
-                        description: "Clean node_modules, DerivedData",
-                        buttonTitle: "Clean Dev"
-                    ) {
-                        appState.selectedFeature = .devTools
-                    }
-
-                    RecommendationCard(
-                        icon: "doc.on.doc.fill",
-                        iconColor: .pink,
-                        title: "Duplicate Files",
-                        description: "Find redundant copies and recover wasted storage",
-                        buttonTitle: "Review Duplicates"
-                    ) {
-                        appState.selectedFeature = .duplicateFiles
-                    }
-
-                    RecommendationCard(
-                        icon: "battery.100.circle.fill",
-                        iconColor: .green,
-                        title: "Battery Monitor",
-                        description: "Track health, cycle count, and current charge behavior",
-                        buttonTitle: "Open Battery"
-                    ) {
-                        appState.selectedFeature = .batteryMonitor
-                    }
-
-                    RecommendationCard(
-                        icon: "photo.stack.fill",
-                        iconColor: .mint,
-                        title: "Similar Photos",
-                        description: "Review visually similar images and keep the best shots",
-                        buttonTitle: "Review Photos"
-                    ) {
-                        appState.selectedFeature = .similarPhotos
-                    }
-
-                    RecommendationCard(
-                        icon: "icloud.fill",
-                        iconColor: .cyan,
-                        title: "Cloud Cleanup",
-                        description: "Reclaim local storage from stale cloud copies and caches",
-                        buttonTitle: "Open Cloud"
-                    ) {
-                        appState.selectedFeature = .cloudCleanup
-                    }
-                }
-                .padding(.horizontal, 2)
-            }
-        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 
     private var smartCareScoreColor: Color {
@@ -306,12 +220,12 @@ struct DashboardView: View {
 
     private var smartCareHeadline: String {
         if appState.isScanning {
-            return "Scan in progress."
+            return "Scan in progress"
         }
         if let summary = appState.smartCareSummary {
-            return summary.score >= 85 ? "Your Mac is in good shape." : "Your Mac has cleanup opportunities."
+            return summary.score >= 85 ? "Your Mac is in good shape" : "Cleanup opportunities found"
         }
-        return "Run Smart Care to inspect the highest-impact cleanup categories."
+        return "Inspect high-impact cleanup categories"
     }
 
     private var smartCareDescription: String {
@@ -319,115 +233,197 @@ struct DashboardView: View {
             return appState.currentScanModule ?? "MacSweep is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
-            return "\(summary.issueCount) items found across \(summary.findings.count) categories. Recommended items are preselected for a safer one-click cleanup."
+            return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."
         }
-        return "MacSweep will scan junk, large files, duplicates, similar photos, developer artifacts, and cloud storage waste, then preselect the safest items to clean."
+        return "Scans junk, large files, duplicates, similar photos, developer artifacts, and cloud storage waste."
     }
 
-    // MARK: - Mac Overview Section
+    // MARK: - Recommendations
 
-    private var macOverviewSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Mac Overview")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 16) {
-                // Storage Card
-                OverviewCard(
-                    icon: "internaldrive.fill",
-                    iconColor: storageColor,
-                    title: "Macintosh HD",
-                    subtitle: "Available: \(monitor.diskUsage?.formattedFree ?? "...")",
-                    progress: 1.0 - (monitor.diskUsage?.freePercentage ?? 0.5),
-                    progressColor: storageColor,
-                    alertLevel: storageAlertLevel
-                )
-                .onTapGesture { toggleWidget(.storage) }
-                .popover(isPresented: binding(for: .storage), arrowEdge: .bottom) {
-                    StorageDetailView(monitor: monitor)
-                        .environmentObject(appState)
-                        .frame(width: 380, height: 450)
-                }
-
-                // Memory Card
-                OverviewCard(
-                    icon: "memorychip.fill",
-                    iconColor: memoryColor,
-                    title: "Memory",
-                    subtitle: "Available: \(monitor.memoryUsage.formattedAvailable)",
-                    progress: monitor.memoryUsage.usedPercentage,
-                    progressColor: memoryColor,
-                    alertLevel: memoryAlertLevel
-                )
-                .onTapGesture { toggleWidget(.memory) }
-                .popover(isPresented: binding(for: .memory), arrowEdge: .bottom) {
-                    MemoryDetailView(monitor: monitor)
-                        .frame(width: 380, height: 500)
-                }
-
-                // Battery Card
-                OverviewCard(
-                    icon: monitor.batteryInfo.icon,
-                    iconColor: batteryColor,
-                    title: "Battery",
-                    subtitle: monitor.batteryInfo.statusText,
-                    value: "\(monitor.batteryInfo.percentage)%",
-                    alertLevel: batteryAlertLevel
-                )
-                .onTapGesture { toggleWidget(.battery) }
-                .popover(isPresented: binding(for: .battery), arrowEdge: .bottom) {
-                    BatteryDetailView(monitor: monitor)
-                        .frame(width: 380, height: 450)
-                }
-
-                // CPU Card
-                OverviewCard(
-                    icon: "cpu.fill",
-                    iconColor: cpuColor,
-                    title: "CPU",
-                    subtitle: monitor.cpuUsage.formattedLoad,
-                    value: monitor.cpuUsage.formattedTemperature,
-                    valueColor: cpuTempColor,
-                    alertLevel: cpuAlertLevel
-                )
-                .onTapGesture { toggleWidget(.cpu) }
-                .popover(isPresented: binding(for: .cpu), arrowEdge: .bottom) {
-                    CPUDetailView(monitor: monitor)
-                        .frame(width: 380, height: 480)
-                }
-
-                // Wi-Fi Card
-                OverviewCard(
-                    icon: "wifi",
-                    iconColor: .green,
-                    title: monitor.networkUsage.ssid ?? "Wi-Fi",
-                    subtitle: "↓ \(monitor.networkUsage.formattedDownload)  ↑ \(monitor.networkUsage.formattedUpload)"
-                )
-                .onTapGesture { toggleWidget(.network) }
-                .popover(isPresented: binding(for: .network), arrowEdge: .bottom) {
-                    NetworkDetailView(monitor: monitor)
-                        .frame(width: 380, height: 420)
-                }
-
-                // System Info Card
-                OverviewCard(
-                    icon: "desktopcomputer",
-                    iconColor: .gray,
-                    title: Host.current().localizedName ?? "Mac",
-                    subtitle: systemVersion
-                )
+    @ViewBuilder
+    private var recommendationRows: some View {
+        RecommendationRow(
+            icon: "magnifyingglass",
+            title: "Run Deep Scan",
+            detail: "Find junk files, caches, and large files.",
+            buttonTitle: "Scan",
+            isLoading: appState.isScanning
+        ) {
+            Task {
+                await appState.scan()
             }
         }
+
+        RecommendationRow(
+            icon: "xmark.app",
+            title: "Uninstall Apps",
+            detail: "Remove applications you do not use anymore.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .uninstaller
+        }
+
+        RecommendationRow(
+            icon: "doc.badge.clock",
+            title: "Large & Old Files",
+            detail: "Find files taking up space.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .largeOldFiles
+        }
+
+        RecommendationRow(
+            icon: "hammer",
+            title: "Developer Tools",
+            detail: "Clean node_modules, DerivedData, package caches, and stale build artifacts.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .devTools
+        }
+
+        RecommendationRow(
+            icon: "doc.on.doc",
+            title: "Duplicate Files",
+            detail: "Find redundant copies and recover wasted storage.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .duplicateFiles
+        }
+
+        RecommendationRow(
+            icon: monitor.batteryInfo.icon,
+            title: "Battery Monitor",
+            detail: monitor.batteryInfo.hasBattery ? "Track health, cycle count, and charge behavior." : "This Mac is on desktop power.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .batteryMonitor
+        }
+
+        RecommendationRow(
+            icon: "photo.stack",
+            title: "Similar Photos",
+            detail: "Review visually similar images and keep the best shots.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .similarPhotos
+        }
+
+        RecommendationRow(
+            icon: "icloud",
+            title: "Cloud Cleanup",
+            detail: "Reclaim local storage from stale cloud copies and caches.",
+            buttonTitle: "Open"
+        ) {
+            appState.selectedFeature = .cloudCleanup
+        }
     }
 
-    // MARK: - Popover Helpers
+    // MARK: - Mac Overview
+
+    @ViewBuilder
+    private var overviewRows: some View {
+        Button {
+            toggleWidget(.storage)
+        } label: {
+            SystemStatusRow(
+                icon: "internaldrive",
+                tint: storageColor,
+                title: "Macintosh HD",
+                detail: "Available: \(monitor.diskUsage?.formattedFree ?? "...")",
+                progress: 1.0 - (monitor.diskUsage?.freePercentage ?? 0.5),
+                progressTint: storageColor,
+                alertLevel: storageAlertLevel
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .storage), arrowEdge: .trailing) {
+            StorageDetailView(monitor: monitor)
+                .environmentObject(appState)
+                .frame(width: 380, height: 450)
+        }
+
+        Button {
+            toggleWidget(.memory)
+        } label: {
+            SystemStatusRow(
+                icon: "memorychip",
+                tint: memoryColor,
+                title: "Memory",
+                detail: "Available: \(monitor.memoryUsage.formattedAvailable)",
+                progress: monitor.memoryUsage.usedPercentage,
+                progressTint: memoryColor,
+                alertLevel: memoryAlertLevel
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .memory), arrowEdge: .trailing) {
+            MemoryDetailView(monitor: monitor)
+                .frame(width: 380, height: 500)
+        }
+
+        Button {
+            toggleWidget(.battery)
+        } label: {
+            SystemStatusRow(
+                icon: monitor.batteryInfo.icon,
+                tint: batteryColor,
+                title: "Battery",
+                detail: monitor.batteryInfo.statusText,
+                value: batteryValueText,
+                alertLevel: batteryAlertLevel
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .battery), arrowEdge: .trailing) {
+            BatteryDetailView(monitor: monitor)
+                .frame(width: 380, height: 450)
+        }
+
+        Button {
+            toggleWidget(.cpu)
+        } label: {
+            SystemStatusRow(
+                icon: "cpu",
+                tint: cpuColor,
+                title: "CPU",
+                detail: monitor.cpuUsage.formattedLoad,
+                value: monitor.cpuUsage.formattedTemperature,
+                valueTint: cpuTempColor,
+                alertLevel: cpuAlertLevel
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .cpu), arrowEdge: .trailing) {
+            CPUDetailView(monitor: monitor)
+                .frame(width: 380, height: 480)
+        }
+
+        Button {
+            toggleWidget(.network)
+        } label: {
+            SystemStatusRow(
+                icon: "wifi",
+                tint: .green,
+                title: monitor.networkUsage.ssid ?? "Wi-Fi",
+                detail: "Down \(monitor.networkUsage.formattedDownload)  Up \(monitor.networkUsage.formattedUpload)"
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .network), arrowEdge: .trailing) {
+            NetworkDetailView(monitor: monitor)
+                .frame(width: 380, height: 420)
+        }
+
+        SystemStatusRow(
+            icon: "desktopcomputer",
+            tint: .secondary,
+            title: Host.current().localizedName ?? "Mac",
+            detail: systemVersion
+        )
+    }
 
     private func toggleWidget(_ widget: WidgetType) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+        withAnimation(.easeInOut(duration: 0.15)) {
             expandedWidget = expandedWidget == widget ? nil : widget
         }
     }
@@ -439,67 +435,61 @@ struct DashboardView: View {
         )
     }
 
-    // MARK: - Recent Activity Section
+    // MARK: - Recent Activity
 
-    private var recentActivitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Recent Activity")
-                .font(.title2)
-                .fontWeight(.semibold)
+    @ViewBuilder
+    private var recentActivityRows: some View {
+        if let cleanup = appState.lastCleanup {
+            StatusMessageRow(
+                icon: "checkmark.circle",
+                tint: .green,
+                title: "Last Cleanup",
+                detail: "Freed \(cleanup.formattedBytesFreed) \(relativeTimeText(for: cleanup.timestamp))"
+            )
+        }
 
-            VStack(spacing: 12) {
-                if let cleanup = appState.lastCleanup {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+        if !appState.scanResults.isEmpty {
+            HStack(spacing: 12) {
+                DashboardRowIcon(systemName: "doc.badge.clock", tint: .orange)
 
-                        VStack(alignment: .leading) {
-                            Text("Last Cleanup")
-                                .font(.headline)
-                            Text("Freed \(cleanup.formattedBytesFreed) • \(cleanup.timestamp, style: .relative) ago")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scan Results")
+                        .font(.headline)
+                    Text("\(appState.scanResults.count) items • \(scanResultsSizeText)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                if !appState.scanResults.isEmpty {
-                    HStack {
-                        Image(systemName: "doc.badge.clock")
-                            .foregroundStyle(.orange)
+                Spacer()
 
-                        VStack(alignment: .leading) {
-                            Text("Scan Results")
-                                .font(.headline)
-                            Text("\(appState.scanResults.count) items • \(ByteCountFormatter.string(fromByteCount: appState.scanResults.reduce(0) { $0 + $1.size }, countStyle: .file))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Button("Review") {
-                            appState.selectedFeature = .systemJunk
-                        }
-                        .glassButton(prominent: true)
-                        .controlSize(.small)
-                    }
-                    .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                Button("Review") {
+                    appState.selectedFeature = .systemJunk
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
+            .padding(.vertical, 4)
         }
     }
 
     // MARK: - Helpers
 
+    private var scanResultsSizeText: String {
+        ByteCountFormatter.string(
+            fromByteCount: appState.scanResults.reduce(0) { $0 + $1.size },
+            countStyle: .file
+        )
+    }
+
     private var systemVersion: String {
         let version = Foundation.ProcessInfo.processInfo.operatingSystemVersion
         return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+    }
+
+    private func relativeTimeText(for date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - Alert Levels
@@ -514,7 +504,11 @@ struct DashboardView: View {
     }
 
     private var batteryAlertLevel: MetricAlertLevel {
-        MetricThresholds.battery(percent: monitor.batteryInfo.percentage, isCharging: monitor.batteryInfo.isCharging)
+        MetricThresholds.battery(
+            percent: monitor.batteryInfo.percentage,
+            isCharging: monitor.batteryInfo.isCharging,
+            hasBattery: monitor.batteryInfo.hasBattery
+        )
     }
 
     private var cpuAlertLevel: MetricAlertLevel {
@@ -532,7 +526,14 @@ struct DashboardView: View {
     }
 
     private var batteryColor: Color {
-        batteryAlertLevel.color
+        if !monitor.batteryInfo.hasBattery {
+            return .green
+        }
+        return batteryAlertLevel.color
+    }
+
+    private var batteryValueText: String {
+        monitor.batteryInfo.hasBattery ? "\(monitor.batteryInfo.percentage)%" : "AC"
     }
 
     private var cpuColor: Color {
@@ -547,32 +548,43 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Recommendation Card
+// MARK: - List Rows
 
-struct RecommendationCard: View {
+struct DashboardRowIcon: View {
+    let systemName: String
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(tint)
+            .frame(width: 24, height: 24)
+    }
+}
+
+struct RecommendationRow: View {
     let icon: String
-    let iconColor: Color
     let title: String
-    let description: String
+    let detail: String
     let buttonTitle: String
-    var isLoading: Bool = false
+    var isLoading = false
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: icon)
-                .font(.largeTitle)
-                .foregroundStyle(iconColor)
+        HStack(spacing: 12) {
+            DashboardRowIcon(systemName: icon, tint: .accentColor)
 
-            Text(title)
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
 
-            Text(description)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
 
-            Spacer()
+            Spacer(minLength: 16)
 
             Button {
                 action()
@@ -580,18 +592,141 @@ struct RecommendationCard: View {
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 48)
                 } else {
                     Text(buttonTitle)
-                        .frame(maxWidth: .infinity)
+                        .frame(minWidth: 48)
                 }
             }
             .glassButton()
             .disabled(isLoading)
         }
-        .padding()
-        .frame(width: 180, height: 180)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 4)
+    }
+}
+
+struct SmartCareFindingRow: View {
+    let finding: SmartCareFinding
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                DashboardRowIcon(
+                    systemName: finding.autoCleanRecommended ? "checkmark.shield" : "doc.text.magnifyingglass",
+                    tint: finding.autoCleanRecommended ? .green : .orange
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(finding.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text("\(finding.itemCount) items")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(finding.formattedBytes)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+
+                    if finding.autoCleanRecommended {
+                        Text("Recommended")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct StatusMessageRow: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            DashboardRowIcon(systemName: icon, tint: tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct SystemStatusRow: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    let detail: String
+    var value: String? = nil
+    var valueTint: Color = .primary
+    var progress: Double? = nil
+    var progressTint: Color = .accentColor
+    var alertLevel: MetricAlertLevel = .normal
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            DashboardRowIcon(systemName: icon, tint: tint)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if alertLevel != .normal {
+                        Image(systemName: alertLevel == .critical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(alertLevel.color)
+                    }
+                }
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if let progress {
+                    ProgressView(value: clamped(progress))
+                        .tint(progressTint)
+                }
+            }
+
+            Spacer(minLength: 16)
+
+            if let value {
+                Text(value)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(valueTint)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private func clamped(_ value: Double) -> Double {
+        min(max(value, 0), 1)
     }
 }
 
@@ -616,115 +751,14 @@ struct ScanProgressStatusView: View {
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
-            ProgressView(value: progress)
-                .tint(.purple)
+            ProgressView(value: min(max(progress, 0), 1))
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Scan progress")
         .accessibilityValue("\(Int(progress * 100)) percent, \(message)")
-    }
-}
-
-// MARK: - Overview Card
-
-struct OverviewCard: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String
-    var progress: Double? = nil
-    var progressColor: Color = .blue
-    var value: String? = nil
-    var valueColor: Color = .primary
-    var actionTitle: String? = nil
-    var action: (() -> Void)? = nil
-    var alertLevel: MetricAlertLevel = .normal
-
-    @State private var pulseAnimation = false
-    @State private var isHovering = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(iconColor)
-
-                Spacer()
-
-                if let value = value {
-                    Text(value)
-                        .font(.headline)
-                        .foregroundStyle(valueColor)
-                }
-
-                // Alert indicator
-                if alertLevel != .normal {
-                    Image(systemName: alertLevel == .critical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(alertLevel.color)
-                        .opacity(alertLevel == .critical ? (pulseAnimation ? 0.5 : 1.0) : 1.0)
-                }
-            }
-
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            if let progress = progress {
-                ProgressView(value: progress)
-                    .tint(progressColor)
-            }
-
-            if let actionTitle = actionTitle, let action = action {
-                Button(actionTitle, action: action)
-                    .glassButton()
-                    .controlSize(.small)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            alertLevel == .critical ? alertLevel.color.opacity(pulseAnimation ? 0.3 : 0.6) : Color.clear,
-                            lineWidth: 2
-                        )
-                )
-        )
-        .scaleEffect(isHovering ? 1.02 : 1.0)
-        .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovering = hovering
-            }
-        }
-        .onAppear {
-            if alertLevel == .critical {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulseAnimation = true
-                }
-            }
-        }
-        .onChange(of: alertLevel) { newLevel in
-            if newLevel == .critical {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulseAnimation = true
-                }
-            } else {
-                pulseAnimation = false
-            }
-        }
     }
 }
 
@@ -734,5 +768,4 @@ struct OverviewCard: View {
         .environmentObject(AppState())
         .frame(width: 800, height: 600)
 }
-
 #endif

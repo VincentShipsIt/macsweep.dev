@@ -20,13 +20,13 @@ struct BatteryMonitorView: View {
 
                 BatteryDetailView(monitor: monitor)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                    .macSweepPanel()
 
                 insightsSection
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.clear)
     }
 
     private var header: some View {
@@ -59,6 +59,7 @@ struct BatteryMonitorView: View {
             HStack(alignment: .center, spacing: 18) {
                 BatteryGauge(
                     percentage: monitor.batteryInfo.percentage,
+                    hasBattery: monitor.batteryInfo.hasBattery,
                     color: batteryColor
                 )
 
@@ -106,7 +107,7 @@ struct BatteryMonitorView: View {
             }
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .macSweepPanel()
     }
 
     private var quickActionsCard: some View {
@@ -148,7 +149,7 @@ struct BatteryMonitorView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .macSweepPanel()
     }
 
     private var insightsSection: some View {
@@ -178,7 +179,7 @@ struct BatteryMonitorView: View {
                 )
             }
             .padding(18)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .macSweepPanel()
         }
     }
 
@@ -206,6 +207,9 @@ struct BatteryMonitorView: View {
     }
 
     private var powerSourceText: String {
+        if !monitor.batteryInfo.hasBattery {
+            return "Desktop Mac on AC power"
+        }
         if monitor.batteryInfo.isCharging {
             return "Charging from adapter"
         }
@@ -216,6 +220,7 @@ struct BatteryMonitorView: View {
     }
 
     private var formattedHealth: String {
+        guard monitor.batteryInfo.hasBattery else { return "N/A" }
         if let health = monitor.batteryInfo.health {
             return "\(health)%"
         }
@@ -223,6 +228,7 @@ struct BatteryMonitorView: View {
     }
 
     private var formattedCycles: String {
+        guard monitor.batteryInfo.hasBattery else { return "N/A" }
         if let cycles = monitor.batteryInfo.cycleCount {
             return "\(cycles)"
         }
@@ -230,6 +236,7 @@ struct BatteryMonitorView: View {
     }
 
     private var formattedTemperature: String {
+        guard monitor.batteryInfo.hasBattery else { return "N/A" }
         if let temperature = monitor.batteryInfo.temperature {
             return "\(Int(temperature.rounded()))°C"
         }
@@ -237,6 +244,9 @@ struct BatteryMonitorView: View {
     }
 
     private var batteryColor: Color {
+        if !monitor.batteryInfo.hasBattery {
+            return .green
+        }
         if monitor.batteryInfo.isCharging || monitor.batteryInfo.isPluggedIn {
             return .green
         }
@@ -271,6 +281,9 @@ struct BatteryMonitorView: View {
     }
 
     private var healthInsight: String {
+        guard monitor.batteryInfo.hasBattery else {
+            return "This Mac does not have an internal battery, so health and cycle metrics do not apply."
+        }
         guard let health = monitor.batteryInfo.health else {
             return "Battery health details are limited on this Mac, but cycle count and charge state are still available."
         }
@@ -285,6 +298,9 @@ struct BatteryMonitorView: View {
     }
 
     private var temperatureInsight: String {
+        guard monitor.batteryInfo.hasBattery else {
+            return "Mac Studio runs from external power, so battery temperature readings are not available."
+        }
         guard let temperature = monitor.batteryInfo.temperature else {
             return "No direct battery temperature reading is available, so use CPU temperature and fan noise as rough warning signs."
         }
@@ -301,6 +317,7 @@ struct BatteryMonitorView: View {
 
 private struct BatteryGauge: View {
     let percentage: Int
+    let hasBattery: Bool
     let color: Color
 
     var body: some View {
@@ -309,15 +326,15 @@ private struct BatteryGauge: View {
                 .stroke(Color.secondary.opacity(0.14), lineWidth: 14)
 
             Circle()
-                .trim(from: 0, to: Double(percentage) / 100)
+                .trim(from: 0, to: hasBattery ? Double(percentage) / 100 : 1)
                 .stroke(color.gradient, style: StrokeStyle(lineWidth: 14, lineCap: .round))
                 .rotationEffect(.degrees(-90))
 
             VStack(spacing: 2) {
-                Text("\(percentage)%")
+                Text(hasBattery ? "\(percentage)%" : "AC")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
 
-                Text("Charge")
+                Text(hasBattery ? "Charge" : "Power")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

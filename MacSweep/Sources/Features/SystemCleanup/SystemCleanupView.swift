@@ -26,6 +26,7 @@ struct SystemCleanupView: View {
                 footer
             }
         }
+        .background(Color.clear)
     }
 
     // MARK: - Header
@@ -55,6 +56,7 @@ struct SystemCleanupView: View {
             .disabled(appState.isScanning)
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - Empty State
@@ -127,6 +129,7 @@ struct SystemCleanupView: View {
                 }
             }
             .listStyle(.inset)
+            .macSweepListSurface()
         }
     }
 
@@ -158,6 +161,7 @@ struct SystemCleanupView: View {
             .disabled(appState.selectedItems.isEmpty)
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
         .confirmationDialog(
             "Delete \(appState.selectedItems.count) items?",
             isPresented: $showingConfirmation,

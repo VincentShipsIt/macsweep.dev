@@ -36,7 +36,7 @@ struct AIAnalysisView: View {
             // Bottom action bar
             bottomBar
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(Color.clear)
         .onAppear {
             refreshProviderState()
         }
@@ -84,6 +84,7 @@ struct AIAnalysisView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - API Key Popover
@@ -198,7 +199,7 @@ struct AIAnalysisView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
-        .background(Color.purple.opacity(0.08))
+        .background(Color.purple.opacity(0.12))
     }
 
     // MARK: - Results List
@@ -274,7 +275,7 @@ struct AIAnalysisView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - Actions
@@ -379,7 +380,7 @@ struct CategoryHeader: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
+        .background(MacSweepTheme.backgroundMid.opacity(0.96))
     }
 }
 
