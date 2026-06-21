@@ -7,89 +7,40 @@ struct SystemCleanupView: View {
     @State private var searchText = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            header
-
-            Divider()
-
+        FeaturePageShell(
+            title: "System Junk",
+            subtitle: "Clear caches, logs, and temporary files.",
+            trailing: appState.scanResults.isEmpty ? nil : AnyView(
+                Button {
+                    Task { await appState.scan(modules: ["system-cache"]) }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                }
+                .glassButton()
+                .controlSize(.small)
+                .disabled(appState.isScanning)
+            )
+        ) {
             if appState.scanResults.isEmpty {
-                emptyState
+                ScanLandingView(
+                    icon: "sparkles",
+                    title: "Scan for System Junk",
+                    description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
+                    ctaTitle: "Scan System Junk",
+                    isScanning: appState.isScanning,
+                    progress: appState.scanProgress,
+                    scanningMessage: appState.currentScanModule,
+                    action: { Task { await appState.scan(modules: ["system-cache"]) } }
+                )
             } else {
-                // Results list
                 resultsList
-            }
 
-            // Footer with actions
-            if !appState.scanResults.isEmpty {
                 Divider()
+                    .overlay(MacSweepTheme.divider)
+
                 footer
             }
         }
-        .background(Color.clear)
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("System Cleanup")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Remove caches, logs, and temporary files")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await appState.scan(modules: ["system-cache"])
-                }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .disabled(appState.isScanning)
-        }
-        .padding()
-        .background(MacSweepTheme.panelStrong)
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            if appState.isScanning {
-                ScanProgressStatusView(
-                    progress: appState.scanProgress,
-                    message: appState.currentScanModule ?? "Scanning"
-                )
-                .frame(maxWidth: 320)
-            } else {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.secondary)
-
-                Text("No items found")
-                    .font(.headline)
-
-                Text("Run a scan to find junk files")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Button("Start Scan") {
-                    Task {
-                        await appState.scan()
-                    }
-                }
-                .glassButton(prominent: true)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Results List
