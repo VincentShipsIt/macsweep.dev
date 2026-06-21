@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Widget types for popover expansion
 enum WidgetType: String, CaseIterable {
-    case storage, memory, battery, cpu, network, system
+    case storage, memory, battery, cpu, network, devices, system
 }
 
 /// Main dashboard view matching CleanMyMac style
@@ -413,6 +413,24 @@ struct DashboardView: View {
                         .frame(width: 380, height: 420)
                 }
 
+                // Connected Devices Card
+                OverviewCard(
+                    icon: "antenna.radiowaves.left.and.right",
+                    iconColor: devicesColor,
+                    title: "Connected Devices",
+                    subtitle: connectedDevicesSubtitle,
+                    value: lowestDeviceBattery.map { "\($0)%" },
+                    valueColor: devicesColor,
+                    alertLevel: devicesAlertLevel
+                )
+                .onTapGesture { toggleWidget(.devices) }
+                .popover(isPresented: binding(for: .devices), arrowEdge: .bottom) {
+                    ScrollView {
+                        ConnectedDevicesDetailView(monitor: monitor)
+                    }
+                    .frame(width: 380, height: 360)
+                }
+
                 // System Info Card
                 OverviewCard(
                     icon: "desktopcomputer",
@@ -544,6 +562,36 @@ struct DashboardView: View {
         if temp > 80 { return .red }
         if temp > 60 { return .orange }
         return .green
+    }
+
+    // MARK: - Connected Devices
+
+    private var connectedDevicesSubtitle: String {
+        let count = monitor.connectedDevices.count
+        switch count {
+        case 0: return "None connected"
+        case 1: return monitor.connectedDevices[0].name
+        default: return "\(count) devices"
+        }
+    }
+
+    private var lowestDeviceBattery: Int? {
+        monitor.connectedDevices.compactMap(\.lowestBattery).min()
+    }
+
+    private var devicesAlertLevel: MetricAlertLevel {
+        guard let lowest = lowestDeviceBattery else { return .normal }
+        if lowest <= 10 { return .critical }
+        if lowest <= 20 { return .warning }
+        return .normal
+    }
+
+    private var devicesColor: Color {
+        switch devicesAlertLevel {
+        case .normal: return .cyan
+        case .warning: return .orange
+        case .critical: return .red
+        }
     }
 }
 

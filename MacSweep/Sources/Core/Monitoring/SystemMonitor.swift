@@ -12,6 +12,11 @@ final class SystemMonitor: ObservableObject {
     @Published var networkUsage: NetworkUsage = .init()
     @Published var diskUsage: DiskUsage?
 
+    /// Connected Bluetooth peripherals (AirPods, Magic Keyboard/Mouse…) and their
+    /// battery levels. Refreshed on a slower cadence than the core metrics because
+    /// the underlying `system_profiler`/`ioreg` probes are comparatively expensive.
+    @Published var connectedDevices: [ConnectedDevice] = []
+
     // MARK: - History for Graphs (2 minutes at 2s intervals)
     @Published var cpuHistory: [Double] = []
     @Published var memoryHistory: [Double] = []
@@ -24,8 +29,16 @@ final class SystemMonitor: ObservableObject {
 
     // MARK: - Private
     private var timer: Timer?
+    private var deviceTimer: Timer?
     private var previousNetworkStats: (rx: UInt64, tx: UInt64)?
     private var lastNetworkCheck: Date?
+    /// Guards against overlapping device scans (the timer can fire again while a
+    /// slow `system_profiler`/`ioreg` probe from the previous tick is still running).
+    private var isRefreshingDevices = false
+
+    /// How often connected-device battery is re-scanned. Much slower than the 2s
+    /// core-metric tick so we don't spawn `system_profiler` every couple of seconds.
+    private let deviceRefreshInterval: TimeInterval = 30
 
     // MARK: - Lifecycle
 
@@ -63,12 +76,14 @@ final class SystemMonitor: ObservableObject {
 
     deinit {
         timer?.invalidate()
+        deviceTimer?.invalidate()
     }
 
     func startMonitoring() {
         // Initial fetch
         Task {
             await refresh()
+            await refreshConnectedDevices()
         }
 
         // Periodic updates every 2 seconds
@@ -77,11 +92,29 @@ final class SystemMonitor: ObservableObject {
                 await self?.refresh()
             }
         }
+
+        // Connected-device battery refreshes on its own slower cadence.
+        deviceTimer = Timer.scheduledTimer(withTimeInterval: deviceRefreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshConnectedDevices()
+            }
+        }
     }
 
     func stopMonitoring() {
         timer?.invalidate()
         timer = nil
+        deviceTimer?.invalidate()
+        deviceTimer = nil
+    }
+
+    /// Re-scan connected Bluetooth peripherals and their battery levels.
+    /// Safe to call manually (e.g. from a Refresh button) in addition to the timer.
+    func refreshConnectedDevices() async {
+        guard !isRefreshingDevices else { return }
+        isRefreshingDevices = true
+        defer { isRefreshingDevices = false }
+        connectedDevices = await ConnectedDeviceScanner.scan()
     }
 
     func refresh() async {

@@ -149,6 +149,16 @@ struct MenuBarView: View {
                 onTap: { toggleWidget(.network) }
             )
 
+            // Connected Devices
+            SystemStatCard(
+                icon: "antenna.radiowaves.left.and.right",
+                title: "Devices",
+                subtitle: connectedDevicesSubtitle,
+                value: lowestDeviceBattery.map { "\($0)%" },
+                accentColor: devicesColor,
+                onTap: { toggleWidget(.devices) }
+            )
+
             // Quick Scan
             SystemStatCard(
                 icon: "magnifyingglass",
@@ -333,6 +343,26 @@ struct MenuBarView: View {
         if temp > 80 { return .red }
         if temp > 60 { return .orange }
         return .primary
+    }
+
+    private var connectedDevicesSubtitle: String {
+        let count = monitor.connectedDevices.count
+        switch count {
+        case 0: return "None connected"
+        case 1: return monitor.connectedDevices[0].name
+        default: return "\(count) connected"
+        }
+    }
+
+    private var lowestDeviceBattery: Int? {
+        monitor.connectedDevices.compactMap(\.lowestBattery).min()
+    }
+
+    private var devicesColor: Color {
+        guard let lowest = lowestDeviceBattery else { return .cyan }
+        if lowest <= 10 { return .red }
+        if lowest <= 20 { return .orange }
+        return .cyan
     }
 }
 

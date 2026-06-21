@@ -86,6 +86,8 @@ struct MenuBarDetailContent: View {
                     CPUDetailView(monitor: monitor)
                 case .network:
                     NetworkDetailView(monitor: monitor)
+                case .devices:
+                    ConnectedDevicesDetailView(monitor: monitor, showsHeader: false)
                 case .system:
                     EmptyView()
                 }
@@ -107,6 +109,7 @@ struct MenuBarDetailContent: View {
         case .battery: return "Battery"
         case .cpu:     return "CPU"
         case .network: return monitor.networkUsage.ssid ?? "Wi-Fi"
+        case .devices: return "Connected Devices"
         case .system:  return "System"
         }
     }
@@ -117,6 +120,7 @@ struct MenuBarDetailContent: View {
         case .memory, .cpu:   return .optimization
         case .battery:        return .batteryMonitor
         case .network:        return .networkCleanup
+        case .devices:        return .batteryMonitor
         case .system:         return .smartScan
         }
     }

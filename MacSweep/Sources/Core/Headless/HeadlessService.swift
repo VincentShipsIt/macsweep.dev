@@ -1031,11 +1031,22 @@ private func runSystemMonitorOnMain() async -> HeadlessMonitorReport {
         interfaceName: net.interfaceName,
         ssid: net.ssid
     )
+    let devices = await ConnectedDeviceScanner.scan().map { device in
+        HeadlessConnectedDevice(
+            name: device.name,
+            type: device.typeLabel,
+            battery: device.battery,
+            batteryLeft: device.batteryLeft,
+            batteryRight: device.batteryRight,
+            batteryCase: device.batteryCase
+        )
+    }
     return HeadlessMonitorReport(
         chipName: monitor.chipName,
         cpu: cpuReport,
         memory: memReport,
         battery: batReport,
-        network: netReport
+        network: netReport,
+        connectedDevices: devices
     )
 }

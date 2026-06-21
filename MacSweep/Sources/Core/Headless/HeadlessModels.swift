@@ -894,6 +894,33 @@ public struct HeadlessBatteryReport: Codable, Sendable {
     }
 }
 
+/// A connected Bluetooth peripheral and its battery levels, as reported by
+/// `macsweep monitor`. Any of the battery fields may be null when unavailable.
+public struct HeadlessConnectedDevice: Codable, Sendable {
+    public let name: String
+    public let type: String
+    public let battery: Int?
+    public let batteryLeft: Int?
+    public let batteryRight: Int?
+    public let batteryCase: Int?
+
+    public init(
+        name: String,
+        type: String,
+        battery: Int?,
+        batteryLeft: Int?,
+        batteryRight: Int?,
+        batteryCase: Int?
+    ) {
+        self.name = name
+        self.type = type
+        self.battery = battery
+        self.batteryLeft = batteryLeft
+        self.batteryRight = batteryRight
+        self.batteryCase = batteryCase
+    }
+}
+
 public struct HeadlessNetworkReport: Codable, Sendable {
     public let downloadSpeedBytesPerSec: UInt64
     public let uploadSpeedBytesPerSec: UInt64
@@ -928,19 +955,22 @@ public struct HeadlessMonitorReport: Codable, Sendable {
     public let memory: HeadlessMemoryReport
     public let battery: HeadlessBatteryReport
     public let network: HeadlessNetworkReport
+    public let connectedDevices: [HeadlessConnectedDevice]
 
     public init(
         chipName: String,
         cpu: HeadlessCPUReport,
         memory: HeadlessMemoryReport,
         battery: HeadlessBatteryReport,
-        network: HeadlessNetworkReport
+        network: HeadlessNetworkReport,
+        connectedDevices: [HeadlessConnectedDevice] = []
     ) {
         self.chipName = chipName
         self.cpu = cpu
         self.memory = memory
         self.battery = battery
         self.network = network
+        self.connectedDevices = connectedDevices
     }
 }
 
