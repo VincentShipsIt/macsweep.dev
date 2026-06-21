@@ -7,6 +7,7 @@ struct MenuBarView: View {
     @StateObject private var monitor = SystemMonitor()
     @Environment(\.openWindow) private var openWindow
     @State private var expandedWidget: WidgetType?
+    @State private var menuWindow: NSWindow?
 
     private let shortcutFeatures: [Feature] = [
         .assistant,
@@ -25,40 +26,45 @@ struct MenuBarView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                header
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                systemOverviewGrid
-
-                if expandedWidget != nil {
-                    Divider()
-                        .padding(.vertical, 8)
-
-                    expandedDetailPanel
-                }
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                quickActions
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                moduleShortcuts
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                footer
+        // The main overview is a fixed-size window, so it NEVER moves. Tapping a
+        // stat card opens the detail in a SEPARATE floating panel to the left
+        // (see MenuBarDetailPanel) — CleanMyMac-style — instead of resizing this
+        // window, which is what dragged the main panel around before.
+        mainColumn
+            .frame(width: 320)
+            .background(WindowAccessor { menuWindow = $0 })
+            .onDisappear {
+                // Menu-bar dropdown was dismissed → tear down the detail panel too.
+                MenuBarDetailPanel.shared.dismiss()
+                expandedWidget = nil
             }
-            .padding(16)
+    }
+
+    private var mainColumn: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+                .padding(.vertical, 6)
+
+            systemOverviewGrid
+
+            Divider()
+                .padding(.vertical, 6)
+
+            quickActions
+
+            Divider()
+                .padding(.vertical, 6)
+
+            moduleShortcuts
+
+            Divider()
+                .padding(.vertical, 6)
+
+            footer
         }
-        .frame(width: 320)
+        .padding(16)
     }
 
     // MARK: - Header
@@ -170,57 +176,6 @@ struct MenuBarView: View {
         }
     }
 
-    private var expandedDetailPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(detailTitle(for: expandedWidget))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-
-                Spacer()
-
-                if let widget = expandedWidget {
-                    Button("Open Full View") {
-                        navigateToFeature(feature(for: widget))
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                }
-            }
-
-            Group {
-                switch expandedWidget {
-                case .storage:
-                    StorageDetailView(monitor: monitor)
-                        .environmentObject(appState)
-                        .frame(height: 290)
-                case .memory:
-                    MemoryDetailView(monitor: monitor)
-                        .frame(height: 340)
-                case .battery:
-                    BatteryDetailView(monitor: monitor)
-                        .frame(height: 320)
-                case .cpu:
-                    CPUDetailView(monitor: monitor)
-                        .frame(height: 320)
-                case .network:
-                    NetworkDetailView(monitor: monitor)
-                        .frame(height: 280)
-                case .devices:
-                    ConnectedDevicesDetailView(monitor: monitor, showsHeader: false)
-                case .system, .none:
-                    EmptyView()
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .clipped()
-        }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
     // MARK: - Quick Actions
 
     private var quickActions: some View {
@@ -322,52 +277,33 @@ struct MenuBarView: View {
     // MARK: - Helpers
 
     private func toggleWidget(_ widget: WidgetType) {
-        withAnimation(.easeInOut(duration: 0.18)) {
-            expandedWidget = expandedWidget == widget ? nil : widget
+        // Toggle the SEPARATE detail panel. The main window is never resized, so
+        // it never moves — only the side panel shows/hides.
+        if expandedWidget == widget {
+            expandedWidget = nil
+            MenuBarDetailPanel.shared.dismiss()
+            return
         }
+        // Guard the window first so expandedWidget never desyncs from the panel
+        // (setting it before a failed open would leave a "selected" card with no panel).
+        guard let window = menuWindow else { return }
+        expandedWidget = widget
+        MenuBarDetailPanel.shared.present(
+            anchor: window,
+            content: AnyView(
+                MenuBarDetailContent(widget: widget, monitor: monitor, appState: appState) { feature in
+                    appState.selectedFeature = feature
+                    openMainWindow()
+                    expandedWidget = nil
+                    MenuBarDetailPanel.shared.dismiss()
+                }
+            )
+        )
     }
 
     private func navigateToFeature(_ feature: Feature) {
         appState.selectedFeature = feature
         openMainWindow()
-    }
-
-    private func feature(for widget: WidgetType) -> Feature {
-        switch widget {
-        case .storage:
-            return .spaceLens
-        case .memory, .cpu:
-            return .optimization
-        case .battery:
-            return .batteryMonitor
-        case .network:
-            return .networkCleanup
-        case .devices:
-            return .batteryMonitor
-        case .system:
-            return .smartScan
-        }
-    }
-
-    private func detailTitle(for widget: WidgetType?) -> String {
-        switch widget {
-        case .storage:
-            return "Macintosh HD"
-        case .memory:
-            return "Memory"
-        case .battery:
-            return "Battery"
-        case .cpu:
-            return "CPU"
-        case .network:
-            return monitor.networkUsage.ssid ?? "Wi-Fi"
-        case .devices:
-            return "Connected Devices"
-        case .system:
-            return "System"
-        case .none:
-            return ""
-        }
     }
 
     private func openMainWindow() {

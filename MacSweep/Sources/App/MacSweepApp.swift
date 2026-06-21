@@ -39,7 +39,7 @@ struct MacSweepApp: App {
             MenuBarView()
                 .environmentObject(appState)
         } label: {
-            Label("MacSweep", systemImage: appState.menuBarIcon)
+            Label("MacSweep", image: "MenuBarIcon")
         }
         .menuBarExtraStyle(.window)
 

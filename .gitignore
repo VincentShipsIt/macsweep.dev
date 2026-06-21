@@ -65,3 +65,6 @@ MacSweep/.build/
 
 # Headless snapshot output (regenerable via scripts/render-screenshots.sh)
 scripts/screenshots/
+
+# gpt-image logo generation scratch
+.codex_logos/
