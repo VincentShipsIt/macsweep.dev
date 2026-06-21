@@ -59,47 +59,116 @@ struct FeaturePageShell<Content: View>: View {
 /// description of what the action does, and exactly ONE primary CTA. Swaps to a
 /// progress view while a scan runs. Use this as the empty state for any
 /// scan-driven page so the trigger is explained before it's pressed.
+/// A benefit bullet on the scan landing: icon + bold benefit + one supporting line.
+struct ScanBenefit: Identifiable {
+    let id = UUID()
+    let icon: String
+    let title: String
+    let detail: String
+    init(_ icon: String, _ title: String, _ detail: String) {
+        self.icon = icon
+        self.title = title
+        self.detail = detail
+    }
+}
+
+/// CleanMyMac-style pre-scan landing: a left column (title, description, benefit
+/// bullets), a large illustration on the right, and a big glowing circular Scan
+/// button centered at the bottom. Swaps to a progress view while scanning.
 struct ScanLandingView: View {
     let icon: String
     let title: String
     let description: String
     let ctaTitle: String
+    var benefits: [ScanBenefit] = []
+    var illustration: String? = nil
     var isScanning: Bool = false
     var progress: Double = 0
     var scanningMessage: String? = nil
     let action: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            if isScanning {
-                ScanProgressStatusView(
-                    progress: progress,
-                    message: scanningMessage ?? "Scanning"
-                )
+        if isScanning {
+            ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
                 .frame(maxWidth: 360)
-            } else {
-                Image(systemName: icon)
-                    .font(.system(size: 50, weight: .regular))
-                    .foregroundStyle(MacSweepTheme.accent)
-                    .padding(.bottom, 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(40)
+        } else {
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 36) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(title)
+                                .font(.system(size: 26, weight: .bold))
+                            Text(description)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
-                Text(title)
-                    .font(.title3)
-                    .fontWeight(.semibold)
+                        ForEach(benefits) { benefit in
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: benefit.icon)
+                                    .font(.title3)
+                                    .foregroundStyle(MacSweepTheme.accent)
+                                    .frame(width: 26)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(benefit.title)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    Text(benefit.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 430, alignment: .leading)
 
-                Text(description)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 440)
+                    Spacer(minLength: 0)
 
-                Button(ctaTitle, action: action)
-                    .glassButton(prominent: true)
-                    .controlSize(.large)
-                    .padding(.top, 6)
+                    Image(systemName: illustration ?? icon)
+                        .font(.system(size: 132, weight: .ultraLight))
+                        .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, 28)
+
+                CircularScanButton(action: action)
+                    .padding(.bottom, 28)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 44)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+    }
+}
+
+/// The signature CleanMyMac circular Scan button — a glowing accent ring.
+struct CircularScanButton: View {
+    var title: String = "Scan"
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(MacSweepTheme.panel)
+                Circle()
+                    .strokeBorder(MacSweepTheme.accent.opacity(0.95), lineWidth: 2)
+                    .shadow(color: MacSweepTheme.accent.opacity(isHovering ? 0.7 : 0.45),
+                            radius: isHovering ? 16 : 9)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 96, height: 96)
+            .scaleEffect(isHovering ? 1.04 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

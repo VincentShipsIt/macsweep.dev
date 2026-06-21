@@ -15,6 +15,10 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                 detailView
+                    // Switching sidebar items should change the detail instantly
+                    // (native split-view feel), not slide up/down. Strip the
+                    // selection-driven animation from the swap.
+                    .animation(nil, value: appState.selectedFeature)
             }
             .navigationTitle(appState.selectedFeature.rawValue)
         }
