@@ -56,6 +56,11 @@ struct SpaceLensView: View {
                         title: "Visualize Your Disk",
                         description: "Scan your disk to see a treemap, sunburst, or list of what's taking up the most space.",
                         ctaTitle: "Scan Disk",
+                        benefits: [
+                            ScanBenefit("square.grid.3x3.topleft.filled", "See your space at a glance", "An interactive treemap, sunburst, or list reveals exactly which folders and files are eating your disk."),
+                            ScanBenefit("arrow.down.forward.and.arrow.up.backward", "Drill down and reclaim", "Dive into any folder, then move space hogs straight to the Trash once you've reviewed them."),
+                        ],
+                        illustration: "chart.pie.fill",
                         isScanning: isScanning,
                         action: { Task { await scanDisk() } }
                     )

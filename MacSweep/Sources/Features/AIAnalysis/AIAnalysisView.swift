@@ -42,6 +42,11 @@ struct AIAnalysisView: View {
                     title: "AI-Powered Cache Analysis",
                     description: "Phase 1 finds cache directories instantly; Phase 2 uses Claude or Codex CLI for deeper analysis.",
                     ctaTitle: "Scan with AI",
+                    benefits: [
+                        ScanBenefit("brain", "Smarter than a cache list", "Claude or Codex inspects each cache directory and explains what it is, so you reclaim space without guesswork."),
+                        ScanBenefit("lock.shield", "Stays on your Mac", "Analysis runs through your signed-in Claude or Codex CLI, and nothing is removed until you review every finding."),
+                    ],
+                    illustration: "sparkle.magnifyingglass",
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,

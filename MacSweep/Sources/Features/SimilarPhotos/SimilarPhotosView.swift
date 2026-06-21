@@ -36,6 +36,11 @@ struct SimilarPhotosView: View {
                     title: "Find Similar Photos",
                     description: "Compare photo fingerprints to detect visually similar shots and keep the strongest one.",
                     ctaTitle: "Scan Photos",
+                    benefits: [
+                        ScanBenefit("rectangle.on.rectangle", "Clears out near-duplicates", "Groups burst shots and look-alike photos so you can delete the extras and reclaim storage."),
+                        ScanBenefit("star", "Keeps your best shot", "Compares each photo so you always choose the sharpest, best-framed version before anything is removed."),
+                    ],
+                    illustration: "photo.on.rectangle.angled",
                     isScanning: isScanning,
                     action: { Task { await scanPhotos() } }
                 )

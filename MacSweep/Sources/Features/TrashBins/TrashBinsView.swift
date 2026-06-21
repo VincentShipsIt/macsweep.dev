@@ -50,6 +50,11 @@ struct TrashBinsView: View {
                     title: "Scan Trash Bins",
                     description: "Find what's sitting in your trash bins across all volumes before emptying.",
                     ctaTitle: "Scan Trash Bins",
+                    benefits: [
+                        ScanBenefit("externaldrive.badge.xmark", "Every bin in one place", "Gathers what's sitting in trash across all your volumes and drives so nothing is forgotten."),
+                        ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
+                    ],
+                    illustration: "trash",
                     isScanning: isScanning,
                     action: { Task { await scanTrash() } }
                 )

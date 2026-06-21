@@ -48,6 +48,11 @@ struct PrivacyView: View {
                             title: "Scan for Privacy Traces",
                             description: "Find browser, app, and system traces of your recent activity that you can clear.",
                             ctaTitle: "Scan Privacy Traces",
+                            benefits: [
+                                ScanBenefit("eye.slash", "Erases your digital footprint", "Clears recent-document lists, saved app state, and download history so your activity doesn't linger."),
+                                ScanBenefit("checkmark.shield", "You stay in control", "Every trace is grouped for review, and nothing is cleared until you select it and confirm."),
+                            ],
+                            illustration: "hand.raised.fingers.spread",
                             isScanning: isScanning,
                             action: { Task { await scanPrivacy() } }
                         )

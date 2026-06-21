@@ -49,6 +49,11 @@ struct CloudCleanupView: View {
                         title: "Scan Cloud Storage",
                         description: "Find stale local cloud copies and oversized provider cache folders you can reclaim.",
                         ctaTitle: "Scan Cloud Storage",
+                        benefits: [
+                            ScanBenefit("icloud.and.arrow.down", "Reclaims synced storage", "Evicts stale local copies of iCloud and provider files so they stay in the cloud, not on your disk."),
+                            ScanBenefit("externaldrive.badge.icloud", "Clears provider caches", "Removes oversized cloud cache folders left behind by sync clients while your files stay safe online."),
+                        ],
+                        illustration: "icloud.and.arrow.down",
                         isScanning: isScanning,
                         action: { Task { await scanCloudStorage() } }
                     )

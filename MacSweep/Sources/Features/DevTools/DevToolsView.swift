@@ -68,6 +68,11 @@ struct BuildArtifactsView: View {
                 title: "Find Developer Artifacts",
                 description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
                 ctaTitle: "Scan Developer Tools",
+                benefits: [
+                    ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
+                    ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
+                ],
+                illustration: "hammer",
                 isScanning: true,
                 action: { Task { await scan() } }
             )
@@ -77,6 +82,11 @@ struct BuildArtifactsView: View {
                 title: "Find Developer Artifacts",
                 description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
                 ctaTitle: "Scan Developer Tools",
+                benefits: [
+                    ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
+                    ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
+                ],
+                illustration: "hammer",
                 action: { Task { await scan() } }
             )
         } else {

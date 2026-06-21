@@ -36,6 +36,11 @@ struct DuplicateFinderView: View {
                     title: "Find Duplicate Files",
                     description: "Scan your files to find redundant copies so you can keep only the best version.",
                     ctaTitle: "Scan for Duplicates",
+                    benefits: [
+                        ScanBenefit("doc.on.doc", "Reclaims wasted space", "Finds byte-for-byte identical copies scattered across your files so you can recover the space they take up."),
+                        ScanBenefit("trash.slash", "Keeps one, removes the rest", "Duplicates only move to Trash after you review them, so the version you want to keep always stays put."),
+                    ],
+                    illustration: "doc.on.doc.fill",
                     isScanning: isScanning,
                     action: { Task { await scanDuplicates() } }
                 )

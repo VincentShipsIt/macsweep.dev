@@ -63,6 +63,11 @@ struct LargeFilesView: View {
                         title: "Find Large & Old Files",
                         description: "Scan to surface large files and folders ranked by size and recent activity.",
                         ctaTitle: "Scan for Large Files",
+                        benefits: [
+                            ScanBenefit("arrow.up.arrow.down.circle", "Reclaim the most space fast", "Ranks files and folders by size so the biggest space hogs surface first, instead of hunting through Finder."),
+                            ScanBenefit("clock.badge.questionmark", "Surfaces forgotten files", "Flags large items you haven't touched in ages, like old videos, disk images, and archives you can safely let go."),
+                        ],
+                        illustration: "internaldrive",
                         isScanning: isScanning,
                         action: { Task { await scanLargeFiles() } }
                     )
