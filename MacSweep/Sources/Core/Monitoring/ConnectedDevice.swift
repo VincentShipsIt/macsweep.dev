@@ -219,7 +219,7 @@ public enum ConnectedDeviceScanner {
         for node in nodes {
             guard
                 let percent = intValue(forKey: "BatteryPercent", in: node),
-                percent >= 0,
+                percent > 0,
                 let rawAddress = stringValue(forKey: "DeviceAddress", in: node)
             else { continue }
             let address = normalize(address: rawAddress)
@@ -271,8 +271,10 @@ public enum ConnectedDeviceScanner {
     }
 
     private static func clampPercent(_ value: Int) -> Int? {
-        // Keep 0% (fully drained but still connected); only reject negative/invalid.
-        guard value >= 0 else { return nil }
+        // Intentionally treat 0 as "no reading": BT peripherals (and ioreg) commonly
+        // report 0% when the level is simply unavailable, so excluding it avoids
+        // false "0% / dead" entries. Verified by ConnectedDeviceScannerTests.
+        guard value > 0 else { return nil }
         return min(value, 100)
     }
 
