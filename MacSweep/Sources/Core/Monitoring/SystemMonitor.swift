@@ -32,6 +32,9 @@ final class SystemMonitor: ObservableObject {
     private var deviceTimer: Timer?
     private var previousNetworkStats: (rx: UInt64, tx: UInt64)?
     private var lastNetworkCheck: Date?
+    /// Guards against overlapping device scans (the timer can fire again while a
+    /// slow `system_profiler`/`ioreg` probe from the previous tick is still running).
+    private var isRefreshingDevices = false
 
     /// How often connected-device battery is re-scanned. Much slower than the 2s
     /// core-metric tick so we don't spawn `system_profiler` every couple of seconds.
@@ -108,6 +111,9 @@ final class SystemMonitor: ObservableObject {
     /// Re-scan connected Bluetooth peripherals and their battery levels.
     /// Safe to call manually (e.g. from a Refresh button) in addition to the timer.
     func refreshConnectedDevices() async {
+        guard !isRefreshingDevices else { return }
+        isRefreshingDevices = true
+        defer { isRefreshingDevices = false }
         connectedDevices = await ConnectedDeviceScanner.scan()
     }
 

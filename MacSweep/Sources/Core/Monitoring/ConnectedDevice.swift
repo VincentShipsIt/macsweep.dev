@@ -219,7 +219,7 @@ public enum ConnectedDeviceScanner {
         for node in nodes {
             guard
                 let percent = intValue(forKey: "BatteryPercent", in: node),
-                percent > 0,
+                percent >= 0,
                 let rawAddress = stringValue(forKey: "DeviceAddress", in: node)
             else { continue }
             let address = normalize(address: rawAddress)
@@ -271,7 +271,8 @@ public enum ConnectedDeviceScanner {
     }
 
     private static func clampPercent(_ value: Int) -> Int? {
-        guard value > 0 else { return nil }
+        // Keep 0% (fully drained but still connected); only reject negative/invalid.
+        guard value >= 0 else { return nil }
         return min(value, 100)
     }
 
@@ -296,7 +297,7 @@ public enum ConnectedDeviceScanner {
         return .other
     }
 
-    private static func runProcess(_ path: String, _ arguments: [String]) async -> String {
+    private static func runProcess(_ path: String, _ arguments: [String], timeout: TimeInterval = 10) async -> String {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
@@ -305,12 +306,23 @@ public enum ConnectedDeviceScanner {
                 process.arguments = arguments
                 process.standardOutput = pipe
                 process.standardError = FileHandle.nullDevice
+
+                // Watchdog: terminate a stuck system_profiler/ioreg so a hung probe
+                // can't block readDataToEndOfFile()/waitUntilExit() indefinitely and
+                // pile up tasks. Termination closes the pipe, unblocking the read.
+                let watchdog = DispatchWorkItem {
+                    if process.isRunning { process.terminate() }
+                }
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
+
                 do {
                     try process.run()
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
+                    watchdog.cancel()
                     continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
                 } catch {
+                    watchdog.cancel()
                     continuation.resume(returning: "")
                 }
             }
