@@ -58,7 +58,10 @@ struct MenuBarView: View {
             }
             .padding(16)
         }
-        .frame(width: 320)
+        // MenuBarExtra(.window) sizes the panel to the content's ideal size; a
+        // ScrollView has no intrinsic height, so without an explicit height the
+        // panel collapses to ~0pt tall (the "invisible box"). Pin a real height.
+        .frame(width: 320, height: 560)
     }
 
     // MARK: - Header
