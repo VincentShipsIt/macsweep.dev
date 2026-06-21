@@ -94,9 +94,11 @@ struct ScanLandingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
         } else {
-            VStack(spacing: 0) {
-                HStack(alignment: .top, spacing: 36) {
-                    VStack(alignment: .leading, spacing: 22) {
+            // Centered focal block (vertically + horizontally), not stretched to
+            // the full detail area.
+            VStack(spacing: 32) {
+                HStack(alignment: .center, spacing: 40) {
+                    VStack(alignment: .leading, spacing: 20) {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(title)
                                 .font(.system(size: 26, weight: .bold))
@@ -124,23 +126,17 @@ struct ScanLandingView: View {
                             }
                         }
                     }
-                    .frame(maxWidth: 430, alignment: .leading)
-
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: 420, alignment: .leading)
 
                     Image(systemName: illustration ?? icon)
-                        .font(.system(size: 132, weight: .ultraLight))
+                        .font(.system(size: 128, weight: .ultraLight))
                         .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
-                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.top, 28)
 
                 CircularScanButton(action: action)
-                    .padding(.bottom, 28)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 44)
+            .padding(40)
         }
     }
 }
