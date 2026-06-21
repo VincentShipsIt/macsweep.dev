@@ -1031,6 +1031,18 @@ public enum CLIExecutor {
                 formatter.string(fromByteCount: Int64(net.uploadSpeedBytesPerSec)),
                 net.isConnected ? "" : " (offline)"
             ))
+            if !report.connectedDevices.isEmpty {
+                lines.append("Connected devices:")
+                for device in report.connectedDevices {
+                    var cells: [String] = []
+                    if let left = device.batteryLeft { cells.append("L \(left)%") }
+                    if let right = device.batteryRight { cells.append("R \(right)%") }
+                    if let caseLevel = device.batteryCase { cells.append("Case \(caseLevel)%") }
+                    if cells.isEmpty, let single = device.battery { cells.append("\(single)%") }
+                    let readout = cells.isEmpty ? "—" : cells.joined(separator: " / ")
+                    lines.append("  • \(device.name) (\(device.type)): \(readout)")
+                }
+            }
             return lines.joined(separator: "\n")
 
         case let output as CLIScheduleOutput:
