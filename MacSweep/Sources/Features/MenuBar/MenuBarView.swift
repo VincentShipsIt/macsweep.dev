@@ -284,8 +284,10 @@ struct MenuBarView: View {
             MenuBarDetailPanel.shared.dismiss()
             return
         }
-        expandedWidget = widget
+        // Guard the window first so expandedWidget never desyncs from the panel
+        // (setting it before a failed open would leave a "selected" card with no panel).
         guard let window = menuWindow else { return }
+        expandedWidget = widget
         MenuBarDetailPanel.shared.present(
             anchor: window,
             content: AnyView(
