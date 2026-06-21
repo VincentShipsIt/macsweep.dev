@@ -11,83 +11,56 @@ struct TrashBinsView: View {
     @State private var trashSummary: TrashSummary?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if isScanning {
-                scanningView
-            } else if trashItems.isEmpty {
-                emptyState
+        FeaturePageShell(
+            title: "Trash Bins",
+            subtitle: "Review and empty every trash bin on your Mac.",
+            trailing: AnyView(
+                Button {
+                    showingEmptyAllConfirmation = true
+                } label: {
+                    Label("Empty All Trash", systemImage: "trash.slash")
+                }
+                .glassButton(prominent: true)
+                .tint(.red)
+                .controlSize(.small)
+                .disabled(trashItems.isEmpty && trashSummary?.totalCount == 0)
+                .confirmationDialog(
+                    "Empty All Trash?",
+                    isPresented: $showingEmptyAllConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Empty Trash", role: .destructive) {
+                        Task {
+                            await emptyAllTrash()
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    if let summary = trashSummary {
+                        Text("This will permanently delete \(summary.totalCount) items (\(summary.formattedSize)). This cannot be undone.")
+                    } else {
+                        Text("This will permanently delete all items in Trash. This cannot be undone.")
+                    }
+                }
+            )
+        ) {
+            if trashItems.isEmpty {
+                ScanLandingView(
+                    icon: "trash",
+                    title: "Scan Trash Bins",
+                    description: "Find what's sitting in your trash bins across all volumes before emptying.",
+                    ctaTitle: "Scan Trash Bins",
+                    isScanning: isScanning,
+                    action: { Task { await scanTrash() } }
+                )
             } else {
                 trashList
-            }
-
-            if !trashItems.isEmpty && !isScanning {
-                Divider()
+                Divider().overlay(MacSweepTheme.divider)
                 footer
             }
         }
         .task {
             await loadTrashSummary()
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Trash Bins")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                if let summary = trashSummary {
-                    Text("\(summary.totalCount) items • \(summary.formattedSize)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Quick empty button
-            Button {
-                showingEmptyAllConfirmation = true
-            } label: {
-                Label("Empty All Trash", systemImage: "trash.slash")
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(trashItems.isEmpty && trashSummary?.totalCount == 0)
-
-            Button {
-                Task {
-                    await scanTrash()
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .disabled(isScanning)
-        }
-        .padding()
-        .confirmationDialog(
-            "Empty All Trash?",
-            isPresented: $showingEmptyAllConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Empty Trash", role: .destructive) {
-                Task {
-                    await emptyAllTrash()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if let summary = trashSummary {
-                Text("This will permanently delete \(summary.totalCount) items (\(summary.formattedSize)). This cannot be undone.")
-            } else {
-                Text("This will permanently delete all items in Trash. This cannot be undone.")
-            }
         }
     }
 
@@ -118,29 +91,6 @@ struct TrashBinsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        MacSweepEmptyState(
-            icon: "trash",
-            title: "Trash is Empty",
-            detail: "No items in any trash bins."
-        )
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning trash bins...")
-                .font(.headline)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Footer

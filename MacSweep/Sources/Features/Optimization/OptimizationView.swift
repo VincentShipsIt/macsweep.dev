@@ -18,67 +18,40 @@ struct OptimizationView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
+        FeaturePageShell(
+            title: "Optimization",
+            subtitle: "Manage running processes and free up memory.",
+            trailing: AnyView(
+                Button {
+                    Task { await freeUpRAM() }
+                } label: {
+                    Label("Free Up RAM", systemImage: "memorychip")
+                }
+                .glassButton(prominent: true)
+                .controlSize(.small)
+                .disabled(isFreezingRAM)
+            )
+        ) {
+            VStack(spacing: 0) {
+                // System stats row
+                systemStatsRow
+                    .padding()
 
-            // System stats row
-            systemStatsRow
-                .padding()
-
-            Divider()
-
-            // Process list
-            processList
-
-            // Footer with actions
-            if !selectedProcesses.isEmpty {
                 Divider()
-                footer
+
+                // Process list
+                processList
+
+                // Footer with actions
+                if !selectedProcesses.isEmpty {
+                    Divider()
+                    footer
+                }
             }
         }
         .task {
             await processMonitor.startMonitoring()
         }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Optimization")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Manage running processes and free up memory")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Free up RAM button
-            Button {
-                Task {
-                    await freeUpRAM()
-                }
-            } label: {
-                Label("Free Up RAM", systemImage: "memorychip")
-            }
-            .glassButton(prominent: true)
-            .disabled(isFreezingRAM)
-
-            // Refresh
-            Button {
-                Task {
-                    await processMonitor.refresh()
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-        }
-        .padding()
     }
 
     // MARK: - System Stats Row
@@ -181,6 +154,14 @@ struct OptimizationView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 220)
+
+                Button {
+                    Task { await processMonitor.refresh() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .glassButton()
+                .controlSize(.small)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)

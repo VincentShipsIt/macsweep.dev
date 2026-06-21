@@ -10,11 +10,22 @@ struct AssistantView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-
-            Divider()
-
+        FeaturePageShell(
+            title: "Assistant",
+            subtitle: "Plan scans, inspect folders, and maintain watchlists.",
+            trailing: AnyView(
+                Button {
+                    Task {
+                        await appState.runAssistantPlan(watchlistPlan)
+                    }
+                } label: {
+                    Label("Scan Watchlists", systemImage: "scope")
+                }
+                .glassButton(prominent: true)
+                .controlSize(.small)
+                .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
+            )
+        ) {
             HSplitView {
                 conversationColumn
                     .frame(minWidth: 520)
@@ -23,41 +34,6 @@ struct AssistantView: View {
                     .frame(minWidth: 300, idealWidth: 340)
             }
         }
-        .background(Color.clear)
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Assistant")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Plan scans, inspect folders, and maintain persistent watchlists.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                NSWorkspace.shared.open(assistant.configRootURL)
-            } label: {
-                Label("Open Config Folder", systemImage: "folder")
-            }
-            .glassButton()
-
-            Button {
-                Task {
-                    await appState.runAssistantPlan(watchlistPlan)
-                }
-            } label: {
-                Label("Scan Watchlists", systemImage: "scope")
-            }
-            .glassButton(prominent: true)
-            .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
-        }
-        .padding()
     }
 
     private var conversationColumn: some View {
@@ -74,40 +50,90 @@ struct AssistantView: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
-                TextEditor(text: $prompt)
-                    .font(.body)
-                    .frame(minHeight: 110)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                    )
+            composer
+                .padding()
+        }
+    }
 
-                HStack {
-                    if let lastError = assistant.lastError {
-                        Text(lastError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .lineLimit(2)
-                    } else {
-                        Text("Default provider: Codex on `gpt-5.4-mini` with medium reasoning.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+    private var composer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let lastError = assistant.lastError {
+                Text(lastError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+
+            VStack(spacing: 8) {
+                TextField(
+                    "Ask the assistant to plan a scan or inspect a folder…",
+                    text: $prompt,
+                    axis: .vertical
+                )
+                .textFieldStyle(.plain)
+                .font(.body)
+                .lineLimit(1...6)
+                .onSubmit { sendPrompt() }
+
+                HStack(spacing: 8) {
+                    providerPicker
+
+                    Button {
+                        NSWorkspace.shared.open(assistant.configRootURL)
+                    } label: {
+                        Image(systemName: "folder")
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Open Config Folder")
 
                     Spacer()
 
-                    Button {
-                        sendPrompt()
-                    } label: {
-                        Label(assistant.isSubmitting ? "Thinking..." : "Send", systemImage: "paperplane.fill")
+                    Button(action: sendPrompt) {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 28, height: 28)
+                            .background(
+                                Circle().fill(
+                                    isSendDisabled ? Color.secondary.opacity(0.18) : MacSweepTheme.accent
+                                )
+                            )
+                            .foregroundStyle(isSendDisabled ? Color.secondary : Color.black)
                     }
-                    .glassButton(prominent: true)
-                    .disabled(assistant.isSubmitting || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(.plain)
+                    .disabled(isSendDisabled)
+                    .help(assistant.isSubmitting ? "Thinking…" : "Send")
                 }
             }
-            .padding()
+            .padding(10)
+            .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(MacSweepTheme.divider, lineWidth: 1)
+            )
         }
+    }
+
+    private var providerPicker: some View {
+        let kind = assistant.providerConfig.defaultProvider
+        let model = assistant.providerConfig.providers[kind]?.model
+
+        return HStack(spacing: 5) {
+            Image(systemName: "cpu")
+                .font(.caption2)
+            Text(model.map { "\(kind.displayName) · \($0)" } ?? kind.displayName)
+                .font(.caption)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(MacSweepTheme.panelStrong, in: Capsule())
+        .help("Default provider · model · reasoning. Configure in providers.toml.")
+    }
+
+    private var isSendDisabled: Bool {
+        assistant.isSubmitting || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var inspectorColumn: some View {

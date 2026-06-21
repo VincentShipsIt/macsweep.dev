@@ -11,28 +11,32 @@ struct DevToolsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Tab picker
-            Picker("", selection: $selectedTab) {
-                ForEach(DevToolsTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+        FeaturePageShell(
+            title: "Developer Tools",
+            subtitle: "Clean build artifacts, caches, and stale Git branches."
+        ) {
+            VStack(spacing: 0) {
+                // Tab picker
+                Picker("", selection: $selectedTab) {
+                    ForEach(DevToolsTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(12)
+
+                Divider()
+                    .overlay(MacSweepTheme.divider)
+
+                // Tab content
+                switch selectedTab {
+                case .artifacts:
+                    BuildArtifactsView()
+                case .packages:
+                    PackageManagersView()
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(12)
-            .background(MacSweepTheme.panelStrong)
-
-            Divider()
-
-            // Tab content
-            switch selectedTab {
-            case .artifacts:
-                BuildArtifactsView()
-            case .packages:
-                PackageManagersView()
-            }
         }
-        .background(Color.clear)
     }
 }
 
@@ -58,42 +62,43 @@ struct BuildArtifactsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            if isScanning {
-                scanningView
-            } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
-                emptyState
-            } else {
-                contentView
-            }
-
-            if (!projects.isEmpty || !systemArtifacts.isEmpty || !gitArtifacts.isEmpty) && !isScanning {
+        if isScanning {
+            ScanLandingView(
+                icon: "hammer",
+                title: "Find Developer Artifacts",
+                description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
+                ctaTitle: "Scan Developer Tools",
+                isScanning: true,
+                action: { Task { await scan() } }
+            )
+        } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
+            ScanLandingView(
+                icon: "hammer",
+                title: "Find Developer Artifacts",
+                description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
+                ctaTitle: "Scan Developer Tools",
+                action: { Task { await scan() } }
+            )
+        } else {
+            VStack(spacing: 0) {
+                toolbar
                 Divider()
+                    .overlay(MacSweepTheme.divider)
+
+                contentView
+
+                Divider()
+                    .overlay(MacSweepTheme.divider)
                 footer
             }
         }
     }
 
-    // MARK: - Header
+    // MARK: - Toolbar
 
-    private var header: some View {
+    private var toolbar: some View {
         VStack(spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Developer Tools")
-                        .font(.title)
-                        .fontWeight(.bold)
-
-                    Text("Clean build artifacts, stale worktrees, and branches")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
                 // View mode picker
                 Picker("View", selection: $viewMode) {
                     ForEach(ViewMode.allCases, id: \.self) { mode in
@@ -104,15 +109,7 @@ struct BuildArtifactsView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 280)
 
-                Button {
-                    Task {
-                        await scan()
-                    }
-                } label: {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
-                .glassButton(prominent: true)
-                .disabled(isScanning)
+                Spacer()
             }
 
             // Project type filter
@@ -151,7 +148,6 @@ struct BuildArtifactsView: View {
             }
         }
         .padding()
-        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - Content View
@@ -272,49 +268,6 @@ struct BuildArtifactsView: View {
         .macSweepListSurface()
     }
 
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "wrench.and.screwdriver")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("Find Developer Artifacts")
-                .font(.headline)
-
-            Text("Scan to find node_modules, DerivedData, stale worktrees, and merged branches")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button("Start Scan") {
-                Task {
-                    await scan()
-                }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning for developer artifacts...")
-                .font(.headline)
-
-            Text("This may take a moment")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     // MARK: - Footer
 
     private var footer: some View {
@@ -366,7 +319,6 @@ struct BuildArtifactsView: View {
             .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
-        .background(MacSweepTheme.panelStrong)
         .confirmationDialog(
             "Clean \(selectedCount) items?",
             isPresented: $showingConfirmation,

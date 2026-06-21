@@ -15,10 +15,19 @@ struct ShredderView: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
+        FeaturePageShell(
+            title: "Shredder",
+            subtitle: "Securely delete files beyond recovery.",
+            trailing: AnyView(
+                Button {
+                    selectFiles()
+                } label: {
+                    Label("Add Files", systemImage: "plus")
+                }
+                .glassButton()
+                .controlSize(.small)
+            )
+        ) {
             ScrollView {
                 VStack(spacing: 24) {
                     // Drop zone
@@ -51,33 +60,6 @@ struct ShredderView: View {
         .sheet(isPresented: $showingResult) {
             resultSheet
         }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Shredder")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Securely delete files beyond recovery")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Add files button
-            Button {
-                selectFiles()
-            } label: {
-                Label("Add Files", systemImage: "plus")
-            }
-            .glassButton()
-        }
-        .padding()
     }
 
     // MARK: - Drop Zone

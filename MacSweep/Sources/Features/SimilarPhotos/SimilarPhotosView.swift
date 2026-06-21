@@ -18,25 +18,32 @@ struct SimilarPhotosView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        FeaturePageShell(
+            title: "Similar Photos",
+            subtitle: "Detect look-alike images and keep the best shot.",
+            trailing: photoItems.isEmpty ? nil : AnyView(
+                Button { Task { await scanPhotos() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
+                    .glassButton().controlSize(.small).disabled(isScanning)
+            )
+        ) {
             if let errorMessage {
                 errorBanner(errorMessage)
             }
-            header
-            Divider()
-            filterBar
-            Divider()
 
-            if isScanning {
-                scanningView
-            } else if photoItems.isEmpty {
-                emptyState
+            if photoItems.isEmpty {
+                ScanLandingView(
+                    icon: "photo.stack",
+                    title: "Find Similar Photos",
+                    description: "Compare photo fingerprints to detect visually similar shots and keep the strongest one.",
+                    ctaTitle: "Scan Photos",
+                    isScanning: isScanning,
+                    action: { Task { await scanPhotos() } }
+                )
             } else {
+                filterBar
+                Divider().overlay(MacSweepTheme.divider)
                 itemsList
-            }
-
-            if !sortedItems.isEmpty && !isScanning {
-                Divider()
+                Divider().overlay(MacSweepTheme.divider)
                 footer
             }
         }
@@ -55,31 +62,6 @@ struct SimilarPhotosView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Similar Photos")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Detect visually similar images and keep the strongest shot or oldest original.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task { await scanPhotos() }
-            } label: {
-                Label("Scan", systemImage: "photo.stack")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
-        }
-        .padding()
     }
 
     private var filterBar: some View {
@@ -106,42 +88,6 @@ struct SimilarPhotosView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-    }
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning photos...")
-                .font(.headline)
-
-            Text("Comparing photo fingerprints to detect visually similar shots")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("No similar photos found")
-                .font(.headline)
-
-            Text("Run a scan to review visually similar images across your photo folders.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task { await scanPhotos() }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var itemsList: some View {

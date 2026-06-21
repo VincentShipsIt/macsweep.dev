@@ -44,26 +44,39 @@ struct LargeFilesView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let errorMessage {
-                errorBanner(errorMessage)
-            }
-            header
-            Divider()
-            filterBar
-            Divider()
+        FeaturePageShell(
+            title: "Large & Old Files",
+            subtitle: "Find large files and folders by size and age.",
+            trailing: largeItems.isEmpty ? nil : AnyView(
+                Button { Task { await scanLargeFiles() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
+                    .glassButton().controlSize(.small).disabled(isScanning)
+            )
+        ) {
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
 
-            if isScanning {
-                scanningView
-            } else if largeItems.isEmpty {
-                emptyState
-            } else {
-                itemsList
-            }
+                if largeItems.isEmpty {
+                    ScanLandingView(
+                        icon: "doc.badge.clock",
+                        title: "Find Large & Old Files",
+                        description: "Scan to surface large files and folders ranked by size and recent activity.",
+                        ctaTitle: "Scan for Large Files",
+                        isScanning: isScanning,
+                        action: { Task { await scanLargeFiles() } }
+                    )
+                } else {
+                    filterBar
+                    Divider().overlay(MacSweepTheme.divider)
 
-            if !filteredItems.isEmpty && !isScanning {
-                Divider()
-                footer
+                    itemsList
+
+                    if !filteredItems.isEmpty {
+                        Divider().overlay(MacSweepTheme.divider)
+                        footer
+                    }
+                }
             }
         }
     }
@@ -83,35 +96,6 @@ struct LargeFilesView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Large & Old Files")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Find large files and folders by size and recent activity")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await scanLargeFiles()
-                }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
-        }
-        .padding()
     }
 
     // MARK: - Filter Bar
@@ -188,48 +172,6 @@ struct LargeFilesView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning for large files...")
-                .font(.headline)
-
-            Text("This may take a moment")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "doc.badge.ellipsis")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("No large items found")
-                .font(.headline)
-
-            Text("Run a scan to find items over \(Int(sizeThreshold)) MB")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task {
-                    await scanLargeFiles()
-                }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Files List

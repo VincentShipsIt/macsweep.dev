@@ -13,56 +13,35 @@ struct MailAttachmentsView: View {
     @State private var sizeThreshold: Double = 1  // MB
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            filterBar
-            Divider()
-
-            if isScanning {
-                scanningView
-            } else if attachments.isEmpty {
-                emptyState
+        FeaturePageShell(
+            title: "Mail Attachments",
+            subtitle: "Reclaim space from downloaded email attachments.",
+            trailing: attachments.isEmpty ? nil : AnyView(
+                Button { Task { await scanAttachments() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
+                    .glassButton().controlSize(.small).disabled(isScanning)
+            )
+        ) {
+            if attachments.isEmpty {
+                ScanLandingView(
+                    icon: "envelope",
+                    title: "Scan for Mail Attachments",
+                    description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
+                    ctaTitle: "Scan Mail Attachments",
+                    isScanning: isScanning,
+                    scanningMessage: "Scanning mail attachments",
+                    action: { Task { await scanAttachments() } }
+                )
             } else {
+                filterBar
+                Divider().overlay(MacSweepTheme.divider)
                 attachmentsList
-            }
 
-            if !filteredAttachments.isEmpty && !isScanning {
-                Divider()
-                footer
-            }
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Mail Attachments")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                if let stats = stats {
-                    Text("\(stats.totalAttachments) attachments • \(stats.formattedSize)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if !filteredAttachments.isEmpty {
+                    Divider().overlay(MacSweepTheme.divider)
+                    footer
                 }
             }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await scanAttachments()
-                }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
         }
-        .padding()
     }
 
     // MARK: - Filter Bar
@@ -142,48 +121,6 @@ struct MailAttachmentsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "envelope.badge.shield.half.filled")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("No Mail Attachments Found")
-                .font(.headline)
-
-            Text("Scan to find downloaded email attachments")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task {
-                    await scanAttachments()
-                }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning mail attachments...")
-                .font(.headline)
-
-            Text("Checking Apple Mail, Outlook, Spark, and more")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Footer
