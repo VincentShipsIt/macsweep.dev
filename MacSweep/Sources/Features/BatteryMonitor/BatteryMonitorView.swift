@@ -22,6 +22,8 @@ struct BatteryMonitorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .macSweepPanel()
 
+                connectedDevicesSection
+
                 insightsSection
             }
             .padding(24)
@@ -46,11 +48,28 @@ struct BatteryMonitorView: View {
             Button {
                 Task {
                     await monitor.refresh()
+                    await monitor.refreshConnectedDevices()
                 }
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .glassButton()
+        }
+    }
+
+    private var connectedDevicesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connected Devices")
+                .font(.headline)
+
+            Text("Battery levels for paired Bluetooth peripherals like AirPods, keyboards, and mice.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ConnectedDevicesDetailView(monitor: monitor, showsHeader: false)
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 
