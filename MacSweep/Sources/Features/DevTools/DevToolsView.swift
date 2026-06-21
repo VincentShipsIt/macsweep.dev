@@ -19,7 +19,8 @@ struct DevToolsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .padding()
+            .padding(12)
+            .background(MacSweepTheme.panelStrong)
 
             Divider()
 
@@ -31,6 +32,7 @@ struct DevToolsView: View {
                 PackageManagersView()
             }
         }
+        .background(Color.clear)
     }
 }
 
@@ -149,6 +151,7 @@ struct BuildArtifactsView: View {
             }
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - Content View
@@ -207,6 +210,7 @@ struct BuildArtifactsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     private var byTypeView: some View {
@@ -236,6 +240,7 @@ struct BuildArtifactsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     private var allItemsView: some View {
@@ -264,6 +269,7 @@ struct BuildArtifactsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Empty State
@@ -360,6 +366,7 @@ struct BuildArtifactsView: View {
             .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
+        .background(MacSweepTheme.panelStrong)
         .confirmationDialog(
             "Clean \(selectedCount) items?",
             isPresented: $showingConfirmation,

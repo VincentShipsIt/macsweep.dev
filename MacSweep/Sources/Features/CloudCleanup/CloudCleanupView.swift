@@ -173,6 +173,7 @@ struct CloudCleanupView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     private var footer: some View {

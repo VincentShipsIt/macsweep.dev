@@ -190,6 +190,7 @@ struct SpaceLensView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Detail Pane

@@ -85,13 +85,12 @@ struct AppUninstallerView: View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 12) {
-                HStack {
-                    Text("Uninstaller")
-                        .font(.title)
-                        .fontWeight(.bold)
-
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search apps...", text: $searchText)
+                        .textFieldStyle(.plain)
                     Spacer()
-
                     Button {
                         Task {
                             await loadApps()
@@ -99,18 +98,11 @@ struct AppUninstallerView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .buttonStyle(.borderless)
                     .disabled(isLoading)
                 }
-
-                // Search
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Search apps...", text: $searchText)
-                        .textFieldStyle(.plain)
-                }
                 .padding(8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .macSweepPanel(radius: MacSweepTheme.smallRadius)
 
                 // Sort
                 Picker("Sort by", selection: $sortOrder) {
@@ -136,6 +128,7 @@ struct AppUninstallerView: View {
                         .tag(app)
                 }
                 .listStyle(.inset)
+                .macSweepListSurface()
             }
 
             // Orphaned leftovers section

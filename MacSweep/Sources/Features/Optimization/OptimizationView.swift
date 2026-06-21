@@ -193,6 +193,7 @@ struct OptimizationView: View {
                 }
             }
             .listStyle(.inset)
+            .macSweepListSurface()
         }
     }
 

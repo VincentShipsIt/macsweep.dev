@@ -117,24 +117,17 @@ struct TrashBinsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "trash.slash")
-                .font(.system(size: 64))
-                .foregroundStyle(.green)
-
-            Text("Trash is Empty")
-                .font(.headline)
-
-            Text("No items in any trash bins")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        MacSweepEmptyState(
+            icon: "trash",
+            title: "Trash is Empty",
+            detail: "No items in any trash bins."
+        )
     }
 
     // MARK: - Scanning View

@@ -51,7 +51,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // When clicking dock icon, keep it visible
+        // Dock re-open should recover minimized or hidden windows instead of
+        // leaving the app active with no visible surface.
+        AppDelegate.focusMainWindow()
         return true
     }
 
@@ -59,10 +61,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     static func showDockIcon() {
         NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.unhide(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     static func hideDockIcon() {
         NSApplication.shared.setActivationPolicy(.accessory)
+    }
+
+    @discardableResult
+    static func focusMainWindow() -> Bool {
+        showDockIcon()
+
+        guard let window = NSApplication.shared.windows.first(where: isMainAppWindow) else {
+            return false
+        }
+
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        return true
+    }
+
+    private static func isMainAppWindow(_ window: NSWindow) -> Bool {
+        guard window.level == .normal else { return false }
+        guard window.styleMask.contains(.titled) else { return false }
+        guard window.canBecomeKey || window.canBecomeMain else { return false }
+
+        // MenuBarExtra uses its own transient window. It can look window-like to
+        // AppKit, so keep focus recovery aimed at the real app surface.
+        return window.frame.width >= 500 && window.frame.height >= 350
     }
 }

@@ -102,6 +102,7 @@ struct HomebrewUpdaterView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - States

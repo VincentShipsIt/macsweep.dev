@@ -32,7 +32,7 @@ final class AppState: ObservableObject {
         } else if let usage = diskUsage, usage.freePercentage < 0.1 {
             return "exclamationmark.triangle.fill"
         } else {
-            return "paintbrush.pointed"
+            return "sparkles.rectangle.stack"
         }
     }
 

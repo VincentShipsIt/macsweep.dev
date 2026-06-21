@@ -141,6 +141,7 @@ struct MailAttachmentsView: View {
             }
         }
         .listStyle(.inset)
+        .macSweepListSurface()
     }
 
     // MARK: - Empty State
