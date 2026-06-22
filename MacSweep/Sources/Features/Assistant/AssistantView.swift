@@ -73,7 +73,10 @@ struct AssistantView: View {
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(1...6)
-                .onSubmit { sendPrompt() }
+                .onSubmit {
+                    guard !isSendDisabled else { return }
+                    sendPrompt()
+                }
 
                 HStack(spacing: 8) {
                     providerPicker
@@ -328,6 +331,7 @@ struct AssistantView: View {
     }
 
     private func sendPrompt() {
+        guard !assistant.isSubmitting else { return }
         let currentPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !currentPrompt.isEmpty else { return }
         prompt = ""

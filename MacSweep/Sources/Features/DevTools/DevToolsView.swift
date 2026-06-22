@@ -120,6 +120,15 @@ struct BuildArtifactsView: View {
                 .frame(width: 280)
 
                 Spacer()
+
+                Button {
+                    Task { await scan() }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                }
+                .glassButton()
+                .controlSize(.small)
+                .disabled(isScanning)
             }
 
             // Project type filter

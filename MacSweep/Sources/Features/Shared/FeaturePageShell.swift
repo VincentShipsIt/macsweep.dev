@@ -8,12 +8,12 @@ import SwiftUI
 /// we never show a header CTA *and* a body CTA for the same thing.
 struct FeaturePageShell<Content: View>: View {
     let title: String
-    let subtitle: String
+    let subtitle: String?
     var trailing: AnyView? = nil
     @ViewBuilder var content: () -> Content
 
     init(title: String,
-         subtitle: String,
+         subtitle: String? = nil,
          trailing: AnyView? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.title = title
@@ -29,9 +29,11 @@ struct FeaturePageShell<Content: View>: View {
                     Text(title)
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()

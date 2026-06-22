@@ -39,7 +39,7 @@ struct SpaceLensView: View {
                     errorBanner(errorMessage)
                 }
 
-                if let node = currentNode {
+                if !isScanning, let node = currentNode {
                     contentToolbar
                     Divider().overlay(MacSweepTheme.divider)
 

@@ -23,7 +23,7 @@ struct TrashBinsView: View {
                 .glassButton(prominent: true)
                 .tint(.red)
                 .controlSize(.small)
-                .disabled(trashItems.isEmpty && trashSummary?.totalCount == 0)
+                .disabled((trashItems.isEmpty && trashSummary?.totalCount == 0) || isScanning)
                 .confirmationDialog(
                     "Empty All Trash?",
                     isPresented: $showingEmptyAllConfirmation,
