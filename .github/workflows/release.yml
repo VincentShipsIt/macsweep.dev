@@ -1,0 +1,80 @@
+name: Release
+
+# One-command release: pushing a `vX.Y.Z` tag builds + smoke-tests the CLI, computes
+# the source-tarball sha256 the Homebrew formula pins, publishes a GitHub Release, then
+# bumps Formula/macsweep.rb in VincentShipsIt/homebrew-tap — with no manual steps.
+#
+# MacSweep's formula is build-from-source: its `url` is GitHub's auto-generated source
+# tarball for the tag (archive/refs/tags/<tag>.tar.gz) and `sha256` is that tarball's
+# digest. So this workflow does NOT package a prebuilt binary — it pins the source
+# tarball's checksum and lets `brew install` compile from source like CI does.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Toolchain
+        run: swift --version
+
+      # Release gate: the tagged commit must build the release CLI and report its
+      # version — exactly how the Homebrew formula builds it. A broken tag fails here
+      # BEFORE any release is published or the tap is bumped.
+      - name: Build & smoke-test CLI
+        run: |
+          set -euo pipefail
+          swift build -c release --product macsweep --package-path MacSweep
+          "MacSweep/.build/release/macsweep" version
+
+      # The formula pins the sha256 of GitHub's source tarball for this tag. Download
+      # the exact URL `brew install` will use and checksum it, then publish that digest
+      # as a release asset so the tap bump is verifiable end-to-end.
+      - name: Compute source tarball sha256
+        id: sha
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 "$URL" -o "macsweep-${TAG}.tar.gz"
+          SHA256="$(shasum -a 256 "macsweep-${TAG}.tar.gz" | cut -d ' ' -f 1)"
+          [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::computed sha256 is not a 64-hex digest"; exit 1; }
+          echo "$SHA256" > "macsweep-${TAG}.tar.gz.sha256"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "### MacSweep ${TAG}"
+            echo ""
+            echo "Source tarball SHA256: \`${SHA256}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            macsweep-${{ github.ref_name }}.tar.gz.sha256
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Bump the formula in the tap AFTER the release publishes. Called directly as a job
+  # (not via `release: published`) because a release created by the build job's
+  # GITHUB_TOKEN does NOT cascade-trigger other workflows — so an event-triggered
+  # tap update would silently never run. `secrets: inherit` passes TAP_GITHUB_TOKEN.
+  update-homebrew:
+    needs: build
+    uses: ./.github/workflows/update-homebrew.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
