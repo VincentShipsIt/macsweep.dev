@@ -251,15 +251,15 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup, .cloudCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
         case .protection:
             return [.malwareRemoval, .privacy]
         case .speed:
-            return [.optimization, .batteryMonitor, .maintenance]
+            return [.optimization, .batteryMonitor]
         case .applications:
-            return [.uninstaller, .homebrewUpdater]  // updater, extensions hidden until implemented
+            return [.uninstaller]  // updater, extensions, homebrewUpdater hidden from sidebar
         case .files:
-            return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
+            return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
         }
     }
 }

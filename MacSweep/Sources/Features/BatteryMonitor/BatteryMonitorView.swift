@@ -6,54 +6,41 @@ struct BatteryMonitorView: View {
     @StateObject private var monitor = SystemMonitor()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-
-                LazyVGrid(columns: [
-                    GridItem(.flexible(minimum: 260)),
-                    GridItem(.flexible(minimum: 260))
-                ], spacing: 16) {
-                    batterySummaryCard
-                    quickActionsCard
+        FeaturePageShell(
+            title: "Battery Monitor",
+            subtitle: "Track charge, health, cycles, and runtime tips.",
+            trailing: AnyView(
+                Button {
+                    Task {
+                        await monitor.refresh()
+                        await monitor.refreshConnectedDevices()
+                    }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
+                .glassButton()
+            )
+        ) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(minimum: 260)),
+                        GridItem(.flexible(minimum: 260))
+                    ], spacing: 16) {
+                        batterySummaryCard
+                        quickActionsCard
+                    }
 
-                BatteryDetailView(monitor: monitor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .macSweepPanel()
+                    BatteryDetailView(monitor: monitor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .macSweepPanel()
 
-                connectedDevicesSection
+                    connectedDevicesSection
 
-                insightsSection
-            }
-            .padding(24)
-        }
-        .background(Color.clear)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Battery Monitor")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Track charge state, health, cycle count, and the actions most likely to preserve runtime.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await monitor.refresh()
-                    await monitor.refreshConnectedDevices()
+                    insightsSection
                 }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+                .padding(24)
             }
-            .glassButton()
         }
     }
 

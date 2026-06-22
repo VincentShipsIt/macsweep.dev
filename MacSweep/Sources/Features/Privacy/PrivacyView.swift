@@ -15,28 +15,53 @@ struct PrivacyView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                if let errorMessage {
-                    errorBanner(errorMessage)
+        FeaturePageShell(
+            title: "Privacy",
+            subtitle: "Remove traces of your recent activity.",
+            trailing: privacyItems.isEmpty ? nil : AnyView(
+                Button {
+                    Task { await scanPrivacy() }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
                 }
-                header
+                .glassButton()
+                .controlSize(.small)
+                .disabled(isScanning)
+            )
+        ) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    if let errorMessage {
+                        errorBanner(errorMessage)
+                    }
 
-                // Quick Actions
-                quickActionsSection
+                    // Quick Actions (always visible)
+                    quickActionsSection
 
-                Divider()
+                    Divider()
+                        .overlay(MacSweepTheme.divider)
 
-                // Privacy Items
-                if isScanning {
-                    scanningView
-                } else if privacyItems.isEmpty {
-                    emptyState
-                } else {
-                    privacyItemsSection
+                    // Privacy Items (scan-driven)
+                    if privacyItems.isEmpty {
+                        ScanLandingView(
+                            icon: "hand.raised",
+                            title: "Scan for Privacy Traces",
+                            description: "Find browser, app, and system traces of your recent activity that you can clear.",
+                            ctaTitle: "Scan Privacy Traces",
+                            benefits: [
+                                ScanBenefit("eye.slash", "Erases your digital footprint", "Clears recent-document lists, saved app state, and download history so your activity doesn't linger."),
+                                ScanBenefit("checkmark.shield", "You stay in control", "Every trace is grouped for review, and nothing is cleared until you select it and confirm."),
+                            ],
+                            illustration: "hand.raised.fingers.spread",
+                            isScanning: isScanning,
+                            action: { Task { await scanPrivacy() } }
+                        )
+                    } else {
+                        privacyItemsSection
+                    }
                 }
+                .padding()
             }
-            .padding()
         }
     }
 
@@ -55,34 +80,6 @@ struct PrivacyView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Privacy")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Remove traces of your activity")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await scanPrivacy()
-                }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
-        }
     }
 
     // MARK: - Quick Actions
@@ -190,39 +187,6 @@ struct PrivacyView: View {
         } message: {
             Text("This will permanently remove \(selectedSize) of privacy data. This cannot be undone.")
         }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.shield")
-                .font(.system(size: 48))
-                .foregroundStyle(.green)
-
-            Text("No Privacy Items Found")
-                .font(.headline)
-
-            Text("Your privacy traces are minimal")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-
-            Text("Scanning for privacy traces...")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 
     // MARK: - Actions

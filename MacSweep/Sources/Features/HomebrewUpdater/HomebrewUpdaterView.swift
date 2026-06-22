@@ -5,32 +5,44 @@ struct HomebrewUpdaterView: View {
     @State private var showLog = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
+        FeaturePageShell(
+            title: "Homebrew Updater",
+            subtitle: "Keep your Homebrew packages up to date.",
+            trailing: AnyView(
+                Button {
+                    Task { await service.checkOutdated() }
+                } label: {
+                    Label("Check Updates", systemImage: "arrow.clockwise")
+                }
+                .glassButton()
+                .controlSize(.small)
+                .disabled(service.isLoading || service.isUpgrading)
+            )
+        ) {
+            VStack(spacing: 0) {
+                if !service.brewExists() {
+                    brewNotFoundView
+                } else if service.isLoading {
+                    loadingView
+                } else if service.packages.isEmpty {
+                    emptyView
+                } else {
+                    packageList
+                }
 
-            if !service.brewExists() {
-                brewNotFoundView
-            } else if service.isLoading {
-                loadingView
-            } else if service.packages.isEmpty {
-                emptyView
-            } else {
-                packageList
-            }
+                if let error = service.error, error != "brew_not_found" {
+                    errorBanner(error)
+                }
 
-            if let error = service.error, error != "brew_not_found" {
-                errorBanner(error)
-            }
+                if !service.packages.isEmpty && !service.isLoading {
+                    Divider().overlay(MacSweepTheme.divider)
+                    bottomBar
+                }
 
-            if !service.packages.isEmpty && !service.isLoading {
-                Divider()
-                bottomBar
-            }
-
-            if service.isUpgrading || showLog && !service.upgradeLog.isEmpty {
-                Divider()
-                upgradeLogView
+                if service.isUpgrading || showLog && !service.upgradeLog.isEmpty {
+                    Divider().overlay(MacSweepTheme.divider)
+                    upgradeLogView
+                }
             }
         }
         .task {
@@ -40,35 +52,21 @@ struct HomebrewUpdaterView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Package List
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Homebrew Updates")
-                        .font(.title)
-                        .fontWeight(.bold)
-
-                    if !service.packages.isEmpty {
-                        Text("\(service.packages.count)")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.orange.opacity(0.85), in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                }
-
-                Text("Keep your Homebrew packages up to date")
+    private var packageList: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("\(service.packages.count) outdated")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.85), in: Capsule())
+                    .foregroundStyle(.white)
 
-            Spacer()
+                Spacer()
 
-            if !service.packages.isEmpty {
                 Button {
                     Task { await service.analyzeWithAI() }
                 } label: {
@@ -78,31 +76,21 @@ struct HomebrewUpdaterView: View {
                     )
                 }
                 .glassButton()
+                .controlSize(.small)
                 .disabled(service.isAnalyzingAI || service.isUpgrading)
                 .help("Use Claude AI to summarize changes and flag breaking updates")
             }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
 
-            Button {
-                Task { await service.checkOutdated() }
-            } label: {
-                Label("Check Updates", systemImage: "arrow.clockwise")
+            List {
+                ForEach($service.packages) { $pkg in
+                    PackageRow(package: $pkg)
+                }
             }
-            .glassButton(prominent: true)
-            .disabled(service.isLoading || service.isUpgrading)
+            .listStyle(.inset)
+            .macSweepListSurface()
         }
-        .padding()
-    }
-
-    // MARK: - Package List
-
-    private var packageList: some View {
-        List {
-            ForEach($service.packages) { $pkg in
-                PackageRow(package: $pkg)
-            }
-        }
-        .listStyle(.inset)
-        .macSweepListSurface()
     }
 
     // MARK: - States

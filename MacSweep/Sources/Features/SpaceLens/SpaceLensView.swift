@@ -24,25 +24,47 @@ struct SpaceLensView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let errorMessage {
-                errorBanner(errorMessage)
-            }
-            header
-            Divider()
-
-            if isScanning {
-                scanningView
-            } else if let node = currentNode {
-                HSplitView {
-                    visualizationPane(node: node)
-                        .frame(minWidth: 400)
-
-                    detailPane
-                        .frame(minWidth: 250, maxWidth: 350)
+        FeaturePageShell(
+            title: "Space Lens",
+            subtitle: "Visualize what's using your disk space.",
+            trailing: currentNode == nil ? nil : AnyView(
+                Button { Task { await scanDisk() } } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
                 }
-            } else {
-                emptyState
+                .glassButton().controlSize(.small).disabled(isScanning)
+            )
+        ) {
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
+
+                if !isScanning, let node = currentNode {
+                    contentToolbar
+                    Divider().overlay(MacSweepTheme.divider)
+
+                    HSplitView {
+                        visualizationPane(node: node)
+                            .frame(minWidth: 400)
+
+                        detailPane
+                            .frame(minWidth: 250, maxWidth: 350)
+                    }
+                } else {
+                    ScanLandingView(
+                        icon: "chart.pie",
+                        title: "Visualize Your Disk",
+                        description: "Scan your disk to see a treemap, sunburst, or list of what's taking up the most space.",
+                        ctaTitle: "Scan Disk",
+                        benefits: [
+                            ScanBenefit("square.grid.3x3.topleft.filled", "See your space at a glance", "An interactive treemap, sunburst, or list reveals exactly which folders and files are eating your disk."),
+                            ScanBenefit("arrow.down.forward.and.arrow.up.backward", "Drill down and reclaim", "Dive into any folder, then move space hogs straight to the Trash once you've reviewed them."),
+                        ],
+                        illustration: "chart.pie.fill",
+                        isScanning: isScanning,
+                        action: { Task { await scanDisk() } }
+                    )
+                }
             }
         }
     }
@@ -64,21 +86,17 @@ struct SpaceLensView: View {
         .background(Color.red.opacity(0.1))
     }
 
-    // MARK: - Header
+    // MARK: - Content Toolbar
 
-    private var header: some View {
+    /// Contextual toolbar shown only when results exist: disk usage summary, the
+    /// view-mode segmented picker (Treemap/Sunburst/List), and breadcrumbs.
+    private var contentToolbar: some View {
         VStack(spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Space Lens")
-                        .font(.title)
-                        .fontWeight(.bold)
-
-                    if let stats = diskStats {
-                        Text("\(stats.formattedUsed) used of \(stats.formattedTotal)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if let stats = diskStats {
+                    Text("\(stats.formattedUsed) used of \(stats.formattedTotal)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -93,16 +111,6 @@ struct SpaceLensView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 200)
-
-                Button {
-                    Task {
-                        await scanDisk()
-                    }
-                } label: {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
-                .glassButton(prominent: true)
-                .disabled(isScanning)
             }
 
             // Breadcrumb navigation
@@ -110,7 +118,8 @@ struct SpaceLensView: View {
                 breadcrumbs
             }
         }
-        .padding()
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
     }
 
     private var breadcrumbs: some View {
@@ -328,48 +337,6 @@ struct SpaceLensView: View {
 
             Spacer()
         }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "chart.pie")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("Visualize Disk Space")
-                .font(.headline)
-
-            Text("Scan to see what's taking up space on your disk")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task {
-                    await scanDisk()
-                }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Scanning View
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Analyzing disk...")
-                .font(.headline)
-
-            Text("This may take a moment for large directories")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Actions

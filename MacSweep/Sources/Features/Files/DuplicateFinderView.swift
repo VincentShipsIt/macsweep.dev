@@ -18,25 +18,37 @@ struct DuplicateFinderView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        FeaturePageShell(
+            title: "Duplicate Files",
+            subtitle: "Find redundant copies and keep the best version.",
+            trailing: duplicateItems.isEmpty ? nil : AnyView(
+                Button { Task { await scanDuplicates() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
+                    .glassButton().controlSize(.small).disabled(isScanning)
+            )
+        ) {
             if let errorMessage {
                 errorBanner(errorMessage)
             }
-            header
-            Divider()
-            filterBar
-            Divider()
 
-            if isScanning {
-                scanningView
-            } else if duplicateItems.isEmpty {
-                emptyState
+            if duplicateItems.isEmpty {
+                ScanLandingView(
+                    icon: "doc.on.doc",
+                    title: "Find Duplicate Files",
+                    description: "Scan your files to find redundant copies so you can keep only the best version.",
+                    ctaTitle: "Scan for Duplicates",
+                    benefits: [
+                        ScanBenefit("doc.on.doc", "Reclaims wasted space", "Finds byte-for-byte identical copies scattered across your files so you can recover the space they take up."),
+                        ScanBenefit("trash.slash", "Keeps one, removes the rest", "Duplicates only move to Trash after you review them, so the version you want to keep always stays put."),
+                    ],
+                    illustration: "doc.on.doc.fill",
+                    isScanning: isScanning,
+                    action: { Task { await scanDuplicates() } }
+                )
             } else {
+                filterBar
+                Divider().overlay(MacSweepTheme.divider)
                 duplicatesList
-            }
-
-            if !sortedItems.isEmpty && !isScanning {
-                Divider()
+                Divider().overlay(MacSweepTheme.divider)
                 footer
             }
         }
@@ -55,33 +67,6 @@ struct DuplicateFinderView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Duplicate Files")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Find redundant copies and keep only the best version")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await scanDuplicates()
-                }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
-        }
-        .padding()
     }
 
     private var filterBar: some View {
@@ -108,44 +93,6 @@ struct DuplicateFinderView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-    }
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning for duplicates...")
-                .font(.headline)
-
-            Text("Hashing files to identify real duplicates")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "doc.on.doc")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("No duplicates found")
-                .font(.headline)
-
-            Text("Run a scan to find redundant file copies")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task {
-                    await scanDuplicates()
-                }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var duplicatesList: some View {

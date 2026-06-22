@@ -15,7 +15,13 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                 detailView
+                    // Smooth slide-up + fade between pages.
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .opacity
+                    ))
             }
+            .animation(.easeInOut(duration: 0.22), value: appState.selectedFeature)
             .navigationTitle(appState.selectedFeature.rawValue)
         }
         .navigationSplitViewStyle(.balanced)
@@ -365,64 +371,54 @@ struct MaintenanceView: View {
     @State private var showingResult = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 8) {
-                    Image(systemName: "wrench.and.screwdriver")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.orange)
+        FeaturePageShell(
+            title: "Maintenance",
+            subtitle: "Run upkeep tasks to keep your Mac healthy."
+        ) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Result banner
+                    if showingResult, let result = lastResult {
+                        HStack {
+                            Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(result.success ? .green : .red)
 
-                    Text("Maintenance")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-
-                    Text("Run maintenance tasks to keep your Mac running smoothly")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 40)
-
-                // Result banner
-                if showingResult, let result = lastResult {
-                    HStack {
-                        Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(result.success ? .green : .red)
-
-                        Text(result.message)
-                            .font(.caption)
-
-                        Spacer()
-
-                        Button {
-                            showingResult = false
-                        } label: {
-                            Image(systemName: "xmark")
+                            Text(result.message)
                                 .font(.caption)
+
+                            Spacer()
+
+                            Button {
+                                showingResult = false
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding()
+                        .background(result.success ? Color.green.opacity(0.1) : Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 40)
                     }
-                    .padding()
-                    .background(result.success ? Color.green.opacity(0.1) : Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+
+                    // Task list
+                    VStack(spacing: 12) {
+                        ForEach(MaintenanceTask.allTasks) { task in
+                            MaintenanceTaskRow(
+                                task: task,
+                                isRunning: runningTaskId == task.id
+                            ) {
+                                await runTask(task)
+                            }
+                        }
+                    }
                     .padding(.horizontal, 40)
-                }
 
-                // Task list
-                VStack(spacing: 12) {
-                    ForEach(MaintenanceTask.allTasks) { task in
-                        MaintenanceTaskRow(
-                            task: task,
-                            isRunning: runningTaskId == task.id
-                        ) {
-                            await runTask(task)
-                        }
-                    }
+                    Spacer(minLength: 40)
                 }
-                .padding(.horizontal, 40)
-
-                Spacer(minLength: 40)
+                .padding(.top, 24)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func runTask(_ task: MaintenanceTask) async {

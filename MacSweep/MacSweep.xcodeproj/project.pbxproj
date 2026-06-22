@@ -47,6 +47,7 @@
 		515C6E1B5F927411296FFE6A /* DockerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E75F4C51ED29307D5DEFE3 /* DockerModule.swift */; };
 		525F2074EFEE05AB8E9AF5C8 /* AIKeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A0B88BA182F26028BDB23A /* AIKeychainService.swift */; };
 		54F621CD8270CF9D615954B5 /* LargeFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF3AE981FE2340BE71D937F9 /* LargeFilesView.swift */; };
+		56ADD6027A058B4227965B5C /* FeaturePageShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21196A20EFEB966BDB7158A /* FeaturePageShell.swift */; };
 		5869114B87440E7667809E80 /* ScanModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5780671CF8B4068DC75DCB7 /* ScanModule.swift */; };
 		58A9BD0BC76DCB8D09BADE06 /* DuplicateFinderModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705809867727E9D0D7A9EA71 /* DuplicateFinderModule.swift */; };
 		5958F2CC98DE8131AF74A68E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 08A7D4BCB2F27E312AAA7651 /* Assets.xcassets */; };
@@ -219,6 +220,7 @@
 		9707242D207A71DE755D6A6D /* LargeFilesModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFilesModule.swift; sourceTree = "<group>"; };
 		9B846033CE3DB0C7DECFEDD6 /* SpaceLensView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceLensView.swift; sourceTree = "<group>"; };
 		A1F87BF2EDBD2C6AD2E36D48 /* AssistantConfigRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantConfigRepository.swift; sourceTree = "<group>"; };
+		A21196A20EFEB966BDB7158A /* FeaturePageShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeaturePageShell.swift; sourceTree = "<group>"; };
 		A2390EF99645F9B088AB9E0E /* CloudCleanupModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCleanupModule.swift; sourceTree = "<group>"; };
 		A3279030532A2A61732FAA14 /* MaintenanceActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintenanceActions.swift; sourceTree = "<group>"; };
 		A7826FAD254F151FEE75FBA7 /* MacSweepCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = MacSweepCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -351,6 +353,14 @@
 			path = WidgetDetails;
 			sourceTree = "<group>";
 		};
+		33CE0DD96FB89126E5A80514 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A21196A20EFEB966BDB7158A /* FeaturePageShell.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		35288578D941399BA0A84238 /* Safety */ = {
 			isa = PBXGroup;
 			children = (
@@ -465,6 +475,7 @@
 				E00954D0906AF077CDACC675 /* Onboarding */,
 				D8B3B857C7949CAE8C3B8E15 /* Optimization */,
 				2B4334BDE208CCD3208B7F89 /* Privacy */,
+				33CE0DD96FB89126E5A80514 /* Shared */,
 				94F5A92C0C156DBE0DE142F9 /* Shredder */,
 				D39AEBC3DF1405EE53B5B9C0 /* SimilarPhotos */,
 				B2751FA6814759F73C5CDD2F /* SpaceLens */,
@@ -904,6 +915,7 @@
 				B25AC49939C36AFF1B5A2AB5 /* DockerModule.swift in Sources */,
 				086E96534DD85EF6D93C7C62 /* DuplicateFinderModule.swift in Sources */,
 				9B4C08CD76D969E80F29CBD6 /* DuplicateFinderView.swift in Sources */,
+				56ADD6027A058B4227965B5C /* FeaturePageShell.swift in Sources */,
 				0EBECCC86597206E986B12ED /* FullDiskAccess.swift in Sources */,
 				BB1CAAD1E1C31B6BF9A0E847 /* HeadlessModels.swift in Sources */,
 				9476B692EC5DA16EA614FE45 /* HeadlessService.swift in Sources */,

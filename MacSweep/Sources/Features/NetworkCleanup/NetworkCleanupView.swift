@@ -13,26 +13,31 @@ struct NetworkCleanupView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Tab picker
-            Picker("", selection: $selectedTab) {
-                ForEach(NetworkTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+        FeaturePageShell(
+            title: "Network Cleanup",
+            subtitle: "Manage saved Wi-Fi, SSH hosts, and DNS caches."
+        ) {
+            VStack(spacing: 0) {
+                // Tab picker
+                Picker("", selection: $selectedTab) {
+                    ForEach(NetworkTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .padding()
+                .pickerStyle(.segmented)
+                .padding()
 
-            Divider()
+                Divider()
 
-            // Tab content
-            switch selectedTab {
-            case .wifi:
-                WiFiNetworksView()
-            case .ssh:
-                SSHHostsView()
-            case .dns:
-                DNSCacheView()
+                // Tab content
+                switch selectedTab {
+                case .wifi:
+                    WiFiNetworksView()
+                case .ssh:
+                    SSHHostsView()
+                case .dns:
+                    DNSCacheView()
+                }
             }
         }
     }

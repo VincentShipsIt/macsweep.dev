@@ -19,72 +19,51 @@ struct AIAnalysisView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            headerBar
-
-            Divider()
-
+        FeaturePageShell(
+            title: "AI Analysis",
+            subtitle: "Claude/Codex-powered deep cache analysis.",
+            trailing: AnyView(
+                Button {
+                    showKeyField.toggle()
+                } label: {
+                    Label(providerStatusLabel, systemImage: hasLocalAIProvider ? "terminal" : "key")
+                        .foregroundStyle(hasLocalAIProvider || hasApiKey ? .green : .orange)
+                }
+                .glassButton()
+                .controlSize(.small)
+                .popover(isPresented: $showKeyField) {
+                    apiKeyPopover
+                }
+            )
+        ) {
             if service.findings.isEmpty && !service.isScanning {
-                emptyState
+                ScanLandingView(
+                    icon: "brain.head.profile",
+                    title: "AI-Powered Cache Analysis",
+                    description: "Phase 1 finds cache directories instantly; Phase 2 uses Claude or Codex CLI for deeper analysis.",
+                    ctaTitle: "Scan with AI",
+                    benefits: [
+                        ScanBenefit("brain", "Smarter than a cache list", "Claude or Codex inspects each cache directory and explains what it is, so you reclaim space without guesswork."),
+                        ScanBenefit("lock.shield", "Stays on your Mac", "Analysis runs through your signed-in Claude or Codex CLI, and nothing is removed until you review every finding."),
+                    ],
+                    illustration: "sparkle.magnifyingglass",
+                    isScanning: service.isScanning,
+                    progress: 0,
+                    scanningMessage: service.phase,
+                    action: { Task { await service.scan() } }
+                )
             } else {
                 resultsList
+
+                Divider()
+                    .overlay(MacSweepTheme.divider)
+
+                bottomBar
             }
-
-            Divider()
-
-            // Bottom action bar
-            bottomBar
         }
-        .background(Color.clear)
         .onAppear {
             refreshProviderState()
         }
-    }
-
-    // MARK: - Header
-
-    private var headerBar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "brain.head.profile")
-                .font(.title2)
-                .foregroundStyle(.purple)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("AI Analysis")
-                    .font(.headline)
-                Text("Claude/Codex-powered cache scanner")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // API key status
-            Button {
-                showKeyField.toggle()
-            } label: {
-                Label(providerStatusLabel, systemImage: hasLocalAIProvider ? "terminal" : "key")
-                    .font(.caption)
-                    .foregroundStyle(hasLocalAIProvider || hasApiKey ? .green : .orange)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showKeyField) {
-                apiKeyPopover
-            }
-
-            Button {
-                Task { await service.scan() }
-            } label: {
-                Label("Scan", systemImage: "magnifyingglass")
-            }
-            .glassButton(prominent: true)
-            .tint(.purple)
-            .disabled(service.isScanning)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(MacSweepTheme.panelStrong)
     }
 
     // MARK: - API Key Popover
@@ -144,46 +123,6 @@ struct AIAnalysisView: View {
             }
         }
         .padding(16)
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 56))
-                .foregroundStyle(.purple.opacity(0.6))
-
-            VStack(spacing: 8) {
-                Text("AI-Powered Cache Analysis")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-
-                Text("Click Scan to find cache directories.\nPhase 1 is instant. Phase 2 uses Claude or Codex CLI for deeper analysis.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            if !hasLocalAIProvider && !hasApiKey {
-                HStack(spacing: 8) {
-                    Image(systemName: "key.fill")
-                        .foregroundStyle(.orange)
-                    Text("Install or sign in to Claude/Codex CLI, or add an API key fallback")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(10)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
-            }
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
     }
 
     // MARK: - Progress

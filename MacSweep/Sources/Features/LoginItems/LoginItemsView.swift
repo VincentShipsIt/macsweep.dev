@@ -6,19 +6,39 @@ struct LoginItemsView: View {
     @State private var showDeleteConfirm: LoginItem? = nil
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                header
-
-                if service.isLoading {
-                    loadingView
-                } else if service.items.isEmpty {
-                    emptyState
-                } else {
-                    itemsList
+        FeaturePageShell(
+            title: "Login Items",
+            subtitle: "Manage apps and agents that run at startup.",
+            trailing: AnyView(
+                Button {
+                    Task { await service.analyzeWithAI() }
+                } label: {
+                    if service.isAnalyzing {
+                        HStack(spacing: 6) {
+                            ProgressView().scaleEffect(0.7)
+                            Text("Analyzing…")
+                        }
+                    } else {
+                        Label("Analyze with AI", systemImage: "sparkles")
+                    }
                 }
+                .glassButton(prominent: true)
+                .controlSize(.small)
+                .disabled(service.isAnalyzing || service.items.isEmpty)
+            )
+        ) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    if service.isLoading {
+                        loadingView
+                    } else if service.items.isEmpty {
+                        emptyState
+                    } else {
+                        itemsList
+                    }
+                }
+                .padding()
             }
-            .padding()
         }
         .task {
             if service.items.isEmpty {
@@ -39,46 +59,6 @@ struct LoginItemsView: View {
         } message: {
             if let item = showDeleteConfirm {
                 Text("This will remove \"\(item.name)\" permanently.")
-            }
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Login Items")
-                    .font(.title)
-                    .fontWeight(.bold)
-                Text("Manage apps and agents that run at startup")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack(spacing: 12) {
-                Button {
-                    Task { await service.scan() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .glassButton()
-                .disabled(service.isLoading)
-
-                Button {
-                    Task { await service.analyzeWithAI() }
-                } label: {
-                    if service.isAnalyzing {
-                        HStack(spacing: 6) {
-                            ProgressView().scaleEffect(0.7)
-                            Text("Analyzing…")
-                        }
-                    } else {
-                        Label("Analyze with AI", systemImage: "sparkles")
-                    }
-                }
-                .glassButton(prominent: true)
-                .disabled(service.isAnalyzing || service.items.isEmpty)
             }
         }
         .alert("Error", isPresented: .init(
@@ -144,7 +124,7 @@ struct LoginItemsView: View {
                 .foregroundStyle(.secondary)
             Text("No startup items found")
                 .font(.headline)
-            Text("Click Refresh to scan your system")
+            Text("Nothing is set to launch at startup")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

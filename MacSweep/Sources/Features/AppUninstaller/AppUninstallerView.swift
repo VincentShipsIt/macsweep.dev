@@ -47,19 +47,24 @@ struct AppUninstallerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let errorMessage {
-                errorBanner(errorMessage)
-            }
+        FeaturePageShell(
+            title: "Uninstaller",
+            subtitle: "Remove apps and their leftover files completely."
+        ) {
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
 
-            HSplitView {
-                // App list
-                appListPane
-                    .frame(minWidth: 300)
+                HSplitView {
+                    // App list
+                    appListPane
+                        .frame(minWidth: 300)
 
-                // Detail pane
-                detailPane
-                    .frame(minWidth: 350)
+                    // Detail pane
+                    detailPane
+                        .frame(minWidth: 350)
+                }
             }
         }
     }

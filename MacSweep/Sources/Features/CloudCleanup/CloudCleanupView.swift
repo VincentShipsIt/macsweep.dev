@@ -24,26 +24,49 @@ struct CloudCleanupView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let errorMessage {
-                errorBanner(errorMessage)
-            }
-            header
-            Divider()
-            filterBar
-            Divider()
+        FeaturePageShell(
+            title: "Cloud Cleanup",
+            subtitle: "Evict stale cloud downloads and provider caches.",
+            trailing: cloudItems.isEmpty ? nil : AnyView(
+                Button {
+                    Task { await scanCloudStorage() }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                }
+                .glassButton()
+                .controlSize(.small)
+                .disabled(isScanning)
+            )
+        ) {
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
 
-            if isScanning {
-                scanningView
-            } else if cloudItems.isEmpty {
-                emptyState
-            } else {
-                itemsList
-            }
+                if cloudItems.isEmpty {
+                    ScanLandingView(
+                        icon: "icloud",
+                        title: "Scan Cloud Storage",
+                        description: "Find stale local cloud copies and oversized provider cache folders you can reclaim.",
+                        ctaTitle: "Scan Cloud Storage",
+                        benefits: [
+                            ScanBenefit("icloud.and.arrow.down", "Reclaims synced storage", "Evicts stale local copies of iCloud and provider files so they stay in the cloud, not on your disk."),
+                            ScanBenefit("externaldrive.badge.icloud", "Clears provider caches", "Removes oversized cloud cache folders left behind by sync clients while your files stay safe online."),
+                        ],
+                        illustration: "icloud.and.arrow.down",
+                        isScanning: isScanning,
+                        action: { Task { await scanCloudStorage() } }
+                    )
+                } else {
+                    filterBar
+                    Divider().overlay(MacSweepTheme.divider)
+                    itemsList
 
-            if !filteredItems.isEmpty && !isScanning {
-                Divider()
-                footer
+                    if !filteredItems.isEmpty {
+                        Divider().overlay(MacSweepTheme.divider)
+                        footer
+                    }
+                }
             }
         }
     }
@@ -61,31 +84,6 @@ struct CloudCleanupView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Cloud Cleanup")
-                    .font(.title)
-                    .fontWeight(.bold)
-
-                Text("Evict stale cloud downloads and remove provider caches that waste local disk space.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                Task { await scanCloudStorage() }
-            } label: {
-                Label("Scan", systemImage: "icloud.and.arrow.down")
-            }
-            .glassButton(prominent: true)
-            .disabled(isScanning)
-        }
-        .padding()
     }
 
     private var filterBar: some View {
@@ -127,42 +125,6 @@ struct CloudCleanupView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-    }
-
-    private var scanningView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.5)
-
-            Text("Scanning cloud storage...")
-                .font(.headline)
-
-            Text("Looking for stale local copies and cloud provider cache folders")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "icloud")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
-
-            Text("No cloud cleanup items found")
-                .font(.headline)
-
-            Text("Run a scan to find stale local cloud copies and oversized provider caches.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button("Start Scan") {
-                Task { await scanCloudStorage() }
-            }
-            .glassButton(prominent: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var itemsList: some View {
