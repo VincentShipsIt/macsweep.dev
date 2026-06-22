@@ -31,42 +31,6 @@ jobs:
       - name: Test (swift-testing)
         run: ./scripts/test.sh
 
-  # Release gate: only runs when a vX.Y.Z tag is pushed. Proves the pinned Homebrew
-  # formula is self-consistent and actually installable the way an end user would
-  # `brew install` it — catching the "bumped the url but forgot the sha256" mistake
-  # the formula's RELEASE CHECKLIST warns about.
-  homebrew-release:
-    name: Homebrew formula (tagged release)
-    needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v4
-
-      # The formula pins `url` + `sha256`. Download the exact tarball the url points
-      # at and assert its checksum equals the pinned one. A mismatch fails the
-      # release before anyone can `brew install` a formula that wouldn't verify.
-      - name: Validate formula sha256 matches its pinned tarball
-        run: |
-          set -euo pipefail
-          formula="Formula/macsweep.rb"
-          url=$(grep -m1 -E '^\s*url ' "$formula" | sed -E 's/.*"([^"]+)".*/\1/')
-          pinned=$(grep -m1 -E '^\s*sha256 ' "$formula" | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "Formula url:    $url"
-          echo "Formula sha256: $pinned"
-          curl -fsSL "$url" -o /tmp/macsweep-src.tar.gz
-          actual=$(shasum -a 256 /tmp/macsweep-src.tar.gz | awk '{print $1}')
-          echo "Tarball sha256: $actual"
-          if [ "$actual" != "$pinned" ]; then
-            echo "::error::Formula sha256 ($pinned) does not match tarball ($actual). Update Formula/macsweep.rb."
-            exit 1
-          fi
-
-      # Install exactly as a user would, building from source, then run the
-      # formula's own `test do` block.
-      - name: Install + test formula (build from source)
-        run: |
-          set -euo pipefail
-          brew install --build-from-source --formula ./Formula/macsweep.rb
-          brew test --formula ./Formula/macsweep.rb
-          macsweep version
+  # NOTE: the Homebrew formula now lives in VincentShipsIt/homebrew-tap
+  # (Formula/macsweep.rb). Its release gate — sha256 validation + build-from-source
+  # install/test — runs in that repo's CI, not here.

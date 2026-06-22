@@ -31,7 +31,7 @@ Primary users:
 | GUI feature surfaces | 24 sidebar destinations render, with only Updater and Extensions intentionally placeholder | `MacSweep/Sources/Features/Dashboard/ContentView.swift` |
 | CLI/headless | CLI supports scan, dry-run, apply, modules, permissions, maintenance, space, uninstall, AI, malware, Homebrew, shred, network, processes, privacy, monitor, schedule, self-update | `MacSweep/Sources/CLIKit/CLICommand.swift` |
 | Monitoring | CPU, memory, disk, battery/no-battery, network, process views | `MacSweep/Sources/Core/Monitoring/` |
-| Release plumbing | Homebrew formula, release consistency script, CI for CLI/core tests | `Formula/macsweep.rb`, `.github/workflows/ci.yml`, `scripts/release.sh` |
+| Release plumbing | Homebrew formula (lives in [VincentShipsIt/homebrew-tap](https://github.com/VincentShipsIt/homebrew-tap)), release consistency script, CI for CLI/core tests | `.github/workflows/ci.yml`, `scripts/release.sh` |
 | Visual baseline | Snapshot harness renders 29/29 GUI states | `scripts/render-screenshots.sh`, `scripts/screenshots/` |
 
 ### Current Gaps
