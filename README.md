@@ -40,19 +40,19 @@ A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with 
 ### Homebrew (recommended)
 
 MacSweep ships as a CLI built from source — no Apple Developer account or code
-signing required. Recent Homebrew gates third-party taps behind a trust check, so
-the install is three commands:
+signing required. It's distributed from the shared `vincentshipsit/tap`. Recent
+Homebrew gates third-party formulae behind a trust check, so the install is:
 
 ```bash
-brew tap VincentShipsIt/macsweep https://github.com/VincentShipsIt/macsweep
-brew trust --formula vincentshipsit/macsweep/macsweep   # required for 3rd-party taps
-brew install VincentShipsIt/macsweep/macsweep           # pinned stable release
+brew tap vincentshipsit/tap
+brew trust --formula vincentshipsit/tap/macsweep   # required for 3rd-party formulae
+brew install macsweep                               # pinned stable release
 ```
 
 Prefer the bleeding edge from `master`:
 
 ```bash
-brew install --HEAD VincentShipsIt/macsweep/macsweep
+brew install --HEAD macsweep
 ```
 
 Verify the install, then keep it current:
@@ -62,6 +62,16 @@ macsweep version
 macsweep self-update           # prints the upgrade command
 macsweep self-update --yes     # runs `brew upgrade` now
 ```
+
+> [!NOTE]
+> MacSweep used to be installed from this repo acting as its own tap
+> (`vincentshipsit/macsweep`). It now lives in the shared
+> [vincentshipsit/tap](https://github.com/VincentShipsIt/homebrew-tap). If you
+> tapped the old path, migrate with:
+> ```bash
+> brew untap vincentshipsit/macsweep
+> brew tap vincentshipsit/tap
+> ```
 
 ### Build from Source
 

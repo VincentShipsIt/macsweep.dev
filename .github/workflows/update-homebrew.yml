@@ -1,0 +1,95 @@
+name: Update Homebrew
+
+# Bumps Formula/macsweep.rb in VincentShipsIt/homebrew-tap to a published release.
+#
+# Reusable (`workflow_call`) so the Release workflow can call it as a second job —
+# this is deliberate. A `release: published` trigger does NOT work: the release is
+# created by the Release job's GITHUB_TOKEN, and GitHub will not cascade-trigger
+# workflows from that token, so the tap would silently never update. `workflow_dispatch`
+# is the manual fallback / re-run.
+#
+# Requires the `TAP_GITHUB_TOKEN` repo secret: a token with `contents: write` on
+# VincentShipsIt/homebrew-tap (the default GITHUB_TOKEN cannot push to another repo).
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Tag to publish to the tap (e.g. v1.0.3)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to publish to the tap (e.g. v1.0.3)"
+        required: true
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve version
+        id: version
+        run: |
+          # inputs.version is populated for both workflow_call and workflow_dispatch.
+          TAG="${{ inputs.version }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download + validate sha256 asset
+        id: sha
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          curl -fsSL \
+            --connect-timeout 15 --max-time 120 --retry 3 \
+            "https://github.com/VincentShipsIt/macsweep/releases/download/${TAG}/macsweep-${TAG}.tar.gz.sha256" \
+            -o sha256.txt
+          # Validate the asset is a bare 64-hex SHA256 before trusting it. On a 404 or
+          # redirect-to-error, curl -f fails the step; this guards the case where a 200
+          # body is something other than a digest, so an error body can never be
+          # committed into the formula and break every `brew install` checksum check.
+          SHA256="$(tr -d '[:space:]' < sha256.txt)"
+          [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Downloaded sha256 is not a valid 64-hex digest"; exit 1; }
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          repository: VincentShipsIt/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Bump formula url + sha256
+        run: |
+          set -euo pipefail
+          cd homebrew-tap
+          TAG="${{ steps.version.outputs.tag }}"
+          SHA256="${{ steps.sha.outputs.sha256 }}"
+          F="Formula/macsweep.rb"
+
+          # Formula version is derived by Homebrew from the tag in the url, so only the
+          # url's tag segment and the sha256 change. Replace the path between
+          # /archive/refs/tags/ and .tar.gz (format-agnostic), then the 64-hex sha256.
+          sed -i -E "s#(/archive/refs/tags/)[^\"]*(\.tar\.gz)#\1${TAG}\2#" "$F"
+          sed -i -E "s#^([[:space:]]*sha256 )\"[0-9a-f]{64}\"#\1\"${SHA256}\"#" "$F"
+
+          echo "----- updated formula (url + sha256) -----"
+          grep -E '^\s*(url|sha256) ' "$F"
+
+          # Fail loudly if either bump didn't take (e.g. the formula's shape changed).
+          grep -q "/archive/refs/tags/${TAG}.tar.gz" "$F" || { echo "::error::url was not updated to ${TAG}"; exit 1; }
+          grep -q "sha256 \"${SHA256}\"" "$F" || { echo "::error::sha256 was not updated"; exit 1; }
+
+      - name: Commit + push
+        run: |
+          set -euo pipefail
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/macsweep.rb
+          git diff --staged --quiet || git commit -m "Update macsweep to ${{ steps.version.outputs.tag }}"
+          git push

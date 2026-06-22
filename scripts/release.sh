@@ -7,11 +7,15 @@
 #
 #   1. MacSweep/project.yml            MARKETING_VERSION       (XcodeGen SSoT)
 #   2. MacSweep/Sources/Core/MacSweepVersion.swift  .current  (CLI `version`)
-#   3. Formula/macsweep.rb             url .../tags/vX.Y.Z     (brew tarball)
-#   4. MacSweep/MacSweep.xcodeproj/...pbxproj  MARKETING_VERSION (generated)
+#   3. MacSweep/MacSweep.xcodeproj/...pbxproj  MARKETING_VERSION (generated)
 #
-# (4) is generated from (1) by `xcodegen generate`; it's checked in, so it can
+# (3) is generated from (1) by `xcodegen generate`; it's checked in, so it can
 # go stale if someone bumps project.yml without regenerating.
+#
+# The Homebrew formula's url tag (vX.Y.Z) must also match, but the formula now
+# lives in a SEPARATE repo — VincentShipsIt/homebrew-tap (Formula/macsweep.rb) —
+# so this script can't edit it directly. `release.sh sha` prints the url+sha256
+# to paste into that repo when cutting a release.
 #
 # No code signing / notarization yet: distribution is brew build-from-source.
 # This script therefore performs NO outward-facing actions — it never creates a
@@ -34,7 +38,6 @@ REPO_ROOT="${0:A:h:h}"   # scripts/ -> repo root
 PKG="$REPO_ROOT/MacSweep"
 PROJECT_YML="$PKG/project.yml"
 VERSION_SWIFT="$PKG/Sources/Core/MacSweepVersion.swift"
-FORMULA="$REPO_ROOT/Formula/macsweep.rb"
 PBXPROJ="$PKG/MacSweep.xcodeproj/project.pbxproj"
 
 SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
@@ -42,7 +45,6 @@ SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 # --- extractors: each prints the single version string from one source ----------
 yml_version()     { grep 'MARKETING_VERSION:' "$PROJECT_YML" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
 swift_version()   { grep 'static let current' "$VERSION_SWIFT" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
-formula_version() { grep -m1 -E '^[[:space:]]*url ' "$FORMULA" | sed -E 's|.*/tags/v([0-9.]+)\.tar\.gz.*|\1|'; }
 # pbxproj has the value on multiple targets; assert they're uniform and print one.
 pbxproj_version() {
   grep 'MARKETING_VERSION = ' "$PBXPROJ" | sed 's/.*= \(.*\);/\1/' | sort -u
@@ -52,21 +54,18 @@ die()  { print -u2 "error: $*"; exit 1; }
 usage() { print -u2 "usage: release.sh {check|bump X.Y.Z|sha [X.Y.Z]}"; exit 2; }
 
 cmd_check() {
-  local yml swift formula pbx
+  local yml swift pbx
   yml="$(yml_version)"
   swift="$(swift_version)"
-  formula="$(formula_version)"
   pbx="$(pbxproj_version)"   # may be multiple lines if targets disagree
 
   print "version sources:"
   print "  project.yml          $yml"
   print "  MacSweepVersion.swift $swift"
-  print "  Formula url tag       $formula"
   print "  pbxproj (generated)   ${pbx//$'\n'/, }"
 
   local ok=1
   [[ "$swift"   == "$yml" ]] || { print -u2 "  ✗ MacSweepVersion.swift ($swift) != project.yml ($yml)"; ok=0; }
-  [[ "$formula" == "$yml" ]] || { print -u2 "  ✗ Formula url ($formula) != project.yml ($yml)"; ok=0; }
   # pbx must be exactly one distinct value AND equal to the SSoT.
   if [[ "$(print -r -- "$pbx" | wc -l | tr -d ' ')" != "1" || "$pbx" != "$yml" ]]; then
     print -u2 "  ✗ pbxproj MARKETING_VERSION ($pbx) != project.yml ($yml) — run: scripts/release.sh bump $yml"
@@ -100,7 +99,8 @@ cmd_bump() {
   print "next (manual, outward-facing — left to you):"
   print "  1. commit the version bump"
   print "  2. git tag v$new && git push origin v$new"
-  print "  3. scripts/release.sh sha $new   # then paste url+sha256 into Formula/macsweep.rb"
+  print "  3. scripts/release.sh sha $new   # paste url+sha256 into the formula in"
+  print "     VincentShipsIt/homebrew-tap (Formula/macsweep.rb), e.g. via PR"
 }
 
 cmd_sha() {
