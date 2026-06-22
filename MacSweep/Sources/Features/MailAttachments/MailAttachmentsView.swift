@@ -19,7 +19,8 @@ struct MailAttachmentsView: View {
             trailing: attachments.isEmpty ? nil : AnyView(
                 Button { Task { await scanAttachments() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
-            )
+            ),
+            scrolls: attachments.isEmpty
         ) {
             if attachments.isEmpty {
                 ScanLandingView(

@@ -24,7 +24,8 @@ struct SimilarPhotosView: View {
             trailing: photoItems.isEmpty ? nil : AnyView(
                 Button { Task { await scanPhotos() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
-            )
+            ),
+            scrolls: photoItems.isEmpty
         ) {
             if let errorMessage {
                 errorBanner(errorMessage)

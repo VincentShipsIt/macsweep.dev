@@ -24,7 +24,8 @@ struct DuplicateFinderView: View {
             trailing: duplicateItems.isEmpty ? nil : AnyView(
                 Button { Task { await scanDuplicates() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
-            )
+            ),
+            scrolls: duplicateItems.isEmpty
         ) {
             if let errorMessage {
                 errorBanner(errorMessage)

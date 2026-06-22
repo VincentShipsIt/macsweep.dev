@@ -36,7 +36,8 @@ struct CloudCleanupView: View {
                 .glassButton()
                 .controlSize(.small)
                 .disabled(isScanning)
-            )
+            ),
+            scrolls: cloudItems.isEmpty
         ) {
             VStack(spacing: 0) {
                 if let errorMessage {

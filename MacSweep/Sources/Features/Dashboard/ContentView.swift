@@ -15,13 +15,11 @@ struct ContentView: View {
                     .ignoresSafeArea()
 
                 detailView
-                    // Smooth slide-up + fade between pages.
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .opacity
-                    ))
             }
-            .animation(.easeInOut(duration: 0.22), value: appState.selectedFeature)
+            // Page switches are an instant swap — no slide/cross-fade chrome motion.
+            // The onboarding hero still animates itself in via `ScanLandingView`'s
+            // own `onAppear` rise (a local animation), so onboarding screens keep
+            // their entrance while content/table pages stay still.
             .navigationTitle(appState.selectedFeature.rawValue)
         }
         .navigationSplitViewStyle(.balanced)

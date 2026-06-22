@@ -20,7 +20,7 @@ struct MacSweepApp: App {
         WindowGroup {
             mainWindowContent
         }
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 1040, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -29,7 +29,7 @@ struct MacSweepApp: App {
         WindowGroup(id: "main") {
             mainWindowContent
         }
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 1040, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -53,6 +53,10 @@ struct MacSweepApp: App {
     private var mainWindowContent: some View {
         ContentView()
             .environmentObject(appState)
+            // Open compact and centered every launch (CleanMyMac-style), instead of
+            // restoring whatever — often full-height — frame the window was last
+            // dragged to.
+            .background(LaunchWindowSizer(size: CGSize(width: 1040, height: 700)))
             .sheet(isPresented: $showingOnboarding) {
                 OnboardingView(isPresented: $showingOnboarding)
             }
@@ -76,4 +80,27 @@ struct MacSweepApp: App {
                 }
             }
     }
+}
+
+/// Pins the host window to a fixed compact size on launch and centers it,
+/// overriding macOS's restored frame. Runs once per window instantiation — the
+/// user can still resize during the session; the next launch reopens compact.
+/// This is what keeps MacSweep opening CleanMyMac-style instead of restoring
+/// whatever height the window was last stretched to.
+private struct LaunchWindowSizer: NSViewRepresentable {
+    let size: CGSize
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            // Stop AppKit/SwiftUI from restoring a remembered frame over ours.
+            window.isRestorable = false
+            window.setContentSize(size)
+            window.center()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

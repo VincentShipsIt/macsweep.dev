@@ -34,7 +34,8 @@ struct AIAnalysisView: View {
                 .popover(isPresented: $showKeyField) {
                     apiKeyPopover
                 }
-            )
+            ),
+            scrolls: service.findings.isEmpty && !service.isScanning
         ) {
             if service.findings.isEmpty && !service.isScanning {
                 ScanLandingView(

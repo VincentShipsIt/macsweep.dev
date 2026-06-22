@@ -32,7 +32,8 @@ struct SpaceLensView: View {
                     Label("Rescan", systemImage: "arrow.clockwise")
                 }
                 .glassButton().controlSize(.small).disabled(isScanning)
-            )
+            ),
+            scrolls: isScanning || currentNode == nil
         ) {
             VStack(spacing: 0) {
                 if let errorMessage {

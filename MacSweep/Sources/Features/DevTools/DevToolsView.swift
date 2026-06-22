@@ -13,7 +13,8 @@ struct DevToolsView: View {
     var body: some View {
         FeaturePageShell(
             title: "Developer Tools",
-            subtitle: "Clean build artifacts, caches, and stale Git branches."
+            subtitle: "Clean build artifacts, caches, and stale Git branches.",
+            scrolls: selectedTab == .artifacts
         ) {
             VStack(spacing: 0) {
                 // Tab picker

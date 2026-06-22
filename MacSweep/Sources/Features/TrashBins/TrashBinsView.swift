@@ -42,7 +42,8 @@ struct TrashBinsView: View {
                         Text("This will permanently delete all items in Trash. This cannot be undone.")
                     }
                 }
-            )
+            ),
+            scrolls: trashItems.isEmpty
         ) {
             if trashItems.isEmpty {
                 ScanLandingView(

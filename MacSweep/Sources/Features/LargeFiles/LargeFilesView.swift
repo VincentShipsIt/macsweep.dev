@@ -50,7 +50,8 @@ struct LargeFilesView: View {
             trailing: largeItems.isEmpty ? nil : AnyView(
                 Button { Task { await scanLargeFiles() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
-            )
+            ),
+            scrolls: largeItems.isEmpty
         ) {
             VStack(spacing: 0) {
                 if let errorMessage {
