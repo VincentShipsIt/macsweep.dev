@@ -361,6 +361,7 @@ struct BuildArtifactsView: View {
     // MARK: - Actions
 
     private func scan() async {
+        guard !isScanning else { return }
         isScanning = true
         projects = []
         projectCleanupItems = []
