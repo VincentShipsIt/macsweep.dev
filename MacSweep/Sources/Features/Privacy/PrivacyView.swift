@@ -27,7 +27,8 @@ struct PrivacyView: View {
                 .glassButton()
                 .controlSize(.small)
                 .disabled(isScanning)
-            )
+            ),
+            scrolls: false
         ) {
             ScrollView {
                 VStack(spacing: 24) {

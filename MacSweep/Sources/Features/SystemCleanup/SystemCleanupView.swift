@@ -19,7 +19,8 @@ struct SystemCleanupView: View {
                 .glassButton()
                 .controlSize(.small)
                 .disabled(appState.isScanning)
-            )
+            ),
+            scrolls: appState.scanResults.isEmpty
         ) {
             if appState.scanResults.isEmpty {
                 ScanLandingView(

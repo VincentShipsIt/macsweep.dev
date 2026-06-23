@@ -10,15 +10,27 @@ struct FeaturePageShell<Content: View>: View {
     let title: String
     let subtitle: String?
     var trailing: AnyView? = nil
+    /// Wrap `content` in a real `ScrollView` (an `NSScrollView`). REQUIRED whenever
+    /// the content is a sparse, pure-SwiftUI layout with no scroll/table of its own
+    /// — e.g. a `ScanLandingView` hero. Without an `NSScrollView` in the detail, the
+    /// `NavigationSplitView` drops the sidebar's `NSTableView` backing and the whole
+    /// menu goes blank and never recovers (see the sidebar-blackout memory). Leave
+    /// `false` when the content already provides one (a `List`, `ScrollView`, or
+    /// `HSplitView`) — wrapping those again would break their scrolling. For pages
+    /// that swap between a hero and a results `List`, pass the empty-state condition
+    /// (e.g. `scrolls: items.isEmpty`).
+    var scrolls: Bool = false
     @ViewBuilder var content: () -> Content
 
     init(title: String,
          subtitle: String? = nil,
          trailing: AnyView? = nil,
+         scrolls: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.trailing = trailing
+        self.scrolls = scrolls
         self.content = content
     }
 
@@ -49,8 +61,20 @@ struct FeaturePageShell<Content: View>: View {
             Divider()
                 .overlay(MacSweepTheme.divider)
 
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if scrolls {
+                // GeometryReader + minHeight keeps short/sparse content (a hero)
+                // vertically centered, and lets it scroll if the window is shorter
+                // than the content.
+                GeometryReader { proxy in
+                    ScrollView {
+                        content()
+                            .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                    }
+                }
+            } else {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
@@ -89,6 +113,13 @@ struct ScanLandingView: View {
     var scanningMessage: String? = nil
     let action: () -> Void
 
+    /// Drives the hero's own slide-up + fade entrance. Page switches themselves are
+    /// an instant swap (see `ContentView`), so this local animation is what gives the
+    /// onboarding screen its signature CleanMyMac-style rise — and it fires only when
+    /// the hero actually appears (navigation *or* clearing back to empty), never for
+    /// a results table or any content page.
+    @State private var hasEntered = false
+
     var body: some View {
         if isScanning {
             ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
@@ -96,8 +127,11 @@ struct ScanLandingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
         } else {
-            // Centered focal block (vertically + horizontally), not stretched to
-            // the full detail area.
+            // Centered focal block (vertically + horizontally), not stretched to the
+            // full detail area. The sidebar-preserving scroll backing lives in
+            // FeaturePageShell (see its body), so this stays a plain centered VStack
+            // and composes correctly whether it's the whole page or embedded under
+            // other content (e.g. Privacy's Quick Actions).
             VStack(spacing: 32) {
                 HStack(alignment: .center, spacing: 40) {
                     VStack(alignment: .leading, spacing: 20) {
@@ -139,6 +173,13 @@ struct ScanLandingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(40)
+            // Self-contained entrance: rise + fade in whenever the hero appears.
+            .offset(y: hasEntered ? 0 : 28)
+            .opacity(hasEntered ? 1 : 0)
+            .onAppear {
+                hasEntered = false
+                withAnimation(.easeOut(duration: 0.4)) { hasEntered = true }
+            }
         }
     }
 }
