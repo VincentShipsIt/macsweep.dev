@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-06-24
+
+### Changed
+
+- Polished the native dashboard titlebar/sidebar chrome so the main window uses
+  the platform titlebar behavior while keeping MacSweep's compact launch size.
+- Moved the Smart Care rescan control into the navigation toolbar placement and
+  kept Clean Recommended as the primary dashboard action.
+
+## [1.0.5] - 2026-06-24
+
 ### Added
 
 - Homebrew GUI cask distribution: releases now publish a `MacSweep.app` zip and
@@ -97,7 +108,9 @@ Initial public release — a CLI-first native macOS system cleaner.
 - **Homebrew distribution** — build-from-source formula, no Apple Developer account
   or code signing required.
 
-[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.5...v1.0.6
+[1.0.5]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.4...v1.0.5
 [1.0.2]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VincentShipsIt/macsweep/releases/tag/v1.0.0
