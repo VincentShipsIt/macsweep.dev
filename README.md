@@ -5,11 +5,12 @@
 > Features may be incomplete, APIs may change, and there may be bugs.
 > Contributions and feedback welcome!
 
-[![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
+[![Swift 6.2+](https://img.shields.io/badge/Swift-6.2+-orange.svg)](https://swift.org)
 [![macOS 26+](https://img.shields.io/badge/macOS-26+-blue.svg)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with a beautiful SwiftUI interface.
+A native macOS system cleaner with a SwiftUI app and a Homebrew-installable CLI.
+Scan, clean, and optimize your Mac with safety-first defaults.
 
 ## Features
 
@@ -33,15 +34,48 @@ A powerful native macOS system cleaner. Scan, clean, and optimize your Mac with 
 ## Requirements
 
 - macOS 26.0 (Tahoe) or later
+- Homebrew for the recommended CLI install
+- Swift 6.2+ / Xcode 26+ command-line tools for building from source
 - Full Disk Access permission (for scanning protected folders)
 
 ## Installation
 
+### Agent-first install
+
+Paste this into a terminal-capable coding agent to have it install MacSweep for
+you:
+
+```text
+Install MacSweep on this Mac.
+
+First run these read-only checks:
+- Confirm this Mac is running macOS 26.0 Tahoe or later with `sw_vers`.
+- Check whether Homebrew is installed with `command -v brew`.
+- Check whether Apple's command-line tools can find Swift with `xcrun --find swift`.
+
+If macOS is older than 26.0, stop and explain that MacSweep cannot be installed.
+If Homebrew is missing, stop and ask me before installing Homebrew from https://brew.sh.
+If Apple's command-line tools are missing, run `xcode-select --install`, then wait for me to finish Apple's installer prompt before continuing.
+
+Then install the stable MacSweep CLI:
+
+brew tap vincentshipsit/tap
+brew trust --formula vincentshipsit/tap/macsweep
+brew install macsweep
+macsweep version
+
+Do not run any cleanup, delete, apply, shred, uninstall, or maintenance commands.
+When the install is done, tell me the installed version and suggest `macsweep dry-run` as the first safe command.
+```
+
 ### Homebrew (recommended)
 
-MacSweep ships as a CLI built from source — no Apple Developer account or code
-signing required. It's distributed from the shared `vincentshipsit/tap`. Recent
-Homebrew gates third-party formulae behind a trust check, so the install is:
+MacSweep currently ships through Homebrew as the `macsweep` command-line tool,
+built from source. No Apple Developer account or code signing is required for the
+CLI install. A signed `.app` or DMG is not published yet.
+
+The formula is distributed from the shared `vincentshipsit/tap`. Recent Homebrew
+gates third-party formulae behind a trust check, so the install is:
 
 ```bash
 brew tap vincentshipsit/tap
@@ -63,6 +97,10 @@ macsweep self-update           # prints the upgrade command
 macsweep self-update --yes     # runs `brew upgrade` now
 ```
 
+The first install may take a few minutes because Homebrew compiles the Swift
+package locally. If Apple's command-line tools are missing, Homebrew or macOS may
+prompt you to install them.
+
 > [!NOTE]
 > MacSweep used to be installed from this repo acting as its own tap
 > (`vincentshipsit/macsweep`). It now lives in the shared
@@ -78,10 +116,11 @@ macsweep self-update --yes     # runs `brew upgrade` now
 ```bash
 git clone https://github.com/VincentShipsIt/macsweep.git
 cd macsweep/MacSweep
-swift build -c release
+swift build -c release --product macsweep
 ```
 
-Or open `MacSweep.xcodeproj` in Xcode and build.
+To build the SwiftUI app, open `MacSweep.xcodeproj` in Xcode 26 or later and build
+the app target.
 
 ## Safety
 
