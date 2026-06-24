@@ -4,8 +4,18 @@ import AppKit
 /// Onboarding view shown on first launch
 struct OnboardingView: View {
     @Binding var isPresented: Bool
-    @State private var currentPage = 0
-    @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
+    @State private var currentPage: Int
+    @State private var hasFullDiskAccess: Bool
+
+    init(
+        isPresented: Binding<Bool>,
+        initialPage: Int = 0,
+        initialFullDiskAccess: Bool = FullDiskAccess.hasAccess
+    ) {
+        self._isPresented = isPresented
+        self._currentPage = State(initialValue: initialPage)
+        self._hasFullDiskAccess = State(initialValue: initialFullDiskAccess)
+    }
 
     private let welcomePages: [OnboardingPage] = [
         OnboardingPage(
@@ -110,103 +120,142 @@ struct FDAPermissionPageView: View {
     let hasAccess: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Status indicator
-            ZStack {
-                Circle()
-                    .fill(hasAccess ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
-                    .frame(width: 100, height: 100)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 16) {
+                    statusIcon
+                    title
+                    description
 
-                Image(systemName: hasAccess ? "checkmark.shield.fill" : "hand.raised.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(hasAccess ? .green : .orange)
-            }
-
-            // Title
-            Text(hasAccess ? "You're All Set!" : "Full Disk Access Required")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            // Description
-            Text(hasAccess
-                ? "MacSweep has the permissions it needs to scan and clean your Mac."
-                : "MacSweep needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 450)
-
-            if !hasAccess {
-                // Step-by-step instructions
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Follow these steps:")
-                        .font(.headline)
-
-                    FDAStepRow(
-                        step: 1,
-                        title: "Open System Settings",
-                        description: "Click the button below to open Privacy & Security settings"
-                    )
-
-                    FDAStepRow(
-                        step: 2,
-                        title: "Find Full Disk Access",
-                        description: "Scroll down and click \"Full Disk Access\" in the list"
-                    )
-
-                    FDAStepRow(
-                        step: 3,
-                        title: "Add MacSweep",
-                        description: "Click the + button, then add MacSweep from your Applications folder or use \"Reveal in Finder\" below"
-                    )
-
-                    FDAStepRow(
-                        step: 4,
-                        title: "Enable the toggle",
-                        description: "Make sure MacSweep is toggled ON in the list"
-                    )
-                }
-                .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-
-                // Action buttons
-                HStack(spacing: 16) {
-                    Button {
-                        FullDiskAccess.openSystemPreferences()
-                    } label: {
-                        Label("Open System Settings", systemImage: "gear")
-                            .frame(minWidth: 180)
+                    if !hasAccess {
+                        instructions
+                        actionButtons
+                    } else {
+                        successState
                     }
-                    .glassButton(prominent: true)
-
-                    Button {
-                        revealAppInFinder()
-                    } label: {
-                        Label("Reveal in Finder", systemImage: "folder")
-                            .frame(minWidth: 150)
-                    }
-                    .glassButton()
                 }
-                .padding(.top, 8)
-            } else {
-                // Success state
-                VStack(spacing: 12) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Full Disk Access is enabled")
-                            .fontWeight(.medium)
-                    }
-                    .padding()
-                    .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-
-                    Text("You can now use all of MacSweep's features.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: proxy.size.height, alignment: .center)
             }
         }
-        .padding()
+    }
+
+    private var statusIcon: some View {
+        ZStack {
+            Circle()
+                .fill(hasAccess ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
+                .frame(width: 84, height: 84)
+
+            Image(systemName: hasAccess ? "checkmark.shield.fill" : "hand.raised.fill")
+                .font(.system(size: 42))
+                .foregroundStyle(hasAccess ? .green : .orange)
+        }
+    }
+
+    private var title: some View {
+        Text(hasAccess ? "You're All Set!" : "Full Disk Access Required")
+            .font(.title)
+            .fontWeight(.bold)
+            .multilineTextAlignment(.center)
+    }
+
+    private var description: some View {
+        Text(hasAccess
+            ? "MacSweep has the permissions it needs to scan and clean your Mac."
+            : "MacSweep needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 500)
+    }
+
+    private var instructions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Follow these steps:")
+                .font(.headline)
+
+            FDAStepRow(
+                step: 1,
+                title: "Open System Settings",
+                description: "Open Privacy & Security settings."
+            )
+
+            FDAStepRow(
+                step: 2,
+                title: "Find Full Disk Access",
+                description: "Select Full Disk Access in the Privacy list."
+            )
+
+            FDAStepRow(
+                step: 3,
+                title: "Add this MacSweep app",
+                description: "MacSweep may not appear automatically. Click + and choose the exact app that Finder reveals below."
+            )
+
+            FDAStepRow(
+                step: 4,
+                title: "Enable and relaunch",
+                description: "Turn MacSweep on, then quit and reopen it if macOS asks."
+            )
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var actionButtons: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                systemSettingsButton
+                revealInFinderButton
+            }
+
+            VStack(spacing: 10) {
+                systemSettingsButton
+                revealInFinderButton
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private var systemSettingsButton: some View {
+        Button {
+            FullDiskAccess.openSystemPreferences()
+        } label: {
+            Label("Open System Settings", systemImage: "gear")
+                .frame(minWidth: 180)
+        }
+        .glassButton(prominent: true)
+    }
+
+    private var revealInFinderButton: some View {
+        Button {
+            revealAppInFinder()
+        } label: {
+            Label("Reveal in Finder", systemImage: "folder")
+                .frame(minWidth: 150)
+        }
+        .glassButton()
+    }
+
+    private var successState: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Full Disk Access is enabled")
+                    .fontWeight(.medium)
+            }
+            .padding()
+            .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+
+            Text("You can now use all of MacSweep's features.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func revealAppInFinder() {

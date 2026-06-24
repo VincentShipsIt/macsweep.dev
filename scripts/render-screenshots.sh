@@ -17,7 +17,7 @@ SRC="MacSweep/Sources"
 HARNESS="scripts/RenderSnapshots.swift"
 OUTBIN="$(mktemp -d)/render-snapshots"
 SDK="$(xcrun --show-sdk-path)"
-TARGET="arm64-apple-macosx13.0"
+TARGET="arm64-apple-macosx26.0"
 
 # App module file set: all GUI sources, minus CLI/CLIKit and the real @main owner.
 FILES=("${(@f)$(find "$SRC" -name '*.swift' \
