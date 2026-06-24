@@ -12,14 +12,15 @@
 # (3) is generated from (1) by `xcodegen generate`; it's checked in, so it can
 # go stale if someone bumps project.yml without regenerating.
 #
-# The Homebrew formula's url tag (vX.Y.Z) must also match, but the formula now
-# lives in a SEPARATE repo — VincentShipsIt/homebrew-tap (Formula/macsweep.rb) —
-# so this script can't edit it directly. `release.sh sha` prints the url+sha256
-# to paste into that repo when cutting a release.
+# The Homebrew formula and cask live in a SEPARATE repo —
+# VincentShipsIt/homebrew-tap (Formula/macsweep.rb, Casks/macsweep.rb) — so this
+# script can't edit them directly. The tag-triggered Release workflow publishes
+# the source tarball checksum, the app zip, and the app zip checksum, then bumps
+# both tap files. `release.sh sha` remains a read-only formula checksum helper.
 #
 # No code signing / notarization yet: distribution is brew build-from-source.
 # This script therefore performs NO outward-facing actions — it never creates a
-# git tag, never pushes, never edits the formula's url/sha (that needs a tag that
+# git tag, never pushes, never edits the tap's formula/cask (that needs a tag that
 # already exists on GitHub). It verifies, bumps local sources, and prints the
 # remaining manual steps. Safe to run in CI or a pre-commit hook.
 #
@@ -99,8 +100,8 @@ cmd_bump() {
   print "next (manual, outward-facing — left to you):"
   print "  1. commit the version bump"
   print "  2. git tag v$new && git push origin v$new"
-  print "  3. scripts/release.sh sha $new   # paste url+sha256 into the formula in"
-  print "     VincentShipsIt/homebrew-tap (Formula/macsweep.rb), e.g. via PR"
+  print "  3. let the Release workflow publish the app zip/checksums and update"
+  print "     VincentShipsIt/homebrew-tap (Formula/macsweep.rb + Casks/macsweep.rb)"
 }
 
 cmd_sha() {

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Homebrew GUI cask distribution: releases now publish a `MacSweep.app` zip and
+  update `Casks/macsweep.rb`, whose GUI install depends on the `macsweep` CLI
+  formula so `brew install --cask macsweep` installs both.
+
 ## [1.0.2] - 2026-06-14
 
 ### Added
