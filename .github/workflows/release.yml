@@ -1,13 +1,13 @@
 name: Release
 
-# One-command release: pushing a `vX.Y.Z` tag builds + smoke-tests the CLI, computes
-# the source-tarball sha256 the Homebrew formula pins, publishes a GitHub Release, then
-# bumps Formula/macsweep.rb in VincentShipsIt/homebrew-tap — with no manual steps.
+# One-command release: pushing a `vX.Y.Z` tag builds + smoke-tests the CLI, packages
+# the GUI app, publishes the formula/cask checksums, then bumps Formula/macsweep.rb
+# and Casks/macsweep.rb in VincentShipsIt/homebrew-tap — with no manual steps.
 #
 # MacSweep's formula is build-from-source: its `url` is GitHub's auto-generated source
 # tarball for the tag (archive/refs/tags/<tag>.tar.gz) and `sha256` is that tarball's
-# digest. So this workflow does NOT package a prebuilt binary — it pins the source
-# tarball's checksum and lets `brew install` compile from source like CI does.
+# digest. The cask is prebuilt: it downloads the signed/ad-hoc-signed MacSweep.app zip
+# and depends on the formula so `brew install --cask macsweep` installs both GUI + CLI.
 
 on:
   push:
@@ -37,30 +37,61 @@ jobs:
           swift build -c release --product macsweep --package-path MacSweep
           "MacSweep/.build/release/macsweep" version
 
-      # The formula pins the sha256 of GitHub's source tarball for this tag. Download
-      # the exact URL `brew install` will use and checksum it, then publish that digest
-      # as a release asset so the tap bump is verifiable end-to-end.
-      - name: Compute source tarball sha256
+      - name: Build GUI app bundle
+        run: |
+          set -euo pipefail
+          DERIVED_DATA="$PWD/build/DerivedData"
+          xcodebuild \
+            -project MacSweep/MacSweep.xcodeproj \
+            -scheme MacSweep \
+            -configuration Release \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+          APP="$DERIVED_DATA/Build/Products/Release/MacSweep.app"
+          test -d "$APP"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "dist/macsweep-${{ github.ref_name }}-macos.zip"
+
+      # The formula pins GitHub's source tarball checksum. The cask pins the prebuilt
+      # app zip checksum. Publish both digests so the tap bump is verifiable end-to-end.
+      - name: Compute release checksums
         id: sha
         run: |
           set -euo pipefail
           TAG="${{ github.ref_name }}"
           URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
           curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 "$URL" -o "macsweep-${TAG}.tar.gz"
-          SHA256="$(shasum -a 256 "macsweep-${TAG}.tar.gz" | cut -d ' ' -f 1)"
-          [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::computed sha256 is not a 64-hex digest"; exit 1; }
-          echo "$SHA256" > "macsweep-${TAG}.tar.gz.sha256"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          SOURCE_SHA256="$(shasum -a 256 "macsweep-${TAG}.tar.gz" | cut -d ' ' -f 1)"
+          [[ "$SOURCE_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::computed source sha256 is not a 64-hex digest"; exit 1; }
+          echo "$SOURCE_SHA256" > "macsweep-${TAG}.tar.gz.sha256"
+          echo "source_sha256=$SOURCE_SHA256" >> "$GITHUB_OUTPUT"
+
+          APP_ZIP="dist/macsweep-${TAG}-macos.zip"
+          test -f "$APP_ZIP"
+          APP_SHA256="$(shasum -a 256 "$APP_ZIP" | cut -d ' ' -f 1)"
+          [[ "$APP_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::computed app sha256 is not a 64-hex digest"; exit 1; }
+          echo "$APP_SHA256" > "macsweep-${TAG}-macos.zip.sha256"
+          echo "app_sha256=$APP_SHA256" >> "$GITHUB_OUTPUT"
+
           {
             echo "### MacSweep ${TAG}"
             echo ""
-            echo "Source tarball SHA256: \`${SHA256}\`"
+            echo "Source tarball SHA256: \`${SOURCE_SHA256}\`"
+            echo "App zip SHA256: \`${APP_SHA256}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
+            dist/macsweep-${{ github.ref_name }}-macos.zip
+            macsweep-${{ github.ref_name }}-macos.zip.sha256
             macsweep-${{ github.ref_name }}.tar.gz.sha256
           draft: false
           prerelease: false

@@ -1,18 +1,21 @@
 # /release — cut a MacSweep release and auto-publish to Homebrew
 
 Tag the current `master` as `vX.Y.Z` so CI builds + smoke-tests the `macsweep` CLI,
-publishes a GitHub Release, and bumps the Homebrew **formula** in
-`VincentShipsIt/homebrew-tap` — all from one tag push. Run this after the
-version-bumping PR has merged to `master`.
+builds + packages `MacSweep.app`, publishes a GitHub Release, and bumps both the
+Homebrew **formula** and **cask** in `VincentShipsIt/homebrew-tap` — all from one
+tag push. Run this after the version-bumping PR has merged to `master`.
 
-MacSweep ships as a **build-from-source formula** (no cask): the formula's `url` is the
-tag's source tarball and `sha256` is its digest; `brew install` compiles the CLI.
+MacSweep ships two Homebrew entries:
+
+- `brew install macsweep` installs the build-from-source CLI formula.
+- `brew install --cask macsweep` installs the GUI app and depends on the formula,
+  so the GUI path installs both `MacSweep.app` and the `macsweep` CLI.
 
 ## Preconditions (one-time)
 - The repo secret `TAP_GITHUB_TOKEN` exists (token with `contents: write` on
   `VincentShipsIt/homebrew-tap`) — `update-homebrew.yml` needs it to push the bump.
-- `Formula/macsweep.rb` lives in `VincentShipsIt/homebrew-tap` (the tap-consolidation
-  is merged), not in this repo.
+- `Formula/macsweep.rb` and `Casks/macsweep.rb` live in
+  `VincentShipsIt/homebrew-tap` (the tap-consolidation is merged), not in this repo.
 
 ## Steps
 
@@ -35,10 +38,11 @@ tag's source tarball and `sha256` is its digest; `brew install` compiles the CLI
 4. **Tag + push (this triggers everything).**
    - `git tag -a "$TAG" origin/master -m "MacSweep $TAG"`
    - `git push origin "$TAG"`
-   - Fires `.github/workflows/release.yml`: build + smoke-test CLI → compute source
-     tarball sha256 → publish GitHub Release (`macsweep-$TAG.tar.gz.sha256` asset,
+   - Fires `.github/workflows/release.yml`: build + smoke-test CLI → build
+     `MacSweep.app` → publish GitHub Release (`macsweep-$TAG.tar.gz.sha256`,
+     `macsweep-$TAG-macos.zip`, and `macsweep-$TAG-macos.zip.sha256` assets,
      auto-generated notes) → its `update-homebrew` job calls `update-homebrew.yml`,
-     which bumps `url` + `sha256` in the tap's `Formula/macsweep.rb`.
+     which bumps the tap's formula and cask.
 
 5. **Watch both jobs land.**
    - `gh run watch "$(gh run list --workflow=Release --limit 1 --json databaseId -q '.[0].databaseId')"`
@@ -46,14 +50,20 @@ tag's source tarball and `sha256` is its digest; `brew install` compiles the CLI
    - Verify the formula bumped:
      `gh api repos/VincentShipsIt/homebrew-tap/contents/Formula/macsweep.rb -q .content | base64 -d | grep -E 'url|sha256'`
      — the `url` tag and `sha256` must match `$TAG` and the published `.sha256` asset.
+   - Verify the cask bumped and still depends on the formula:
+     `gh api repos/VincentShipsIt/homebrew-tap/contents/Casks/macsweep.rb -q .content | base64 -d | grep -E 'version|sha256|url|depends_on|app'`
+     — the version, app zip `sha256`, `depends_on formula`, and `app "MacSweep.app"`
+     stanzas must be present.
 
 6. **Report** the release URL and the consumer command:
-   - `brew update && brew upgrade macsweep`
-   - First-time: `brew tap vincentshipsit/tap && brew trust --formula vincentshipsit/tap/macsweep && brew install macsweep`.
+   - GUI + CLI: `brew update && brew upgrade --cask macsweep && brew upgrade macsweep`
+   - First-time GUI + CLI: `brew tap vincentshipsit/tap && brew trust --formula vincentshipsit/tap/macsweep && brew install --cask macsweep`.
+   - CLI only: `brew install macsweep`.
 
 ## Notes
-- The formula is build-from-source, so the release pins the **source tarball's** sha256
-  (GitHub's `archive/refs/tags/$TAG.tar.gz`), not a prebuilt binary.
+- The formula is build-from-source, so it pins the **source tarball's** sha256
+  (GitHub's `archive/refs/tags/$TAG.tar.gz`). The cask pins the prebuilt
+  `macsweep-$TAG-macos.zip` sha256.
 - If the `update-homebrew` job ever fails alone, re-run it:
   `gh workflow run "Update Homebrew" -f version=vX.Y.Z`.
 - Never move or delete a published tag — cut a new patch version instead.

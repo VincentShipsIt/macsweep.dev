@@ -57,47 +57,66 @@ If macOS is older than 26.0, stop and explain that MacSweep cannot be installed.
 If Homebrew is missing, stop and ask me before installing Homebrew from https://brew.sh.
 If Apple's command-line tools are missing, run `xcode-select --install`, then wait for me to finish Apple's installer prompt before continuing.
 
-Then install the stable MacSweep CLI:
+Then install the stable MacSweep app and CLI:
 
 brew tap vincentshipsit/tap
 brew trust --formula vincentshipsit/tap/macsweep
-brew install macsweep
+brew install --cask macsweep
 macsweep version
 
 Do not run any cleanup, delete, apply, shred, uninstall, or maintenance commands.
-When the install is done, tell me the installed version and suggest `macsweep dry-run` as the first safe command.
+When the install is done, tell me the installed CLI version, confirm MacSweep.app
+is installed, and suggest `macsweep dry-run` as the first safe command.
 ```
 
-### Homebrew (recommended)
+### Homebrew (GUI + CLI, recommended)
 
-MacSweep currently ships through Homebrew as the `macsweep` command-line tool,
-built from source. No Apple Developer account or code signing is required for the
-CLI install. A signed `.app` or DMG is not published yet.
+MacSweep is distributed from the shared `vincentshipsit/tap`.
 
-The formula is distributed from the shared `vincentshipsit/tap`. Recent Homebrew
-gates third-party formulae behind a trust check, so the install is:
+For the full desktop install, install the cask. It installs `MacSweep.app` and
+pulls in the `macsweep` CLI formula as a dependency:
 
 ```bash
 brew tap vincentshipsit/tap
-brew trust --formula vincentshipsit/tap/macsweep   # required for 3rd-party formulae
-brew install macsweep                               # pinned stable release
+brew trust --formula vincentshipsit/tap/macsweep   # required for the CLI formula
+brew install --cask macsweep                        # installs GUI + CLI
+```
+
+Verify both entry points:
+
+```bash
+open -a MacSweep
+macsweep version
+```
+
+Want only the headless CLI?
+
+```bash
+brew install macsweep
 ```
 
 Prefer the bleeding edge from `master`:
 
 ```bash
-brew install --HEAD macsweep
+brew install --HEAD macsweep  # CLI only
 ```
 
-Verify the install, then keep it current:
+Keep the full desktop install current:
 
 ```bash
-macsweep version
-macsweep self-update           # prints the upgrade command
-macsweep self-update --yes     # runs `brew upgrade` now
+brew update
+brew upgrade --cask macsweep
+brew upgrade macsweep
 ```
 
-The first install may take a few minutes because Homebrew compiles the Swift
+The CLI formula still supports self-update helpers:
+
+```bash
+macsweep self-update           # prints the CLI formula upgrade command
+macsweep self-update --yes     # upgrades the CLI formula now
+```
+
+The first install may take a few minutes because Homebrew compiles the Swift CLI
 package locally. If Apple's command-line tools are missing, Homebrew or macOS may
 prompt you to install them.
 
