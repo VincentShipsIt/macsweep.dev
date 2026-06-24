@@ -74,31 +74,41 @@ struct DashboardView: View {
         }
         .background(Color.clear)
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    Task {
-                        await appState.quickScan()
-                    }
-                } label: {
-                    Image(systemName: appState.isScanning ? "hourglass" : "arrow.clockwise")
-                }
-                .disabled(appState.isScanning)
-                .help(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan")
+            ToolbarItem(placement: .navigation) {
+                rescanButton
+            }
 
-                Button {
-                    Task {
-                        _ = try? await appState.deleteSelected()
-                    }
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .disabled(appState.selectedItems.isEmpty || appState.isScanning)
-                .help("Clean Recommended")
+            ToolbarItem(placement: .primaryAction) {
+                cleanRecommendedButton
             }
         }
         .onAppear {
             hasFullDiskAccess = FullDiskAccess.hasAccess
         }
+    }
+
+    private var rescanButton: some View {
+        Button {
+            Task {
+                await appState.quickScan()
+            }
+        } label: {
+            Image(systemName: appState.isScanning ? "hourglass" : "arrow.clockwise")
+        }
+        .disabled(appState.isScanning)
+        .help(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan")
+    }
+
+    private var cleanRecommendedButton: some View {
+        Button {
+            Task {
+                _ = try? await appState.deleteSelected()
+            }
+        } label: {
+            Image(systemName: "trash")
+        }
+        .disabled(appState.selectedItems.isEmpty || appState.isScanning)
+        .help("Clean Recommended")
     }
 
     // MARK: - FDA Banner
