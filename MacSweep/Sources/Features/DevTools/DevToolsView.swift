@@ -4,35 +4,44 @@ import SwiftUI
 struct DevToolsView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedTab: DevToolsTab = .artifacts
+    @State private var hasCompletedBuildArtifactScan = false
+    @State private var isBuildArtifactScanRunning = false
 
     enum DevToolsTab: String, CaseIterable {
         case artifacts = "Build Artifacts"
         case packages = "Package Managers"
     }
 
+    private var showsTabPicker: Bool {
+        hasCompletedBuildArtifactScan && !isBuildArtifactScanRunning
+    }
+
     var body: some View {
         FeaturePageShell(
             title: "Developer Tools",
             subtitle: "Clean build artifacts, caches, and stale Git branches.",
-            scrolls: selectedTab == .artifacts
+            scrolls: selectedTab == .artifacts && !showsTabPicker
         ) {
             VStack(spacing: 0) {
-                // Tab picker
-                Picker("", selection: $selectedTab) {
-                    ForEach(DevToolsTab.allCases, id: \.self) { tab in
-                        Text(tab.rawValue).tag(tab)
+                if showsTabPicker {
+                    Picker("", selection: $selectedTab) {
+                        ForEach(DevToolsTab.allCases, id: \.self) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .padding(12)
+
+                    Divider()
+                        .overlay(MacSweepTheme.divider)
                 }
-                .pickerStyle(.segmented)
-                .padding(12)
 
-                Divider()
-                    .overlay(MacSweepTheme.divider)
-
-                // Tab content
                 switch selectedTab {
                 case .artifacts:
-                    BuildArtifactsView()
+                    BuildArtifactsView(
+                        hasCompletedScan: $hasCompletedBuildArtifactScan,
+                        isScanRunning: $isBuildArtifactScanRunning
+                    )
                 case .packages:
                     PackageManagersView()
                 }
@@ -44,6 +53,8 @@ struct DevToolsView: View {
 /// View for cleaning up build artifacts (node_modules, DerivedData, etc.)
 struct BuildArtifactsView: View {
     @EnvironmentObject var appState: AppState
+    @Binding private var hasCompletedScan: Bool
+    @Binding private var isScanRunning: Bool
     @State private var isScanning = false
     @State private var projects: [ProjectInfo] = []
     @State private var projectCleanupItems: [CleanupItem] = []
@@ -62,6 +73,14 @@ struct BuildArtifactsView: View {
         case all = "All Items"
     }
 
+    init(
+        hasCompletedScan: Binding<Bool> = .constant(false),
+        isScanRunning: Binding<Bool> = .constant(false)
+    ) {
+        self._hasCompletedScan = hasCompletedScan
+        self._isScanRunning = isScanRunning
+    }
+
     var body: some View {
         if isScanning {
             ScanLandingView(
@@ -77,7 +96,7 @@ struct BuildArtifactsView: View {
                 isScanning: true,
                 action: { Task { await scan() } }
             )
-        } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
+        } else if !hasCompletedScan {
             ScanLandingView(
                 icon: "hammer",
                 title: "Find Developer Artifacts",
@@ -90,6 +109,8 @@ struct BuildArtifactsView: View {
                 illustration: "hammer",
                 action: { Task { await scan() } }
             )
+        } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
+            noArtifactsView
         } else {
             VStack(spacing: 0) {
                 toolbar
@@ -103,6 +124,31 @@ struct BuildArtifactsView: View {
                 footer
             }
         }
+    }
+
+    private var noArtifactsView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 52, weight: .light))
+                .foregroundStyle(MacSweepTheme.accent)
+
+            Text("No Developer Artifacts Found")
+                .font(.headline)
+
+            Text("No build artifacts, stale worktrees, or merged branches were found.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                Task { await scan() }
+            } label: {
+                Label("Scan Again", systemImage: "arrow.clockwise")
+            }
+            .glassButton()
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
     }
 
     // MARK: - Toolbar
@@ -364,6 +410,7 @@ struct BuildArtifactsView: View {
     private func scan() async {
         guard !isScanning else { return }
         isScanning = true
+        isScanRunning = true
         projects = []
         projectCleanupItems = []
         systemArtifacts = []
@@ -371,7 +418,11 @@ struct BuildArtifactsView: View {
         selectedItems = []
         selectedGitItems = []
 
-        defer { isScanning = false }
+        defer {
+            isScanning = false
+            isScanRunning = false
+            hasCompletedScan = true
+        }
 
         // Scan for projects
         let scanner = ProjectScanner()

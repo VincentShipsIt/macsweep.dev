@@ -4,6 +4,7 @@ import SwiftUI
 struct PrivacyView: View {
     @EnvironmentObject var appState: AppState
     @State private var isScanning = false
+    @State private var hasScanned = false
     @State private var privacyItems: [CleanupItem] = []
     @State private var selectedCategories: Set<String> = []
     @State private var showingConfirmation = false
@@ -18,7 +19,7 @@ struct PrivacyView: View {
         FeaturePageShell(
             title: "Privacy",
             subtitle: "Remove traces of your recent activity.",
-            trailing: privacyItems.isEmpty ? nil : AnyView(
+            trailing: (hasScanned && !isScanning) ? AnyView(
                 Button {
                     Task { await scanPrivacy() }
                 } label: {
@@ -27,7 +28,7 @@ struct PrivacyView: View {
                 .glassButton()
                 .controlSize(.small)
                 .disabled(isScanning)
-            ),
+            ) : nil,
             scrolls: false
         ) {
             ScrollView {
@@ -36,14 +37,7 @@ struct PrivacyView: View {
                         errorBanner(errorMessage)
                     }
 
-                    // Quick Actions (always visible)
-                    quickActionsSection
-
-                    Divider()
-                        .overlay(MacSweepTheme.divider)
-
-                    // Privacy Items (scan-driven)
-                    if privacyItems.isEmpty {
+                    if isScanning || !hasScanned {
                         ScanLandingView(
                             icon: "hand.raised",
                             title: "Scan for Privacy Traces",
@@ -59,7 +53,16 @@ struct PrivacyView: View {
                             action: { Task { await scanPrivacy() } }
                         )
                     } else {
-                        privacyItemsSection
+                        if privacyItems.isEmpty {
+                            noPrivacyItemsView
+                        } else {
+                            privacyItemsSection
+                        }
+
+                        Divider()
+                            .overlay(MacSweepTheme.divider)
+
+                        quickActionsSection
                     }
                 }
                 .padding()
@@ -191,15 +194,36 @@ struct PrivacyView: View {
         }
     }
 
+    private var noPrivacyItemsView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "checkmark.shield")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(MacSweepTheme.accent)
+
+            Text("No Privacy Traces Found")
+                .font(.headline)
+
+            Text("Your recent activity traces look clean.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
+    }
+
     // MARK: - Actions
 
     private func scanPrivacy() async {
+        guard !isScanning else { return }
         isScanning = true
         privacyItems = []
         selectedCategories = []
         errorMessage = nil
 
-        defer { isScanning = false }
+        defer {
+            isScanning = false
+            hasScanned = true
+        }
 
         let module = PrivacyModule()
         do {

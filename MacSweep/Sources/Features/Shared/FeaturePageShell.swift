@@ -127,8 +127,7 @@ struct ScanLandingView: View {
                 // Centered focal block (vertically + horizontally), not stretched to the
                 // full detail area. The sidebar-preserving scroll backing lives in
                 // FeaturePageShell (see its body), so this stays a plain centered VStack
-                // and composes correctly whether it's the whole page or embedded under
-                // other content (e.g. Privacy's Quick Actions).
+                // and composes cleanly as a feature page's scan-only starting state.
                 VStack(spacing: 32) {
                     HStack(alignment: .center, spacing: 40) {
                         VStack(alignment: .leading, spacing: 20) {

@@ -95,8 +95,28 @@ final class AppState: ObservableObject {
         selectedItems = Set(scanResults.map(\.id))
     }
 
+    func selectRecommended() {
+        selectedItems = smartCareSummary?.recommendedCleanupItemIDs ?? []
+    }
+
     func deselectAll() {
         selectedItems.removeAll()
+    }
+
+    func selectItems(withIDs ids: Set<CleanupItem.ID>) {
+        selectedItems.formUnion(ids)
+    }
+
+    func deselectItems(withIDs ids: Set<CleanupItem.ID>) {
+        selectedItems.subtract(ids)
+    }
+
+    func toggleSelection(for item: CleanupItem) {
+        if selectedItems.contains(item.id) {
+            selectedItems.remove(item.id)
+        } else {
+            selectedItems.insert(item.id)
+        }
     }
 
     var selectedSize: Int64 {
