@@ -8,10 +8,12 @@ import AppKit
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
+    private static let sharedAppState = AppState()
+    private static var fallbackMainWindow: NSWindow?
 
-    let appState = AppState()
     private var windowObserver: Any?
-    private var fallbackMainWindow: NSWindow?
+
+    var appState: AppState { Self.sharedAppState }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -41,6 +43,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleWindowClose(_ notification: Notification) {
         guard let closedWindow = notification.object as? NSWindow else { return }
+        if closedWindow == Self.fallbackMainWindow {
+            Self.fallbackMainWindow = nil
+        }
 
         // Check if this is a main window (not menu bar panel)
         guard closedWindow.level == .normal,
@@ -104,10 +109,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        guard let delegate = NSApplication.shared.delegate as? AppDelegate else {
-            return false
-        }
-
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: mainWindowLaunchSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -124,12 +125,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isRestorable = false
         window.contentViewController = NSHostingController(
             rootView: ContentView()
-                .environmentObject(delegate.appState)
+                .environmentObject(sharedAppState)
         )
         window.setContentSize(mainWindowLaunchSize)
         window.center()
 
-        delegate.fallbackMainWindow = window
+        fallbackMainWindow = window
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
