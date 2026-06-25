@@ -14,13 +14,14 @@ struct MacSweepApp: App {
     /// reopening the main window instantiates a fresh view with its own `@State`
     /// — a static flag dedupes across every window instance, not just one.
     @MainActor private static var didRunLaunchSideEffects = false
+    private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
     var body: some Scene {
         // Default launch window.
         WindowGroup {
             mainWindowContent
         }
-        .defaultSize(width: 1040, height: 700)
+        .defaultSize(width: Self.mainWindowLaunchSize.width, height: Self.mainWindowLaunchSize.height)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -29,7 +30,7 @@ struct MacSweepApp: App {
         WindowGroup(id: "main") {
             mainWindowContent
         }
-        .defaultSize(width: 1040, height: 700)
+        .defaultSize(width: Self.mainWindowLaunchSize.width, height: Self.mainWindowLaunchSize.height)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -56,7 +57,7 @@ struct MacSweepApp: App {
             // Open compact and centered every launch (CleanMyMac-style), instead of
             // restoring whatever — often full-height — frame the window was last
             // dragged to.
-            .background(MainWindowChromeConfigurator(size: CGSize(width: 1040, height: 700)))
+            .background(MainWindowChromeConfigurator(size: Self.mainWindowLaunchSize))
             .sheet(isPresented: $showingOnboarding) {
                 OnboardingView(isPresented: $showingOnboarding)
             }
@@ -71,8 +72,16 @@ struct MacSweepApp: App {
                 // instantiates this content (reopening the closed main window).
                 guard !Self.didRunLaunchSideEffects else { return }
                 Self.didRunLaunchSideEffects = true
+
+                #if DEBUG
+                // Debug relaunches must be passive. Registering the scheduler can
+                // immediately run an overdue full scan, which touches Desktop and
+                // other TCC-protected folders before the developer clicks anything.
+                return
+                #else
                 ScanScheduler.shared.register()
                 NotificationManager.shared.requestPermission()
+                #endif
             }
             .onChange(of: showingOnboarding) { newValue in
                 if !newValue {

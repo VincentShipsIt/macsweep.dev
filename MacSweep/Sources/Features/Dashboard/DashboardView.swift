@@ -72,6 +72,7 @@ struct DashboardView: View {
             .listStyle(.inset)
             .macSweepListSurface()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -349,7 +350,7 @@ struct DashboardView: View {
         .popover(isPresented: binding(for: .storage), arrowEdge: .trailing) {
             StorageDetailView(monitor: monitor)
                 .environmentObject(appState)
-                .frame(width: 380, height: 450)
+                .dashboardPopoverContent()
         }
 
         Button {
@@ -368,7 +369,7 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .memory), arrowEdge: .trailing) {
             MemoryDetailView(monitor: monitor)
-                .frame(width: 380, height: 500)
+                .dashboardPopoverContent()
         }
 
         Button {
@@ -386,7 +387,7 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .battery), arrowEdge: .trailing) {
             BatteryDetailView(monitor: monitor)
-                .frame(width: 380, height: 450)
+                .dashboardPopoverContent()
         }
 
         Button {
@@ -405,7 +406,7 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .cpu), arrowEdge: .trailing) {
             CPUDetailView(monitor: monitor)
-                .frame(width: 380, height: 480)
+                .dashboardPopoverContent()
         }
 
         Button {
@@ -421,7 +422,7 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .network), arrowEdge: .trailing) {
             NetworkDetailView(monitor: monitor)
-                .frame(width: 380, height: 420)
+                .dashboardPopoverContent()
         }
 
         Button {
@@ -439,10 +440,8 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .devices), arrowEdge: .trailing) {
-            ScrollView {
-                ConnectedDevicesDetailView(monitor: monitor)
-            }
-            .frame(width: 380, height: 360)
+            ConnectedDevicesDetailView(monitor: monitor)
+                .dashboardScrollablePopoverContent()
         }
 
         SystemStatusRow(
@@ -606,6 +605,27 @@ struct DashboardView: View {
         case .warning: return .orange
         case .critical: return .red
         }
+    }
+}
+
+private enum DashboardPopoverLayout {
+    static let width: CGFloat = 380
+    static let maxScrollableHeight: CGFloat = 620
+}
+
+private extension View {
+    func dashboardPopoverContent() -> some View {
+        frame(width: DashboardPopoverLayout.width)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    func dashboardScrollablePopoverContent(maxHeight: CGFloat = DashboardPopoverLayout.maxScrollableHeight) -> some View {
+        ScrollView {
+            self
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(width: DashboardPopoverLayout.width)
+        .frame(maxHeight: maxHeight)
     }
 }
 

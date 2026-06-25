@@ -5,6 +5,12 @@ import AppKit
 struct FullDiskAccess {
     /// Check if the app has Full Disk Access
     static var hasAccess: Bool {
+        #if DEBUG
+        // Keep development relaunches passive. The explicit "Grant Access"
+        // button still opens System Settings, but simply refreshing the debug app
+        // should not probe protected locations and risk another TCC prompt.
+        return false
+        #else
         // Try to read a protected file that requires FDA
         let testPaths = [
             FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Safari/History.db"),
@@ -25,6 +31,7 @@ struct FullDiskAccess {
         }
 
         return false
+        #endif
     }
 
     /// Open System Preferences to the Full Disk Access pane

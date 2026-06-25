@@ -91,9 +91,9 @@ struct MenuBarView: View {
 
     private var systemOverviewGrid: some View {
         LazyVGrid(columns: [
-            GridItem(.flexible()),
+            GridItem(.flexible(), spacing: MenuBarStatCardLayout.gridSpacing),
             GridItem(.flexible())
-        ], spacing: 12) {
+        ], spacing: MenuBarStatCardLayout.gridSpacing) {
             // Storage
             SystemStatCard(
                 icon: "internaldrive",
@@ -366,6 +366,12 @@ struct MenuBarView: View {
 
 // MARK: - System Stat Card
 
+private enum MenuBarStatCardLayout {
+    static let height: CGFloat = 92
+    static let gridSpacing: CGFloat = 12
+    static let footerHeight: CGFloat = 20
+}
+
 struct SystemStatCard: View {
     let icon: String
     let title: String
@@ -379,10 +385,10 @@ struct SystemStatCard: View {
     var onTap: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top) {
                 Image(systemName: icon)
-                    .font(.title3)
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(accentColor)
 
                 Spacer()
@@ -395,36 +401,52 @@ struct SystemStatCard: View {
                 }
             }
 
-            Text(title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .lineLimit(1)
-
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(accentColor)
-                .lineLimit(1)
-
-            if let secondary = secondarySubtitle {
-                Text(secondary)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Text(subtitle)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(accentColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
 
-            if let label = actionLabel, let action = action {
-                Button(label, action: action)
-                    .font(.caption2)
-                    .glassButton()
-                    .controlSize(.small)
-            }
+            Spacer(minLength: 0)
+
+            footer
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: MenuBarStatCardLayout.height, maxHeight: MenuBarStatCardLayout.height, alignment: .topLeading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())
         .onTapGesture {
             onTap?()
+        }
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        if let secondary = secondarySubtitle {
+            Text(secondary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(height: MenuBarStatCardLayout.footerHeight, alignment: .leading)
+        } else if let label = actionLabel, let action = action {
+            Button(label, action: action)
+                .font(.caption2)
+                .glassButton()
+                .controlSize(.small)
+                .frame(height: MenuBarStatCardLayout.footerHeight, alignment: .leading)
+        } else {
+            Color.clear
+                .frame(height: MenuBarStatCardLayout.footerHeight)
         }
     }
 }
