@@ -39,7 +39,7 @@ struct MacSweepApp: App {
             MenuBarView()
                 .environmentObject(appDelegate.appState)
         } label: {
-            Label("MacSweep", image: "MenuBarIcon")
+            MacSweepMenuBarLabel()
         }
         .menuBarExtraStyle(.window)
 
@@ -85,6 +85,30 @@ struct MacSweepApp: App {
             .onChange(of: showingOnboarding) { newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
+                }
+            }
+    }
+}
+
+private struct MacSweepMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    @State private var didRequestInitialWindow = false
+
+    var body: some View {
+        Label("MacSweep", image: "MenuBarIcon")
+            .task {
+                guard !didRequestInitialWindow else { return }
+                didRequestInitialWindow = true
+
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                await MainActor.run {
+                    guard !AppDelegate.focusMainWindow() else { return }
+                    openWindow(id: "main")
+                }
+
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                await MainActor.run {
+                    _ = AppDelegate.focusMainWindow()
                 }
             }
     }
