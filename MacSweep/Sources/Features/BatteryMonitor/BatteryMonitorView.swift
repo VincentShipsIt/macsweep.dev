@@ -113,6 +113,7 @@ struct BatteryMonitorView: View {
             }
         }
         .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .macSweepPanel()
     }
 
@@ -155,6 +156,7 @@ struct BatteryMonitorView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .macSweepPanel()
     }
 

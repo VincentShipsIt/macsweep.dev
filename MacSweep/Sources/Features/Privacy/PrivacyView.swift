@@ -49,6 +49,7 @@ struct PrivacyView: View {
                             ],
                             illustration: "hand.raised.fingers.spread",
                             isScanning: isScanning,
+                            hidesPageChrome: false,
                             action: { Task { await scanPrivacy() } }
                         )
                     } else {
@@ -341,7 +342,7 @@ struct QuickActionCard: View {
                     .font(.caption)
                     .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
         }
