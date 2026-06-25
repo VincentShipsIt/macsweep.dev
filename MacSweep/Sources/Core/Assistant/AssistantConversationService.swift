@@ -547,6 +547,18 @@ final class AssistantCoordinator: ObservableObject {
         }
     }
 
+    @discardableResult
+    func saveProviderConfiguration(_ config: AssistantProvidersConfiguration) async -> Bool {
+        do {
+            try await repository.saveProviders(config)
+            await reload()
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     var enabledTargets: [AssistantScanTarget] {
         watchlistRules
             .filter(\.enabled)
