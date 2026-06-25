@@ -6,7 +6,15 @@ import AppKit
 /// point in `MacSweepApp.swift`) so it can be compiled into tooling — e.g. the
 /// headless snapshot renderer — that supplies its own `@main`.
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private static var appStateProvider: (() -> AppState?)?
+    private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
+
     private var windowObserver: Any?
+    private var fallbackMainWindow: NSWindow?
+
+    static func configure(appState: AppState) {
+        appStateProvider = { [weak appState] in appState }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -19,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] notification in
             self?.handleWindowClose(notification)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            _ = AppDelegate.openMainWindowIfNeeded()
         }
     }
 
@@ -53,7 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Dock re-open should recover minimized or hidden windows instead of
         // leaving the app active with no visible surface.
-        AppDelegate.focusMainWindow()
+        _ = AppDelegate.openMainWindowIfNeeded()
         return true
     }
 
@@ -81,6 +93,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.deminiaturize(nil)
         }
 
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        return true
+    }
+
+    @discardableResult
+    static func openMainWindowIfNeeded() -> Bool {
+        if focusMainWindow() {
+            return true
+        }
+
+        guard let delegate = NSApplication.shared.delegate as? AppDelegate,
+              let appState = appStateProvider?() else {
+            return false
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: mainWindowLaunchSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "MacSweep"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.titlebarSeparatorStyle = .none
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.isRestorable = false
+        window.contentViewController = NSHostingController(
+            rootView: ContentView()
+                .environmentObject(appState)
+        )
+        window.setContentSize(mainWindowLaunchSize)
+        window.center()
+
+        delegate.fallbackMainWindow = window
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)

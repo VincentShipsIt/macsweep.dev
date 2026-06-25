@@ -4,7 +4,7 @@ import AppKit
 @main
 struct MacSweepApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var appState = AppState()
+    @StateObject private var appState: AppState
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showingOnboarding = false
 
@@ -15,6 +15,12 @@ struct MacSweepApp: App {
     /// — a static flag dedupes across every window instance, not just one.
     @MainActor private static var didRunLaunchSideEffects = false
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
+
+    init() {
+        let appState = AppState()
+        _appState = StateObject(wrappedValue: appState)
+        AppDelegate.configure(appState: appState)
+    }
 
     var body: some Scene {
         // Default launch window.
