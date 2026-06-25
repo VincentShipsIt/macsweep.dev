@@ -4,7 +4,6 @@ import AppKit
 @main
 struct MacSweepApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var appState: AppState
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showingOnboarding = false
 
@@ -15,12 +14,6 @@ struct MacSweepApp: App {
     /// — a static flag dedupes across every window instance, not just one.
     @MainActor private static var didRunLaunchSideEffects = false
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
-
-    init() {
-        let appState = AppState()
-        _appState = StateObject(wrappedValue: appState)
-        AppDelegate.configure(appState: appState)
-    }
 
     var body: some Scene {
         // Default launch window.
@@ -44,7 +37,7 @@ struct MacSweepApp: App {
         // Menu bar widget
         MenuBarExtra {
             MenuBarView()
-                .environmentObject(appState)
+                .environmentObject(appDelegate.appState)
         } label: {
             Label("MacSweep", image: "MenuBarIcon")
         }
@@ -53,13 +46,13 @@ struct MacSweepApp: App {
         // Settings window
         Settings {
             SettingsView()
-                .environmentObject(appState)
+                .environmentObject(appDelegate.appState)
         }
     }
 
     private var mainWindowContent: some View {
         ContentView()
-            .environmentObject(appState)
+            .environmentObject(appDelegate.appState)
             // Open compact and centered every launch (CleanMyMac-style), instead of
             // restoring whatever — often full-height — frame the window was last
             // dragged to.

@@ -5,16 +5,13 @@ import AppKit
 /// lifecycle observation. Kept in its own file (separate from the `@main` entry
 /// point in `MacSweepApp.swift`) so it can be compiled into tooling — e.g. the
 /// headless snapshot renderer — that supplies its own `@main`.
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private static var appStateProvider: (() -> AppState?)?
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
+    let appState = AppState()
     private var windowObserver: Any?
     private var fallbackMainWindow: NSWindow?
-
-    static func configure(appState: AppState) {
-        appStateProvider = { [weak appState] in appState }
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -26,7 +23,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleWindowClose(notification)
+            Task { @MainActor in
+                self?.handleWindowClose(notification)
+            }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -105,8 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        guard let delegate = NSApplication.shared.delegate as? AppDelegate,
-              let appState = appStateProvider?() else {
+        guard let delegate = NSApplication.shared.delegate as? AppDelegate else {
             return false
         }
 
@@ -126,7 +124,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isRestorable = false
         window.contentViewController = NSHostingController(
             rootView: ContentView()
-                .environmentObject(appState)
+                .environmentObject(delegate.appState)
         )
         window.setContentSize(mainWindowLaunchSize)
         window.center()
