@@ -15,6 +15,14 @@ struct MacSweepApp: App {
     @MainActor private static var didRunLaunchSideEffects = false
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
+    init() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Task { @MainActor in
+                _ = AppDelegate.openMainWindowIfNeeded()
+            }
+        }
+    }
+
     var body: some Scene {
         // Default launch window.
         WindowGroup {
