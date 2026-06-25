@@ -503,6 +503,11 @@ struct SettingsView: View {
                     Label("General", systemImage: "gear")
                 }
 
+            CompanionSettingsView()
+                .tabItem {
+                    Label("Companion", systemImage: "rectangle.grid.2x2")
+                }
+
             SafetySettingsView()
                 .tabItem {
                     Label("Safety", systemImage: "shield")
@@ -552,6 +557,41 @@ struct GeneralSettingsView: View {
             }
         }
         .padding()
+    }
+}
+
+struct CompanionSettingsView: View {
+    @AppStorage(CompanionToolbarPreferences.storageCardVisible) private var storageCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.memoryCardVisible) private var memoryCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.batteryCardVisible) private var batteryCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.cpuCardVisible) private var cpuCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.networkCardVisible) private var networkCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.devicesCardVisible) private var devicesCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.smartCareCardVisible) private var smartCareCardVisible = true
+
+    var body: some View {
+        Form {
+            Section("Toolbar Cards") {
+                ForEach(CompanionToolbarCard.allCases) { card in
+                    Toggle(isOn: binding(for: card)) {
+                        Label(card.title, systemImage: card.icon)
+                    }
+                }
+            }
+        }
+        .padding()
+    }
+
+    private func binding(for card: CompanionToolbarCard) -> Binding<Bool> {
+        switch card {
+        case .storage: return $storageCardVisible
+        case .memory: return $memoryCardVisible
+        case .battery: return $batteryCardVisible
+        case .cpu: return $cpuCardVisible
+        case .network: return $networkCardVisible
+        case .devices: return $devicesCardVisible
+        case .smartCare: return $smartCareCardVisible
+        }
     }
 }
 
