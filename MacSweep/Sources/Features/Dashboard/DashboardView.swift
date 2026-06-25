@@ -10,6 +10,7 @@ struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
     @State private var expandedWidget: WidgetType? = nil
+    @State private var isCleanupReviewExpanded = false
     @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
 
@@ -53,6 +54,8 @@ struct DashboardView: View {
                             }
                         }
                     }
+
+                    cleanupReviewRows
                 }
 
                 Section("Recommendations") {
@@ -86,6 +89,11 @@ struct DashboardView: View {
         .onAppear {
             hasFullDiskAccess = FullDiskAccess.hasAccess
         }
+        .onChange(of: appState.isScanning) { _, isScanning in
+            if !isScanning && !appState.scanResults.isEmpty {
+                isCleanupReviewExpanded = false
+            }
+        }
     }
 
     private var rescanButton: some View {
@@ -109,7 +117,7 @@ struct DashboardView: View {
             Image(systemName: "trash")
         }
         .disabled(appState.selectedItems.isEmpty || appState.isScanning)
-        .help("Clean Recommended")
+        .help("Clean Selected")
     }
 
     // MARK: - FDA Banner
@@ -190,7 +198,7 @@ struct DashboardView: View {
                             _ = try? await appState.deleteSelected()
                         }
                     } label: {
-                        Label("Clean Recommended", systemImage: "trash")
+                        Label("Clean Selected", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -247,6 +255,95 @@ struct DashboardView: View {
             return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."
         }
         return "Scans junk, large files, duplicates, similar photos, developer artifacts, and cloud storage waste."
+    }
+
+    @ViewBuilder
+    private var cleanupReviewRows: some View {
+        if !appState.scanResults.isEmpty {
+            CleanupReviewSummaryRow(
+                isExpanded: isCleanupReviewExpanded,
+                selectedCount: selectedCleanupItems.count,
+                totalCount: appState.scanResults.count,
+                selectedSizeText: selectedCleanupSizeText
+            ) {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isCleanupReviewExpanded.toggle()
+                }
+            }
+
+            if isCleanupReviewExpanded {
+                CleanupReviewBulkActionsRow(
+                    selectedCount: selectedCleanupItems.count,
+                    totalCount: appState.scanResults.count,
+                    selectedSizeText: selectedCleanupSizeText,
+                    hasRecommendedItems: !(appState.smartCareSummary?.recommendedCleanupItemIDs.isEmpty ?? true),
+                    selectRecommended: appState.selectRecommended,
+                    selectAll: appState.selectAll,
+                    selectNone: appState.deselectAll
+                )
+
+                ForEach(cleanupReviewGroups) { group in
+                    CleanupReviewGroupHeader(
+                        group: group,
+                        toggleSelection: {
+                            if group.isFullySelected {
+                                appState.deselectItems(withIDs: group.itemIDs)
+                            } else {
+                                appState.selectItems(withIDs: group.itemIDs)
+                            }
+                        }
+                    )
+
+                    ForEach(group.items) { item in
+                        CleanupReviewItemRow(
+                            item: item,
+                            isSelected: appState.selectedItems.contains(item.id)
+                        ) {
+                            appState.toggleSelection(for: item)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectedCleanupItems: [CleanupItem] {
+        appState.scanResults.filter { appState.selectedItems.contains($0.id) }
+    }
+
+    private var selectedCleanupSizeText: String {
+        ByteCountFormatter.string(
+            fromByteCount: selectedCleanupItems.reduce(0) { $0 + $1.size },
+            countStyle: .file
+        )
+    }
+
+    private var cleanupReviewGroups: [CleanupReviewGroup] {
+        Dictionary(grouping: appState.scanResults, by: \.module)
+            .map { moduleID, items in
+                let sortedItems = items.sorted { lhs, rhs in
+                    if lhs.size == rhs.size {
+                        return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
+                    }
+                    return lhs.size > rhs.size
+                }
+                let selectedItems = sortedItems.filter { appState.selectedItems.contains($0.id) }
+
+                return CleanupReviewGroup(
+                    id: moduleID,
+                    title: sortedItems.first?.moduleName ?? moduleID.replacingOccurrences(of: "-", with: " ").capitalized,
+                    items: sortedItems,
+                    selectedCount: selectedItems.count,
+                    selectedBytes: selectedItems.reduce(0) { $0 + $1.size },
+                    totalBytes: sortedItems.reduce(0) { $0 + $1.size }
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.totalBytes == rhs.totalBytes {
+                    return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                }
+                return lhs.totalBytes > rhs.totalBytes
+            }
     }
 
     // MARK: - Recommendations
@@ -726,6 +823,215 @@ struct SmartCareFindingRow: View {
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct CleanupReviewGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [CleanupItem]
+    let selectedCount: Int
+    let selectedBytes: Int64
+    let totalBytes: Int64
+
+    var itemIDs: Set<CleanupItem.ID> {
+        Set(items.map(\.id))
+    }
+
+    var isFullySelected: Bool {
+        selectedCount == items.count && !items.isEmpty
+    }
+
+    var formattedSelectedBytes: String {
+        ByteCountFormatter.string(fromByteCount: selectedBytes, countStyle: .file)
+    }
+}
+
+private struct CleanupReviewSummaryRow: View {
+    let isExpanded: Bool
+    let selectedCount: Int
+    let totalCount: Int
+    let selectedSizeText: String
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 12) {
+                DashboardRowIcon(systemName: "checklist.checked", tint: .accentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Selected for Cleanup")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text(summaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                Text(selectedSizeText)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(selectedCount == 0 ? .secondary : .primary)
+                    .monospacedDigit()
+
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Selected for cleanup")
+        .accessibilityValue(summaryText)
+        .help(isExpanded ? "Hide cleanup item details" : "Review cleanup item details")
+    }
+
+    private var summaryText: String {
+        if selectedCount == 0 {
+            return "No items selected. Expand to review \(totalCount) scan results."
+        }
+        return "\(selectedCount) of \(totalCount) items selected. Expand to review details."
+    }
+}
+
+private struct CleanupReviewBulkActionsRow: View {
+    let selectedCount: Int
+    let totalCount: Int
+    let selectedSizeText: String
+    let hasRecommendedItems: Bool
+    let selectRecommended: () -> Void
+    let selectAll: () -> Void
+    let selectNone: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            DashboardRowIcon(systemName: "slider.horizontal.3", tint: .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(selectedCount) of \(totalCount) selected")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                Text("Queued cleanup: \(selectedSizeText)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 16)
+
+            HStack(spacing: 10) {
+                Button("Recommended", action: selectRecommended)
+                    .disabled(!hasRecommendedItems)
+
+                Button("All", action: selectAll)
+
+                Button("None", action: selectNone)
+                    .disabled(selectedCount == 0)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct CleanupReviewGroupHeader: View {
+    let group: CleanupReviewGroup
+    let toggleSelection: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Spacer()
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+
+                Text("\(group.selectedCount) of \(group.items.count) selected")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer(minLength: 16)
+
+            Text(group.formattedSelectedBytes)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(group.selectedCount == 0 ? .secondary : .primary)
+                .monospacedDigit()
+
+            Button(group.isFullySelected ? "Clear" : "Select", action: toggleSelection)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+}
+
+private struct CleanupReviewItemRow: View {
+    let item: CleanupItem
+    let isSelected: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .frame(width: 24)
+
+                Image(systemName: item.icon)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.displayName)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(item.path.path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 16)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(item.formattedSize)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+
+                    if let date = item.lastModified {
+                        Text(date, style: .relative)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.displayName)
+        .accessibilityValue(isSelected ? "Selected for cleanup" : "Not selected")
+        .help(item.path.path)
     }
 }
 

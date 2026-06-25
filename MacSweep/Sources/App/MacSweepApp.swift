@@ -106,6 +106,9 @@ private struct MainWindowChromeConfigurator: NSViewRepresentable {
             window.titleVisibility = .visible
             window.titlebarAppearsTransparent = true
             window.toolbarStyle = .unified
+            window.titlebarSeparatorStyle = .none
+            window.isOpaque = false
+            window.backgroundColor = .clear
 
             // Stop AppKit/SwiftUI from restoring a remembered frame over ours.
             window.isRestorable = false
