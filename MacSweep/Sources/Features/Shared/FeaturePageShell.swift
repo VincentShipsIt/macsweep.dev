@@ -1,11 +1,9 @@
 import SwiftUI
 
-/// One shared shell for every feature page so they stop drifting (dark vs gray
-/// headers, ad-hoc padding). The header is transparent — it sits on the app's
-/// dark detail background (`MacSweepDetailBackground` from ContentView) — with a
-/// title + one-line subtitle and an optional SINGLE trailing action. Page-level
-/// primary actions belong in the content (e.g. `ScanLandingView`), not here, so
-/// we never show a header CTA *and* a body CTA for the same thing.
+/// One shared shell for every feature page so they stop drifting. Content pages
+/// put title, subtitle, and one optional trailing action in the native titlebar;
+/// pre-scan landing views opt out because their hero already carries the page
+/// title and call to action.
 struct FeaturePageShell<Content: View>: View {
     let title: String
     let subtitle: String?
@@ -21,6 +19,7 @@ struct FeaturePageShell<Content: View>: View {
     /// (e.g. `scrolls: items.isEmpty`).
     var scrolls: Bool = false
     @ViewBuilder var content: () -> Content
+    @State private var hidesTitlebarChrome = false
 
     init(title: String,
          subtitle: String? = nil,
@@ -35,49 +34,45 @@ struct FeaturePageShell<Content: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                if let trailing {
+        contentContainer
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.clear)
+        .navigationTitle(hidesTitlebarChrome ? "" : title)
+        .navigationSubtitle(hidesTitlebarChrome ? "" : (subtitle ?? ""))
+        .toolbar {
+            if !hidesTitlebarChrome, let trailing {
+                ToolbarItem(placement: .primaryAction) {
                     trailing
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
-
-            Divider()
-                .overlay(MacSweepTheme.divider)
-
-            if scrolls {
-                // GeometryReader + minHeight keeps short/sparse content (a hero)
-                // vertically centered, and lets it scroll if the window is shorter
-                // than the content.
-                GeometryReader { proxy in
-                    ScrollView {
-                        content()
-                            .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                    }
-                }
-            } else {
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.clear)
+        .onPreferenceChange(FeaturePageChromeHiddenPreferenceKey.self) { hidesTitlebarChrome = $0 }
+    }
+
+    @ViewBuilder
+    private var contentContainer: some View {
+        if scrolls {
+            // GeometryReader + minHeight keeps short/sparse content (a hero)
+            // vertically centered, and lets it scroll if the window is shorter
+            // than the content.
+            GeometryReader { proxy in
+                ScrollView {
+                    content()
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                }
+            }
+        } else {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+private struct FeaturePageChromeHiddenPreferenceKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
     }
 }
 
@@ -111,6 +106,7 @@ struct ScanLandingView: View {
     var isScanning: Bool = false
     var progress: Double = 0
     var scanningMessage: String? = nil
+    var hidesPageChrome: Bool = true
     let action: () -> Void
 
     /// Drives the hero's own slide-up + fade entrance. Page switches themselves are
@@ -121,66 +117,69 @@ struct ScanLandingView: View {
     @State private var hasEntered = false
 
     var body: some View {
-        if isScanning {
-            ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
-                .frame(maxWidth: 360)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(40)
-        } else {
-            // Centered focal block (vertically + horizontally), not stretched to the
-            // full detail area. The sidebar-preserving scroll backing lives in
-            // FeaturePageShell (see its body), so this stays a plain centered VStack
-            // and composes correctly whether it's the whole page or embedded under
-            // other content (e.g. Privacy's Quick Actions).
-            VStack(spacing: 32) {
-                HStack(alignment: .center, spacing: 40) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(title)
-                                .font(.system(size: 26, weight: .bold))
-                            Text(description)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+        Group {
+            if isScanning {
+                ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
+                    .frame(maxWidth: 360)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(40)
+            } else {
+                // Centered focal block (vertically + horizontally), not stretched to the
+                // full detail area. The sidebar-preserving scroll backing lives in
+                // FeaturePageShell (see its body), so this stays a plain centered VStack
+                // and composes correctly whether it's the whole page or embedded under
+                // other content (e.g. Privacy's Quick Actions).
+                VStack(spacing: 32) {
+                    HStack(alignment: .center, spacing: 40) {
+                        VStack(alignment: .leading, spacing: 20) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(title)
+                                    .font(.system(size: 26, weight: .bold))
+                                Text(description)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
 
-                        ForEach(benefits) { benefit in
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: benefit.icon)
-                                    .font(.title3)
-                                    .foregroundStyle(MacSweepTheme.accent)
-                                    .frame(width: 26)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(benefit.title)
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                    Text(benefit.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
+                            ForEach(benefits) { benefit in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: benefit.icon)
+                                        .font(.title3)
+                                        .foregroundStyle(MacSweepTheme.accent)
+                                        .frame(width: 26)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(benefit.title)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                        Text(benefit.detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
                             }
                         }
+                        .frame(maxWidth: 420, alignment: .leading)
+
+                        Image(systemName: illustration ?? icon)
+                            .font(.system(size: 128, weight: .ultraLight))
+                            .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
                     }
-                    .frame(maxWidth: 420, alignment: .leading)
 
-                    Image(systemName: illustration ?? icon)
-                        .font(.system(size: 128, weight: .ultraLight))
-                        .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
+                    CircularScanButton(action: action)
                 }
-
-                CircularScanButton(action: action)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(40)
-            // Self-contained entrance: rise + fade in whenever the hero appears.
-            .offset(y: hasEntered ? 0 : 28)
-            .opacity(hasEntered ? 1 : 0)
-            .onAppear {
-                hasEntered = false
-                withAnimation(.easeOut(duration: 0.4)) { hasEntered = true }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(40)
+                // Self-contained entrance: rise + fade in whenever the hero appears.
+                .offset(y: hasEntered ? 0 : 28)
+                .opacity(hasEntered ? 1 : 0)
+                .onAppear {
+                    hasEntered = false
+                    withAnimation(.easeOut(duration: 0.4)) { hasEntered = true }
+                }
             }
         }
+        .preference(key: FeaturePageChromeHiddenPreferenceKey.self, value: hidesPageChrome)
     }
 }
 
