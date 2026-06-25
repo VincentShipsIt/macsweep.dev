@@ -61,6 +61,12 @@ actor AssistantConfigRepository {
             .write(to: watchlistsURL, atomically: true, encoding: .utf8)
     }
 
+    func saveProviders(_ config: AssistantProvidersConfiguration) throws {
+        try bootstrapIfNeeded()
+        try AssistantTOMLCodec.renderProviders(config)
+            .write(to: providersURL, atomically: true, encoding: .utf8)
+    }
+
     private static func defaultRootURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Application Support/MacSweep", directoryHint: .isDirectory)
