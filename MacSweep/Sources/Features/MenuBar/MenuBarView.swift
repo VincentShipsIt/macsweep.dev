@@ -8,22 +8,13 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var expandedWidget: WidgetType?
     @State private var menuWindow: NSWindow?
-
-    private let shortcutFeatures: [Feature] = [
-        .assistant,
-        .systemJunk,
-        .trashBins,
-        .devTools,
-        .privacy,
-        .optimization,
-        .batteryMonitor,
-        .cloudCleanup,
-        .uninstaller,
-        .spaceLens,
-        .largeOldFiles,
-        .duplicateFiles,
-        .similarPhotos,
-    ]
+    @AppStorage(CompanionToolbarPreferences.storageCardVisible) private var storageCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.memoryCardVisible) private var memoryCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.batteryCardVisible) private var batteryCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.cpuCardVisible) private var cpuCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.networkCardVisible) private var networkCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.devicesCardVisible) private var devicesCardVisible = true
+    @AppStorage(CompanionToolbarPreferences.smartCareCardVisible) private var smartCareCardVisible = true
 
     var body: some View {
         // The main overview is a fixed-size window, so it NEVER moves. Tapping a
@@ -49,15 +40,12 @@ struct MenuBarView: View {
 
             systemOverviewGrid
 
-            Divider()
-                .padding(.vertical, 6)
+            if showsQuickActions {
+                Divider()
+                    .padding(.vertical, 6)
 
-            quickActions
-
-            Divider()
-                .padding(.vertical, 6)
-
-            moduleShortcuts
+                quickActions
+            }
 
             Divider()
                 .padding(.vertical, 6)
@@ -90,89 +78,22 @@ struct MenuBarView: View {
     // MARK: - System Overview Grid
 
     private var systemOverviewGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: MenuBarStatCardLayout.gridSpacing),
-            GridItem(.flexible())
-        ], spacing: MenuBarStatCardLayout.gridSpacing) {
-            // Storage
-            SystemStatCard(
-                icon: "internaldrive",
-                title: "Macintosh HD",
-                subtitle: "Available: \(monitor.diskUsage?.formattedFree ?? "...")",
-                accentColor: .blue,
-                onTap: { toggleWidget(.storage) }
-            )
-
-            // Memory
-            SystemStatCard(
-                icon: "memorychip",
-                title: "Memory",
-                subtitle: "Available: \(monitor.memoryUsage.formattedAvailable)",
-                accentColor: memoryColor,
-                actionLabel: "Free Up",
-                action: {
-                    Task {
-                        try? await monitor.freeUpMemory()
+        Group {
+            if visibleToolbarCards.isEmpty {
+                Label("No companion cards enabled", systemImage: "eye.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            } else {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: MenuBarStatCardLayout.gridSpacing),
+                    GridItem(.flexible())
+                ], spacing: MenuBarStatCardLayout.gridSpacing) {
+                    ForEach(visibleToolbarCards) { card in
+                        companionToolbarCard(card)
                     }
-                },
-                onTap: { toggleWidget(.memory) }
-            )
-
-            // Battery
-            SystemStatCard(
-                icon: monitor.batteryInfo.icon,
-                title: "Battery",
-                subtitle: monitor.batteryInfo.statusText,
-                value: monitor.batteryInfo.hasBattery ? "\(monitor.batteryInfo.percentage)%" : "AC",
-                accentColor: batteryColor,
-                onTap: { toggleWidget(.battery) }
-            )
-
-            // CPU
-            SystemStatCard(
-                icon: "cpu",
-                title: "CPU",
-                subtitle: monitor.cpuUsage.formattedLoad,
-                value: monitor.cpuUsage.formattedTemperature,
-                valueColor: cpuTempColor,
-                accentColor: .orange,
-                onTap: { toggleWidget(.cpu) }
-            )
-
-            // Wi-Fi
-            SystemStatCard(
-                icon: "wifi",
-                title: monitor.networkUsage.ssid ?? "Wi-Fi",
-                subtitle: "↓ \(monitor.networkUsage.formattedDownload)",
-                secondarySubtitle: "↑ \(monitor.networkUsage.formattedUpload)",
-                accentColor: .green,
-                onTap: { toggleWidget(.network) }
-            )
-
-            // Connected Devices
-            SystemStatCard(
-                icon: "antenna.radiowaves.left.and.right",
-                title: "Devices",
-                subtitle: connectedDevicesSubtitle,
-                value: lowestDeviceBattery.map { "\($0)%" },
-                accentColor: devicesColor,
-                onTap: { toggleWidget(.devices) }
-            )
-
-            // Quick Scan
-            SystemStatCard(
-                icon: "magnifyingglass",
-                title: "Smart Care",
-                subtitle: appState.isScanning ? "\(Int(appState.scanProgress * 100))% complete" : "Run one-click cleanup",
-                accentColor: .purple,
-                actionLabel: appState.isScanning ? nil : "Scan",
-                action: {
-                    Task {
-                        await appState.quickScan()
-                    }
-                },
-                onTap: { navigateToFeature(.smartScan) }
-            )
+                }
+            }
         }
     }
 
@@ -220,37 +141,6 @@ struct MenuBarView: View {
         }
     }
 
-    private var moduleShortcuts: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Modules")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button("Smart Care") {
-                    navigateToFeature(.smartScan)
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.blue)
-            }
-
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 8) {
-                ForEach(shortcutFeatures, id: \.self) { feature in
-                    ModuleShortcutButton(feature: feature) {
-                        navigateToFeature(feature)
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Footer
 
     private var footer: some View {
@@ -275,6 +165,103 @@ struct MenuBarView: View {
     }
 
     // MARK: - Helpers
+
+    private var visibleToolbarCards: [CompanionToolbarCard] {
+        CompanionToolbarCard.allCases.filter { card in
+            switch card {
+            case .storage: return storageCardVisible
+            case .memory: return memoryCardVisible
+            case .battery: return batteryCardVisible
+            case .cpu: return cpuCardVisible
+            case .network: return networkCardVisible
+            case .devices: return devicesCardVisible
+            case .smartCare: return smartCareCardVisible
+            }
+        }
+    }
+
+    private var showsQuickActions: Bool {
+        appState.isScanning || !appState.scanResults.isEmpty || appState.lastCleanup != nil
+    }
+
+    @ViewBuilder
+    private func companionToolbarCard(_ card: CompanionToolbarCard) -> some View {
+        switch card {
+        case .storage:
+            SystemStatCard(
+                icon: card.icon,
+                title: card.title,
+                subtitle: "Available: \(monitor.diskUsage?.formattedFree ?? "...")",
+                accentColor: .blue,
+                onTap: { toggleWidget(.storage) }
+            )
+        case .memory:
+            SystemStatCard(
+                icon: card.icon,
+                title: card.title,
+                subtitle: "Available: \(monitor.memoryUsage.formattedAvailable)",
+                accentColor: memoryColor,
+                actionLabel: "Free Up",
+                action: {
+                    Task {
+                        try? await monitor.freeUpMemory()
+                    }
+                },
+                onTap: { toggleWidget(.memory) }
+            )
+        case .battery:
+            SystemStatCard(
+                icon: monitor.batteryInfo.icon,
+                title: card.title,
+                subtitle: monitor.batteryInfo.statusText,
+                value: monitor.batteryInfo.hasBattery ? "\(monitor.batteryInfo.percentage)%" : "AC",
+                accentColor: batteryColor,
+                onTap: { toggleWidget(.battery) }
+            )
+        case .cpu:
+            SystemStatCard(
+                icon: card.icon,
+                title: card.title,
+                subtitle: monitor.cpuUsage.formattedLoad,
+                value: monitor.cpuUsage.formattedTemperature,
+                valueColor: cpuTempColor,
+                accentColor: .orange,
+                onTap: { toggleWidget(.cpu) }
+            )
+        case .network:
+            SystemStatCard(
+                icon: card.icon,
+                title: monitor.networkUsage.ssid ?? card.title,
+                subtitle: "↓ \(monitor.networkUsage.formattedDownload)",
+                secondarySubtitle: "↑ \(monitor.networkUsage.formattedUpload)",
+                accentColor: .green,
+                onTap: { toggleWidget(.network) }
+            )
+        case .devices:
+            SystemStatCard(
+                icon: card.icon,
+                title: card.title,
+                subtitle: connectedDevicesSubtitle,
+                value: lowestDeviceBattery.map { "\($0)%" },
+                accentColor: devicesColor,
+                onTap: { toggleWidget(.devices) }
+            )
+        case .smartCare:
+            SystemStatCard(
+                icon: card.icon,
+                title: card.title,
+                subtitle: appState.isScanning ? "\(Int(appState.scanProgress * 100))% complete" : "Run one-click cleanup",
+                accentColor: .purple,
+                actionLabel: appState.isScanning ? nil : "Scan",
+                action: {
+                    Task {
+                        await appState.quickScan()
+                    }
+                },
+                onTap: { navigateToFeature(.smartScan) }
+            )
+        }
+    }
 
     private func toggleWidget(_ widget: WidgetType) {
         // Toggle the SEPARATE detail panel. The main window is never resized, so
@@ -448,33 +435,6 @@ struct SystemStatCard: View {
             Color.clear
                 .frame(height: MenuBarStatCardLayout.footerHeight)
         }
-    }
-}
-
-struct ModuleShortcutButton: View {
-    let feature: Feature
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: feature.icon)
-                    .font(.caption)
-                    .frame(width: 14)
-                    .foregroundStyle(.blue)
-
-                Text(feature.rawValue)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
     }
 }
 
