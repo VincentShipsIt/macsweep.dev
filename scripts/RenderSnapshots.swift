@@ -65,6 +65,16 @@ struct SnapshotRenderer {
             FileHandle.standardError.write(Data("rendered \(name) ok=\(ok) bytes=\(bytes)\n".utf8))
         }
 
+        for (slug, view, size) in onboardingVariants() {
+            index += 1
+            let name = String(format: "%02d-%@", index, slug)
+            let url = outDir.appendingPathComponent("\(name).png")
+            let ok = renderToPNG(view, size: size, to: url)
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            results.append((name, ok, bytes))
+            FileHandle.standardError.write(Data("rendered \(name) ok=\(ok) bytes=\(bytes)\n".utf8))
+        }
+
         // Summary line for the shell wrapper to parse.
         let good = results.filter { $0.1 && $0.2 > 5000 }.count
         FileHandle.standardError.write(Data("SNAPSHOT_SUMMARY rendered=\(results.count) usable=\(good) dir=\(outDir.path)\n".utf8))
@@ -130,6 +140,20 @@ struct SnapshotRenderer {
                 appState: AppState()
             )),
         ]
+    }
+
+    @MainActor
+    static func onboardingVariants() -> [(String, AnyView, CGSize)] {
+        let size = CGSize(width: 650, height: 550)
+        let root = OnboardingView(
+            isPresented: .constant(true),
+            initialPage: 2,
+            initialFullDiskAccess: false
+        )
+        .environment(\.colorScheme, .dark)
+        .frame(width: size.width, height: size.height)
+
+        return [("onboarding-full-disk-access", AnyView(root), size)]
     }
 
     // MARK: - Sample data
