@@ -100,7 +100,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
-        return true
+        return window.isVisible
     }
 
     @discardableResult
