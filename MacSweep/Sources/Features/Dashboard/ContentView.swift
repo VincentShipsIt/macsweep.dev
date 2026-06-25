@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
@@ -512,12 +513,17 @@ struct SettingsView: View {
                     Label("Safety", systemImage: "shield")
                 }
 
+            AssistantSettingsView()
+                .tabItem {
+                    Label("Assistant", systemImage: "sparkles")
+                }
+
             AboutView()
                 .tabItem {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 450, height: 360)
+        .frame(width: 560, height: 420)
     }
 }
 
@@ -606,6 +612,252 @@ struct SafetySettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
+    }
+}
+
+struct AssistantSettingsView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var draft = AssistantProvidersConfiguration.default
+    @State private var selectedProvider: AssistantProviderKind = .codex
+    @State private var statusMessage: String?
+    @State private var isSaving = false
+
+    private var assistant: AssistantCoordinator {
+        appState.assistant
+    }
+
+    private var selectedEntry: AssistantProviderConfiguration {
+        draft.providers[selectedProvider]
+            ?? AssistantProvidersConfiguration.default.providers[selectedProvider]
+            ?? AssistantProviderConfiguration(
+                enabled: false,
+                command: selectedProvider.rawValue,
+                model: "",
+                reasoningEffort: "medium"
+            )
+    }
+
+    private var selectedStatus: AssistantProviderStatus? {
+        assistant.providerStatuses.first { $0.provider == selectedProvider }
+    }
+
+    private var validationMessage: String? {
+        guard let defaultEntry = draft.providers[draft.defaultProvider], defaultEntry.enabled else {
+            return "Enable the default provider before saving."
+        }
+
+        for provider in AssistantProviderKind.allCases {
+            guard let entry = draft.providers[provider], entry.enabled else { continue }
+            if entry.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "\(provider.displayName) needs a command."
+            }
+            if entry.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "\(provider.displayName) needs a model."
+            }
+            if entry.reasoningEffort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "\(provider.displayName) needs a reasoning effort."
+            }
+        }
+
+        return nil
+    }
+
+    private var canSave: Bool {
+        !isSaving && validationMessage == nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Form {
+                Picker("Default provider", selection: $draft.defaultProvider) {
+                    ForEach(AssistantProviderKind.allCases) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
+                }
+
+                Picker("Provider", selection: $selectedProvider) {
+                    ForEach(AssistantProviderKind.allCases) { provider in
+                        Text(provider.displayName)
+                            .tag(provider)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Divider()
+
+                Toggle("Enabled", isOn: boolBinding(\.enabled))
+                TextField("Command", text: stringBinding(\.command))
+                TextField("Model", text: stringBinding(\.model))
+
+                Picker("Reasoning", selection: stringBinding(\.reasoningEffort)) {
+                    Text("Low").tag("low")
+                    Text("Medium").tag("medium")
+                    Text("High").tag("high")
+                }
+                .pickerStyle(.segmented)
+
+                providerStatusRow
+
+                if let validationMessage {
+                    Text(validationMessage)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack {
+                Button {
+                    NSWorkspace.shared.open(assistant.configRootURL)
+                } label: {
+                    Label("Config Folder", systemImage: "folder")
+                }
+
+                Spacer()
+
+                Button("Reload") {
+                    reloadDraft()
+                }
+                .disabled(isSaving)
+
+                Button("Reset Defaults") {
+                    draft = AssistantProvidersConfiguration.default
+                    selectedProvider = draft.defaultProvider
+                    statusMessage = nil
+                }
+                .disabled(isSaving)
+
+                Button(isSaving ? "Saving..." : "Save") {
+                    saveDraft()
+                }
+                .disabled(!canSave)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .onAppear(perform: loadDraft)
+        .onChange(of: assistant.providerConfig) { _, newConfig in
+            guard !isSaving else { return }
+            draft = newConfig
+        }
+    }
+
+    @ViewBuilder
+    private var providerStatusRow: some View {
+        if let selectedStatus {
+            LabeledContent("Status") {
+                HStack(spacing: 6) {
+                    Text(selectedStatus.state.rawValue.capitalized)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(statusColor(for: selectedStatus))
+
+                    if let note = selectedStatus.note {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stringBinding(
+        _ keyPath: WritableKeyPath<AssistantProviderConfiguration, String>
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                selectedEntry[keyPath: keyPath]
+            },
+            set: { newValue in
+                var entry = selectedEntry
+                entry[keyPath: keyPath] = newValue
+                draft.providers[selectedProvider] = entry
+                statusMessage = nil
+            }
+        )
+    }
+
+    private func boolBinding(
+        _ keyPath: WritableKeyPath<AssistantProviderConfiguration, Bool>
+    ) -> Binding<Bool> {
+        Binding(
+            get: {
+                selectedEntry[keyPath: keyPath]
+            },
+            set: { newValue in
+                var entry = selectedEntry
+                entry[keyPath: keyPath] = newValue
+                draft.providers[selectedProvider] = entry
+                statusMessage = nil
+            }
+        )
+    }
+
+    private func loadDraft() {
+        draft = assistant.providerConfig
+        selectedProvider = draft.defaultProvider
+        statusMessage = nil
+    }
+
+    private func reloadDraft() {
+        Task { @MainActor in
+            await assistant.reload()
+            loadDraft()
+            statusMessage = "Assistant provider settings reloaded."
+        }
+    }
+
+    private func saveDraft() {
+        Task { @MainActor in
+            isSaving = true
+            let saved = await assistant.saveProviderConfiguration(normalizedDraft())
+            isSaving = false
+
+            if saved {
+                draft = assistant.providerConfig
+                statusMessage = "Assistant provider settings saved."
+            } else {
+                statusMessage = assistant.lastError ?? "Assistant provider settings could not be saved."
+            }
+        }
+    }
+
+    private func normalizedDraft() -> AssistantProvidersConfiguration {
+        var normalized = draft
+        normalized.fallbackOrder = [normalized.defaultProvider]
+            + normalized.fallbackOrder.filter { $0 != normalized.defaultProvider }
+
+        for provider in AssistantProviderKind.allCases {
+            guard var entry = normalized.providers[provider] else { continue }
+            entry.command = entry.command.trimmingCharacters(in: .whitespacesAndNewlines)
+            entry.model = entry.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            entry.reasoningEffort = entry.reasoningEffort.trimmingCharacters(in: .whitespacesAndNewlines)
+            normalized.providers[provider] = entry
+        }
+
+        return normalized
+    }
+
+    private func statusColor(for status: AssistantProviderStatus) -> Color {
+        switch status.state {
+        case .ready:
+            return .green
+        case .installed:
+            return .orange
+        case .unavailable:
+            return .secondary
+        case .failed:
+            return .red
+        }
     }
 }
 

@@ -1,9 +1,32 @@
 import SwiftUI
-import AppKit
 
 struct AssistantView: View {
     @EnvironmentObject var appState: AppState
     @State private var prompt = ""
+    @FocusState private var isComposerFocused: Bool
+
+    private let promptSuggestions = [
+        AssistantPromptSuggestion(
+            icon: "folder.badge.gearshape",
+            title: "Inspect Downloads",
+            prompt: "Inspect ~/Downloads for large old files and safe cleanup candidates."
+        ),
+        AssistantPromptSuggestion(
+            icon: "sparkles.rectangle.stack",
+            title: "Review Caches",
+            prompt: "Plan a safe scan for user caches, browser caches, and service worker data."
+        ),
+        AssistantPromptSuggestion(
+            icon: "scope",
+            title: "Watch a Folder",
+            prompt: "Always watch ~/Library/Logs and suggest safe exclusions."
+        ),
+        AssistantPromptSuggestion(
+            icon: "photo.on.rectangle.angled",
+            title: "Find Similar Photos",
+            prompt: "Look for duplicate and similar photos I can review before deleting."
+        ),
+    ]
 
     private var assistant: AssistantCoordinator {
         appState.assistant
@@ -13,45 +36,101 @@ struct AssistantView: View {
         FeaturePageShell(
             title: "Assistant",
             subtitle: "Plan scans, inspect folders, and maintain watchlists.",
-            trailing: AnyView(
-                Button {
-                    Task {
-                        await appState.runAssistantPlan(watchlistPlan)
-                    }
-                } label: {
-                    Label("Scan Watchlists", systemImage: "scope")
-                }
-                .glassButton(prominent: true)
-                .controlSize(.small)
-                .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
-            )
+            trailing: AnyView(headerActions)
         ) {
-            HSplitView {
-                conversationColumn
-                    .frame(minWidth: 520)
+            conversationColumn
+        }
+    }
 
-                inspectorColumn
-                    .frame(minWidth: 300, idealWidth: 340)
+    private var headerActions: some View {
+        HStack(spacing: 8) {
+            SettingsLink {
+                Label("Assistant Settings", systemImage: "slider.horizontal.3")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .buttonStyle(.plain)
+            .controlSize(.small)
+            .help("Assistant Settings")
+
+            Button {
+                Task {
+                    await appState.runAssistantPlan(watchlistPlan)
+                }
+            } label: {
+                Label("Scan Watchlists", systemImage: "scope")
+                    .font(.caption)
+                    .foregroundStyle(
+                        assistant.enabledTargets.isEmpty || appState.isScanning ? .secondary : MacSweepTheme.accent
+                    )
+            }
+            .buttonStyle(.plain)
+            .controlSize(.small)
+            .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
+            .help("Scan Watchlists")
         }
     }
 
     private var conversationColumn: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(assistant.messages) { message in
-                        AssistantMessageBubble(message: message)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        ForEach(assistant.messages) { message in
+                            AssistantMessageBubble(
+                                message: message,
+                                isScanning: appState.isScanning,
+                                onRunPlan: { plan in
+                                    Task {
+                                        await appState.runAssistantPlan(plan)
+                                    }
+                                },
+                                onSaveRules: { plan in
+                                    Task {
+                                        await assistant.saveRecommendedRules(from: plan)
+                                    }
+                                }
+                            )
+                            .id(message.id)
+
+                            if message.role == .system && assistant.messages.count == 1 {
+                                AssistantPromptSuggestionGrid(
+                                    suggestions: promptSuggestions,
+                                    onSelect: useSuggestion
+                                )
+                            }
+                        }
+
+                        if assistant.isSubmitting {
+                            AssistantThinkingBubble()
+                        }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id("conversation-bottom")
                     }
+                    .frame(maxWidth: 920, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
                 }
-                .padding()
+                .background(MacSweepTheme.panel.opacity(0.45))
+                .onChange(of: assistant.messages.count) {
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: assistant.isSubmitting) {
+                    scrollToBottom(proxy)
+                }
             }
-            .background(MacSweepTheme.panel.opacity(0.65))
 
             Divider()
+                .overlay(MacSweepTheme.divider)
 
             composer
-                .padding()
+                .frame(maxWidth: 920)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
         }
     }
 
@@ -64,51 +143,37 @@ struct AssistantView: View {
                     .lineLimit(2)
             }
 
-            VStack(spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
                 TextField(
-                    "Ask the assistant to plan a scan or inspect a folder…",
+                    "Ask the assistant to plan a scan or inspect a folder...",
                     text: $prompt,
                     axis: .vertical
                 )
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(1...6)
+                .focused($isComposerFocused)
                 .onSubmit {
                     guard !isSendDisabled else { return }
                     sendPrompt()
                 }
 
-                HStack(spacing: 8) {
-                    providerPicker
-
-                    Button {
-                        NSWorkspace.shared.open(assistant.configRootURL)
-                    } label: {
-                        Image(systemName: "folder")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("Open Config Folder")
-
-                    Spacer()
-
-                    Button(action: sendPrompt) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(width: 28, height: 28)
-                            .background(
-                                Circle().fill(
-                                    isSendDisabled ? Color.secondary.opacity(0.18) : MacSweepTheme.accent
-                                )
+                Button(action: sendPrompt) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                        .background(
+                            Circle().fill(
+                                isSendDisabled ? Color.secondary.opacity(0.18) : MacSweepTheme.accent
                             )
-                            .foregroundStyle(isSendDisabled ? Color.secondary : Color.black)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isSendDisabled)
-                    .help(assistant.isSubmitting ? "Thinking…" : "Send")
+                        )
+                        .foregroundStyle(isSendDisabled ? Color.secondary : Color.black)
                 }
+                .buttonStyle(.plain)
+                .disabled(isSendDisabled)
+                .help(assistant.isSubmitting ? "Thinking..." : "Send")
             }
-            .padding(10)
+            .padding(12)
             .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -117,192 +182,8 @@ struct AssistantView: View {
         }
     }
 
-    private var providerPicker: some View {
-        let kind = assistant.providerConfig.defaultProvider
-        let model = assistant.providerConfig.providers[kind]?.model
-
-        return HStack(spacing: 5) {
-            Image(systemName: "cpu")
-                .font(.caption2)
-            Text(model.map { "\(kind.displayName) · \($0)" } ?? kind.displayName)
-                .font(.caption)
-                .lineLimit(1)
-        }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(MacSweepTheme.panelStrong, in: Capsule())
-        .help("Default provider · model · reasoning. Configure in providers.toml.")
-    }
-
     private var isSendDisabled: Bool {
         assistant.isSubmitting || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var inspectorColumn: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                providerSection
-                currentPlanSection
-                watchlistSection
-            }
-            .padding()
-        }
-        .background(Color.clear)
-    }
-
-    private var providerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Providers")
-                .font(.headline)
-
-            ForEach(assistant.providerStatuses) { status in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(status.provider.displayName)
-                            .fontWeight(.semibold)
-
-                        Spacer()
-
-                        Text(status.state.rawValue.capitalized)
-                            .font(.caption2)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(providerColor(for: status).opacity(0.12), in: Capsule())
-                            .foregroundStyle(providerColor(for: status))
-                    }
-
-                    Text("Command: \(status.command)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text("Model: \(status.model) • Reasoning: \(status.reasoningEffort)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if let note = status.note {
-                        Text(note)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                .padding(12)
-                .macSweepPanel()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var currentPlanSection: some View {
-        if let plan = assistant.currentPlan {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Current Plan")
-                    .font(.headline)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    if let provider = plan.provider {
-                        Text("Provider: \(provider.displayName)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !plan.modules.isEmpty {
-                        AssistantTokenList(title: "Modules", values: plan.modules)
-                    }
-
-                    if !plan.customTargets.isEmpty {
-                        AssistantTokenList(title: "Custom Targets", values: plan.customTargets.map(\.path))
-                    }
-
-                    if !plan.recommendedRules.isEmpty {
-                        AssistantTokenList(title: "Suggested Watchlists", values: plan.recommendedRules.map(\.label))
-                    }
-
-                    Text(plan.explanation)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button {
-                            Task {
-                                await appState.runAssistantPlan(plan)
-                            }
-                        } label: {
-                            Label("Run Scan", systemImage: "play.fill")
-                        }
-                        .glassButton(prominent: true)
-                        .disabled(appState.isScanning)
-
-                        Button {
-                            Task {
-                                await assistant.saveRecommendedRules(from: plan)
-                            }
-                        } label: {
-                            Label("Save Rules", systemImage: "square.and.arrow.down")
-                        }
-                        .glassButton()
-                        .disabled(plan.recommendedRules.isEmpty)
-                    }
-                }
-                .padding(12)
-                .macSweepPanel()
-            }
-        }
-    }
-
-    private var watchlistSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Watchlists")
-                    .font(.headline)
-
-                Spacer()
-
-                Text("\(assistant.watchlistRules.filter(\.enabled).count) enabled")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if assistant.watchlistRules.isEmpty {
-                Text("No watchlist rules saved yet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(assistant.watchlistRules.sorted(by: { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending })) { rule in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(rule.label)
-                                .fontWeight(.semibold)
-
-                            Spacer()
-
-                            Text(rule.enabled ? "Enabled" : "Disabled")
-                                .font(.caption2)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background((rule.enabled ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
-                                .foregroundStyle(rule.enabled ? .green : .secondary)
-                        }
-
-                        Text(rule.rationale)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-
-                        ForEach(rule.paths, id: \.self) { path in
-                            Text(path)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                }
-                .padding(12)
-                .macSweepPanel()
-                }
-            }
-        }
     }
 
     private var watchlistPlan: AssistantScanPlan {
@@ -317,16 +198,14 @@ struct AssistantView: View {
         )
     }
 
-    private func providerColor(for status: AssistantProviderStatus) -> Color {
-        switch status.state {
-        case .ready:
-            return .green
-        case .installed:
-            return .orange
-        case .unavailable:
-            return .secondary
-        case .failed:
-            return .red
+    private func useSuggestion(_ suggestion: AssistantPromptSuggestion) {
+        prompt = suggestion.prompt
+        isComposerFocused = true
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.18)) {
+            proxy.scrollTo("conversation-bottom", anchor: .bottom)
         }
     }
 
@@ -342,23 +221,91 @@ struct AssistantView: View {
     }
 }
 
+private struct AssistantPromptSuggestion: Identifiable {
+    let id = UUID()
+    let icon: String
+    let title: String
+    let prompt: String
+}
+
+private struct AssistantPromptSuggestionGrid: View {
+    let suggestions: [AssistantPromptSuggestion]
+    let onSelect: (AssistantPromptSuggestion) -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 240), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(suggestions) { suggestion in
+                Button {
+                    onSelect(suggestion)
+                } label: {
+                    AssistantPromptSuggestionCard(suggestion: suggestion)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct AssistantPromptSuggestionCard: View {
+    let suggestion: AssistantPromptSuggestion
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: suggestion.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MacSweepTheme.accent)
+                .frame(width: 30, height: 30)
+                .background(MacSweepTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(suggestion.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+
+                Text(suggestion.prompt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 6)
+
+            Image(systemName: "arrow.up.forward")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
+        .macSweepPanel(radius: MacSweepTheme.smallRadius)
+    }
+}
+
 private struct AssistantMessageBubble: View {
     let message: AssistantMessage
+    let isScanning: Bool
+    let onRunPlan: (AssistantScanPlan) -> Void
+    let onSaveRules: (AssistantScanPlan) -> Void
 
     var body: some View {
         HStack {
             if message.role == .assistant || message.role == .system {
                 bubble
-                Spacer(minLength: 40)
+                Spacer(minLength: 64)
             } else {
-                Spacer(minLength: 40)
+                Spacer(minLength: 64)
                 bubble
             }
         }
     }
 
     private var bubble: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -369,6 +316,17 @@ private struct AssistantMessageBubble: View {
 
             if let plan = message.plan {
                 Divider()
+                    .overlay(MacSweepTheme.divider)
+
+                if let provider = plan.provider {
+                    Label(provider.displayName, systemImage: "cpu")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if plan.usedFallback {
+                    Label("Local fallback", systemImage: "wand.and.stars")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 if !plan.modules.isEmpty {
                     AssistantTokenList(title: "Modules", values: plan.modules)
@@ -377,10 +335,40 @@ private struct AssistantMessageBubble: View {
                 if !plan.customTargets.isEmpty {
                     AssistantTokenList(title: "Targets", values: plan.customTargets.map(\.path))
                 }
+
+                if !plan.recommendedRules.isEmpty {
+                    AssistantTokenList(title: "Suggested Watchlists", values: plan.recommendedRules.map(\.label))
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        onRunPlan(plan)
+                    } label: {
+                        Label("Run Scan", systemImage: "play.fill")
+                    }
+                    .glassButton(prominent: true)
+                    .controlSize(.small)
+                    .disabled(isScanning)
+
+                    Button {
+                        onSaveRules(plan)
+                    } label: {
+                        Label("Save Rules", systemImage: "square.and.arrow.down")
+                    }
+                    .glassButton()
+                    .controlSize(.small)
+                    .disabled(plan.recommendedRules.isEmpty)
+                }
+                .padding(.top, 2)
             }
         }
         .padding(12)
+        .frame(maxWidth: message.role == .user ? 620 : 760, alignment: .leading)
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(MacSweepTheme.divider.opacity(message.role == .user ? 0.35 : 0.8), lineWidth: 1)
+        }
     }
 
     private var title: String {
@@ -401,7 +389,26 @@ private struct AssistantMessageBubble: View {
         case .user:
             return Color.accentColor.opacity(0.16)
         case .assistant:
-            return Color.blue.opacity(0.08)
+            return MacSweepTheme.panelStrong
+        }
+    }
+}
+
+private struct AssistantThinkingBubble: View {
+    var body: some View {
+        HStack {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Text("Thinking...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(MacSweepTheme.panelStrong, in: RoundedRectangle(cornerRadius: 14))
+
+            Spacer(minLength: 64)
         }
     }
 }
@@ -429,6 +436,8 @@ private struct FlowLayout: View {
             ForEach(items, id: \.self) { item in
                 Text(item)
                     .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))

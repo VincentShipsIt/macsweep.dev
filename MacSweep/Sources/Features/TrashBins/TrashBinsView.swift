@@ -9,6 +9,8 @@ struct TrashBinsView: View {
     @State private var showingConfirmation = false
     @State private var showingEmptyAllConfirmation = false
     @State private var trashSummary: TrashSummary?
+    @State private var hasScanned = false
+    @State private var errorMessage: String?
 
     var body: some View {
         FeaturePageShell(
@@ -23,7 +25,7 @@ struct TrashBinsView: View {
                 .glassButton(prominent: true)
                 .tint(.red)
                 .controlSize(.small)
-                .disabled((trashItems.isEmpty && trashSummary?.totalCount == 0) || isScanning)
+                .disabled((trashItems.isEmpty && (trashSummary?.totalCount ?? 0) == 0) || isScanning)
                 .confirmationDialog(
                     "Empty All Trash?",
                     isPresented: $showingEmptyAllConfirmation,
@@ -45,25 +47,37 @@ struct TrashBinsView: View {
             ),
             scrolls: trashItems.isEmpty
         ) {
-            if trashItems.isEmpty {
-                ScanLandingView(
-                    icon: "trash",
-                    title: "Scan Trash Bins",
-                    description: "Find what's sitting in your trash bins across all volumes before emptying.",
-                    ctaTitle: "Scan Trash Bins",
-                    benefits: [
-                        ScanBenefit("externaldrive.badge.xmark", "Every bin in one place", "Gathers what's sitting in trash across all your volumes and drives so nothing is forgotten."),
-                        ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
-                    ],
-                    illustration: "trash",
-                    isScanning: isScanning,
-                    action: { Task { await scanTrash() } }
-                )
-            } else {
-                trashList
-                Divider().overlay(MacSweepTheme.divider)
-                footer
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    errorBanner(errorMessage)
+                }
+
+                if trashItems.isEmpty {
+                    if hasScanned && !isScanning && errorMessage == nil {
+                        emptyTrashState
+                    } else {
+                        ScanLandingView(
+                            icon: "trash",
+                            title: "Scan Trash Bins",
+                            description: "Find what's sitting in your trash bins across all volumes before emptying.",
+                            ctaTitle: "Scan Trash Bins",
+                            benefits: [
+                                ScanBenefit("externaldrive.badge.xmark", "Every bin in one place", "Gathers what's sitting in trash across all your volumes and drives so nothing is forgotten."),
+                                ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
+                            ],
+                            illustration: "trash",
+                            isScanning: isScanning,
+                            scanningMessage: "Scanning trash bins",
+                            action: { Task { await scanTrash() } }
+                        )
+                    }
+                } else {
+                    trashList
+                    Divider().overlay(MacSweepTheme.divider)
+                    footer
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task {
             await loadTrashSummary()
@@ -143,6 +157,56 @@ struct TrashBinsView: View {
         }
     }
 
+    private var emptyTrashState: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 44, weight: .regular))
+                .foregroundStyle(MacSweepTheme.accent)
+
+            VStack(spacing: 6) {
+                Text("Trash bins are empty")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+
+                Text("No cleanable items were found in your Trash bins.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                Task { await scanTrash() }
+            } label: {
+                Label("Scan Again", systemImage: "arrow.clockwise")
+            }
+            .glassButton()
+        }
+        .frame(maxWidth: 360)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.caption)
+            Spacer()
+            Button {
+                errorMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
+    }
+
     // MARK: - Actions
 
     private func loadTrashSummary() async {
@@ -155,40 +219,73 @@ struct TrashBinsView: View {
     }
 
     private func scanTrash() async {
+        guard !isScanning else { return }
+
         isScanning = true
         trashItems = []
         selectedItems = []
+        errorMessage = nil
 
-        defer { isScanning = false }
+        defer {
+            isScanning = false
+            hasScanned = true
+        }
 
         let module = TrashBinsModule()
-        trashItems = (try? await module.scan()) ?? []
-        trashSummary = await TrashSummary.current()
+        do {
+            trashItems = try await module.scan()
+            trashSummary = await TrashSummary.current()
+        } catch {
+            trashSummary = await TrashSummary.current()
+            errorMessage = "Couldn't scan Trash bins: \(error.localizedDescription)"
+        }
     }
 
     private func deleteSelected() async {
         let itemsToDelete = trashItems.filter { selectedItems.contains($0.id) }
+        var deletionError: String?
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
         do {
-            _ = try await engine.clean(items: itemsToDelete, dryRun: false)
+            let result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            if !result.errors.isEmpty {
+                let count = result.errors.count
+                deletionError = "\(count) item\(count == 1 ? "" : "s") couldn't be deleted and were kept."
+            }
         } catch {
-            print("Trash bins cleanup error: \(error)")
+            deletionError = "Couldn't delete selected Trash items: \(error.localizedDescription)"
         }
 
         // Refresh
         await scanTrash()
+        if let deletionError {
+            errorMessage = deletionError
+        }
     }
 
     private func emptyAllTrash() async {
-        let module = TrashBinsModule()
-        try? await module.emptyAllTrash()
+        guard !isScanning else { return }
 
-        // Refresh
-        await scanTrash()
+        isScanning = true
+        errorMessage = nil
+
+        defer {
+            isScanning = false
+            hasScanned = true
+        }
+
+        let module = TrashBinsModule()
+        do {
+            try await module.emptyAllTrash()
+            trashItems = try await module.scan()
+            trashSummary = await TrashSummary.current()
+        } catch {
+            trashSummary = await TrashSummary.current()
+            errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Helpers
