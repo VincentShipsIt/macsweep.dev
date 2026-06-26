@@ -8,16 +8,18 @@ struct ScanSummary: Codable {
 
 class LastScanStore {
     static let shared = LastScanStore()
-    private let key = "lastScanSummary"
+    // Use the shared scheduler suite (not `.standard`) so all scheduler-related
+    // state lives in one plist that the CLI can also read.
+    private let defaults = UserDefaults(suiteName: SchedulerConfig.suiteName) ?? .standard
 
     var lastScan: ScanSummary? {
         get {
-            guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+            guard let data = defaults.data(forKey: SchedulerConfig.lastScanKey) else { return nil }
             return try? JSONDecoder().decode(ScanSummary.self, from: data)
         }
         set {
             let data = try? JSONEncoder().encode(newValue)
-            UserDefaults.standard.set(data, forKey: key)
+            defaults.set(data, forKey: SchedulerConfig.lastScanKey)
         }
     }
 }

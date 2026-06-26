@@ -8,6 +8,7 @@ struct PackageManagersView: View {
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
     @State private var dockerInfo: DockerInfo?
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +31,17 @@ struct PackageManagersView: View {
         .background(Color.clear)
         .task {
             await scan()
+        }
+        .alert(
+            "Cleanup Failed",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -316,17 +328,24 @@ struct PackageManagersView: View {
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
+        // module's own delete.
         let engine = ScanEngine()
+        var cleanupError: String?
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            if !result.errors.isEmpty {
+                let count = result.errors.count
+                cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleaned and were kept."
+            }
         } catch {
-            print("Package manager cleanup error: \(error)")
+            // Total failure (e.g. DeletionGuard cap): nothing was deleted.
+            cleanupError = "Cleanup failed: \(error.localizedDescription)"
         }
 
-        // Refresh
-        cacheItems.removeAll { selectedItems.contains($0.id) }
-        selectedItems.removeAll()
+        // Re-derive the list from disk (ground truth) instead of optimistically
+        // removing items that may still be present after a throw/block.
+        await scan()
+        errorMessage = cleanupError
     }
 
     // MARK: - Helpers

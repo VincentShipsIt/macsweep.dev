@@ -201,15 +201,21 @@ struct CloudCleanupView: View {
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
+        let result: CleanupResult
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
-            errorMessage = nil
+            result = try await engine.clean(items: itemsToClean, dryRun: false)
         } catch {
             errorMessage = "Couldn't reclaim cloud space: \(error.localizedDescription)"
             return
         }
-        cloudItems.removeAll { selectedItems.contains($0.id) }
-        selectedItems.removeAll()
+        // Per-item safety failures come back in result.errors (not thrown). Only
+        // drop the items that actually left disk; keep blocked ones visible.
+        let blockedPaths = Set(result.errors.map(\.path))
+        cloudItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        selectedItems = selectedItems.filter { id in cloudItems.contains(where: { $0.id == id }) }
+        errorMessage = blockedPaths.isEmpty
+            ? nil
+            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
     }
 
     private var filteredItems: [CleanupItem] {

@@ -223,11 +223,13 @@ struct SafariModule: BrowserModule {
     }
 
     var cachePaths: [URL] {
+        // LocalStorage and Databases are NOT regenerable cache: clearing them logs
+        // the user out of sites and drops saved state. They belong in
+        // localStoragePaths (medium-risk, opt-in), not here — listing them as cache
+        // makes riskLevel() report .none and scan() surface them as safe-to-delete.
         [
             URL.libraryDirectory.appending(path: "Caches/com.apple.Safari"),
             URL.libraryDirectory.appending(path: "Caches/com.apple.Safari.SafeBrowsing"),
-            basePath.appending(path: "LocalStorage"),
-            basePath.appending(path: "Databases"),
         ]
     }
 
@@ -236,7 +238,10 @@ struct SafariModule: BrowserModule {
     }
 
     var localStoragePaths: [URL] {
-        [basePath.appending(path: "LocalStorage")]
+        [
+            basePath.appending(path: "LocalStorage"),
+            basePath.appending(path: "Databases"),
+        ]
     }
 
     var cookiePaths: [URL] {

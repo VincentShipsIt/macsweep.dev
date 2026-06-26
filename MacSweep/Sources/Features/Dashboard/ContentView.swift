@@ -368,6 +368,7 @@ struct MaintenanceView: View {
     @State private var runningTaskId: String?
     @State private var lastResult: MaintenanceResult?
     @State private var showingResult = false
+    @State private var autoHideTask: Task<Void, Never>?
 
     var body: some View {
         FeaturePageShell(
@@ -433,9 +434,12 @@ struct MaintenanceView: View {
         runningTaskId = nil
         showingResult = true
 
-        // Auto-hide after 5 seconds
-        Task {
+        // Auto-hide after 5 seconds. Cancel any prior auto-hide first so an
+        // earlier task can't fire and clear a later run's freshly shown result.
+        autoHideTask?.cancel()
+        autoHideTask = Task {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 showingResult = false
             }

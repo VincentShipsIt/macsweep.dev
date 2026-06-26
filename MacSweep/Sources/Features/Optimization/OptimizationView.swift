@@ -223,6 +223,7 @@ struct OptimizationView: View {
 
     private func freeUpRAM() async {
         isFreezingRAM = true
+        defer { isFreezingRAM = false }   // reset even on the early-guard return
 
         // Run purge command (requires admin privileges)
         let purgePath = "/usr/sbin/purge"
@@ -233,18 +234,24 @@ struct OptimizationView: View {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: purgePath)
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            // purge may fail without admin privileges
+        // Await termination via a continuation so purge (which can take seconds)
+        // does not block the MainActor and freeze the UI. terminationHandler is set
+        // BEFORE run(); if run() throws (e.g. no admin rights) the handler never
+        // fires, so we resume inline.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            process.terminationHandler = { _ in continuation.resume() }
+            do {
+                try process.run()
+            } catch {
+                // purge may fail without admin privileges
+                process.terminationHandler = nil
+                continuation.resume()
+            }
         }
 
         // Refresh after a moment
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         await systemMonitor.refresh()
-
-        isFreezingRAM = false
     }
 
     private func quitSelectedProcesses() {

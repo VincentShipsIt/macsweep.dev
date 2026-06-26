@@ -32,6 +32,11 @@ struct CPUDetailView: View {
         .task {
             await processMonitor.startMonitoring()
         }
+        .onDisappear {
+            // Stop the 5s ps-sampling timer when the popover closes, else it leaks
+            // and keeps spawning subprocesses after the view is gone.
+            processMonitor.stopMonitoring()
+        }
     }
 
     private var header: some View {

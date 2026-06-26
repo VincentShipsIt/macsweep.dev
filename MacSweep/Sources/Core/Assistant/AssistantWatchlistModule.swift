@@ -77,7 +77,7 @@ struct AssistantWatchlistModule: ScanModule {
                         if childValues.isDirectory == true {
                             size = try await DiskAnalyzer.directorySize(at: child)
                         } else {
-                            size = Int64(childValues.totalFileAllocatedSize ?? childValues.fileSize ?? 0)
+                            size = childValues.diskSize
                         }
 
                         guard size > 1024 else { continue }
@@ -91,7 +91,7 @@ struct AssistantWatchlistModule: ScanModule {
             }
 
             guard checker.validateForScan(rootURL, moduleID: id).isSafe else { return [] }
-            let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+            let size = values.diskSize
             guard size > 1024 else { return [] }
             return [makeItem(url: rootURL, label: label, size: size, lastModified: values.contentModificationDate)]
         } catch {

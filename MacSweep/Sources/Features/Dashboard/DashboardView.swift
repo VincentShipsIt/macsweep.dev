@@ -45,6 +45,15 @@ struct DashboardView: View {
                         )
                     }
 
+                    if let deletionError = appState.lastDeletionError {
+                        StatusMessageRow(
+                            icon: "exclamationmark.triangle",
+                            tint: .red,
+                            title: "Cleanup Failed",
+                            detail: deletionError
+                        )
+                    }
+
                     if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
                         ForEach(summary.findings.prefix(5)) { finding in
                             SmartCareFindingRow(finding: finding) {

@@ -50,12 +50,14 @@ final class LoginItemsService: ObservableObject {
 
             do {
                 try process.run()
-                process.waitUntilExit()
             } catch {
                 return []
             }
 
+            // Drain BEFORE waiting: sfltool dumpbtm can exceed the 64 KB pipe
+            // buffer, which would deadlock a wait-then-read ordering.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             guard let output = String(data: data, encoding: .utf8) else { return [] }
 
             return await MainActor.run {
@@ -82,8 +84,13 @@ final class LoginItemsService: ObservableObject {
                     .replacingOccurrences(of: "url = ", with: "")
                     .replacingOccurrences(of: "executableURL = ", with: "")
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                // Strip file:// prefix
-                currentPath = raw.hasPrefix("file://") ? String(raw.dropFirst(7)) : raw
+                // Strip file:// and percent-decode (dropFirst(7) would leave
+                // "%20" etc. encoded and break path lookups).
+                if raw.hasPrefix("file://"), let fileURL = URL(string: raw) {
+                    currentPath = fileURL.path
+                } else {
+                    currentPath = raw
+                }
             } else if trimmed.hasPrefix("bundleIdentifier = ") {
                 currentBundleId = trimmed.replacingOccurrences(of: "bundleIdentifier = ", with: "").trimmingCharacters(in: CharacterSet(charactersIn: "\""))
             } else if trimmed == "}" || trimmed == "}," {
@@ -136,7 +143,8 @@ final class LoginItemsService: ObservableObject {
             type: type,
             bundleIdentifier: nil,
             isEnabled: !disabled,
-            aiAnalysis: nil
+            aiAnalysis: nil,
+            plistPath: url.path
         )
     }
 
@@ -145,23 +153,28 @@ final class LoginItemsService: ObservableObject {
     func setEnabled(_ enabled: Bool, for item: LoginItem) async {
         guard item.type != .appService else { return } // SMAppService items managed differently
 
-        let plistURL = plistURL(for: item)
-        guard let plistURL else { return }
+        guard let plistURL = plistURL(for: item) else { return }
 
-        guard let data = try? Data(contentsOf: plistURL),
-              var plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        else { return }
-
-        plist["Disabled"] = !enabled
-
+        // Read/patch/write off the main actor so a slow disk doesn't freeze the UI,
+        // and PRESERVE the on-disk plist format — a binary plist must stay binary,
+        // not be silently rewritten as XML.
         do {
-            let newData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-            try newData.write(to: plistURL)
+            try await Task.detached(priority: .userInitiated) {
+                var fmt = PropertyListSerialization.PropertyListFormat.xml
+                let data = try Data(contentsOf: plistURL)
+                guard var plist = try PropertyListSerialization.propertyList(from: data, format: &fmt) as? [String: Any] else {
+                    throw CocoaError(.propertyListReadCorrupt)
+                }
+                plist["Disabled"] = !enabled
+                let newData = try PropertyListSerialization.data(fromPropertyList: plist, format: fmt, options: 0)
+                try newData.write(to: plistURL)
+            }.value
         } catch {
             errorMessage = "Couldn't update \(item.name): \(error.localizedDescription)"
             return
         }
 
+        // Back on the main actor after the await — safe to mutate @Published state.
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
             items[idx].isEnabled = enabled
         }
@@ -172,12 +185,14 @@ final class LoginItemsService: ObservableObject {
     func delete(_ item: LoginItem) async {
         guard item.type != .appService else { return }
 
-        let plistURL = plistURL(for: item)
-        if let url = plistURL {
+        if let url = plistURL(for: item) {
             do {
                 // Move to Trash (recoverable) rather than a hard delete, matching
                 // LoginItemController.remove and the rest of the cleanup modules.
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                // Off the main actor so trashItem doesn't stall the UI.
+                try await Task.detached(priority: .userInitiated) {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                }.value
             } catch {
                 errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"
                 return
@@ -187,7 +202,16 @@ final class LoginItemsService: ObservableObject {
     }
 
     private func plistURL(for item: LoginItem) -> URL? {
-        // Check user agents first, then system agents
+        // Prefer the EXACT path captured at scan time. A launch agent's plist
+        // filename routinely differs from its Label, so guessing "<Label>.plist"
+        // can resolve to a DIFFERENT agent that merely happens to be named after
+        // this one's Label — and then mutate/trash the wrong file.
+        if let stored = item.plistPath {
+            let url = URL(fileURLWithPath: stored)
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+
+        // Fallback only for items with no stored path (e.g. legacy deserialized state).
         let fileName = item.name + ".plist"
         let userURL = userLaunchAgentsURL.appendingPathComponent(fileName)
         if FileManager.default.fileExists(atPath: userURL.path) {

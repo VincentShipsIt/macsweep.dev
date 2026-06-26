@@ -25,7 +25,7 @@ class HomebrewService: ObservableObject {
             return
         }
 
-        let output = shell("\(brewPath()) outdated --json=v2")
+        let output = await Self.runBrew(brewPath(), ["outdated", "--json=v2"]).output
         guard let data = output.data(using: .utf8) else {
             error = "Failed to parse brew output"
             return
@@ -68,11 +68,11 @@ class HomebrewService: ObservableObject {
     func upgradeSelected() async {
         let selected = packages.filter(\.isSelected).map { $0.name.replacingOccurrences(of: " (cask)", with: "") }
         guard !selected.isEmpty else { return }
-        await runUpgrade(args: selected.joined(separator: " "))
+        await runUpgrade(packageNames: selected)
     }
 
     func upgradeAll() async {
-        await runUpgrade(args: "")
+        await runUpgrade(packageNames: [])
     }
 
     func analyzeWithAI() async {
@@ -92,7 +92,9 @@ class HomebrewService: ObservableObject {
         let outdatedSet = Set(cleanNames)
         var depsByName: [String: [String]] = [:]
         for name in cleanNames {
-            let raw = shell("\(brewPath()) deps \(name) 2>/dev/null")
+            // Run brew directly with array args — a formula name is never spliced
+            // into a shell string, so a malicious/unusual name can't inject.
+            let raw = await Self.runBrew(brewPath(), ["deps", name]).output
             let deps = raw.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -144,7 +146,7 @@ Only return the JSON array, no other text.
     /// prints, when present. Read-mostly: brew only deletes its own cached artifacts.
     func cleanup() async -> (success: Bool, reclaimedText: String?, log: String) {
         guard brewExists() else { return (false, nil, "brew_not_found") }
-        let (output, status) = shellWithStatus("\(brewPath()) cleanup -s 2>&1")
+        let (output, status) = await Self.runBrew(brewPath(), ["cleanup", "-s"])
         // Brew emits e.g. "==> This operation has freed approximately 1.2GB of disk space."
         let reclaimed = output
             .components(separatedBy: .newlines)
@@ -160,7 +162,7 @@ Only return the JSON array, no other text.
     /// wanted; everything else is a pulled-in dependency.
     func leaves() async -> [String] {
         guard brewExists() else { return [] }
-        let output = shell("\(brewPath()) leaves 2>/dev/null")
+        let output = await Self.runBrew(brewPath(), ["leaves"]).output
         return output.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -176,7 +178,7 @@ Only return the JSON array, no other text.
     /// the headless layer can map the absence to the right exit code.
     func selfUpgrade() async -> (success: Bool, log: String) {
         guard brewExists() else { return (false, "brew_not_found") }
-        let (output, status) = shellWithStatus("\(brewPath()) upgrade vincentshipsit/tap/macsweep 2>&1")
+        let (output, status) = await Self.runBrew(brewPath(), ["upgrade", "vincentshipsit/tap/macsweep"])
         // Success reflects brew's real exit status — a failed upgrade must not
         // report applied:true to the headless/CLI layer.
         return (status == 0, output)
@@ -184,18 +186,19 @@ Only return the JSON array, no other text.
 
     // MARK: - Private
 
-    private func runUpgrade(args: String) async {
+    private func runUpgrade(packageNames: [String]) async {
         isUpgrading = true
         upgradeLog = ""
         lastUpgradeSucceeded = nil
         defer { isUpgrading = false }
 
-        let cmd = args.isEmpty ? "\(brewPath()) upgrade" : "\(brewPath()) upgrade \(args)"
-        upgradeLog = "Running: \(cmd)\n\n"
-
+        // Pass each package name as a separate argument to the brew binary — no
+        // shell, so names can never inject. Empty list = upgrade everything.
+        let arguments = ["upgrade"] + packageNames
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", cmd]
+        process.executableURL = URL(fileURLWithPath: brewPath())
+        process.arguments = arguments
+        upgradeLog = "Running: \(([brewPath()] + arguments).joined(separator: " "))\n\n"
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -211,17 +214,33 @@ Only return the JSON array, no other text.
             }
         }
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            handle.readabilityHandler = nil
+        // Await termination via a continuation so the MainActor thread is not
+        // blocked for the (potentially minutes-long) upgrade. terminationHandler
+        // is set BEFORE run() so a fast exit can't be missed; the catch path
+        // resumes with nil since the handler won't fire if launch failed.
+        let status: Int32? = await withCheckedContinuation { continuation in
+            process.terminationHandler = { proc in
+                continuation.resume(returning: proc.terminationStatus)
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(returning: nil)
+            }
+        }
+        handle.readabilityHandler = nil
+
+        if let status {
             // Record the real exit status so the headless layer can report a
             // failed upgrade rather than hardcoding success.
-            lastUpgradeSucceeded = process.terminationStatus == 0
-            upgradeLog += "\n✅ Done (exit code: \(process.terminationStatus))"
-        } catch {
+            lastUpgradeSucceeded = status == 0
+            upgradeLog += status == 0
+                ? "\n✅ Done (exit code: \(status))"
+                : "\n❌ Error (exit code: \(status))"
+        } else {
             lastUpgradeSucceeded = false
-            upgradeLog += "\n❌ Error: \(error.localizedDescription)"
+            upgradeLog += "\n❌ Error: failed to launch brew"
         }
 
         // Refresh package list
@@ -276,28 +295,36 @@ Only return the JSON array, no other text.
         return "/usr/local/bin/brew"
     }
 
-    private func shell(_ cmd: String) -> String {
-        shellWithStatus(cmd).output
-    }
-
-    /// Like `shell(_:)` but also surfaces the process exit status, so callers that
-    /// must report success/failure (cleanup, self-upgrade) can gate on the real
-    /// `brew` exit code instead of merely "brew exists". A failed `run()` yields
-    /// status 1 so it reads as a failure.
-    private func shellWithStatus(_ cmd: String) -> (output: String, status: Int32) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", cmd]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do {
-            try process.run()
-        } catch {
-            return ("", 1)
+    /// Run the brew binary DIRECTLY (no `/bin/bash -c`), off the MainActor.
+    ///
+    /// Passing arguments as an array means a package/formula name is never spliced
+    /// into a shell string, eliminating the injection vector entirely. Running on a
+    /// background queue via a continuation keeps `waitUntilExit()` off the MainActor
+    /// so brew operations don't freeze the UI. stdout and stderr share one pipe
+    /// (equivalent to the previous `2>&1`); it's drained before the reap so a
+    /// chatty command can't fill the buffer and deadlock.
+    nonisolated private static func runBrew(
+        _ brewPath: String,
+        _ arguments: [String]
+    ) async -> (output: String, status: Int32) {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: brewPath)
+                process.arguments = arguments
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(returning: ("", 1))
+                    return
+                }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                continuation.resume(returning: (String(data: data, encoding: .utf8) ?? "", process.terminationStatus))
+            }
         }
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
     }
 }

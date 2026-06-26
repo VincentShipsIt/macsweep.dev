@@ -12,7 +12,7 @@ actor DiskAnalyzer {
         if values.isDirectory == true {
             return try await directorySize(at: url)
         } else {
-            return Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+            return values.diskSize
         }
     }
 
@@ -44,7 +44,7 @@ actor DiskAnalyzer {
 
                 // Only count files, not directories themselves
                 if values.isDirectory == false {
-                    total += Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+                    total += values.diskSize
                 }
             } catch {
                 continue
@@ -64,17 +64,21 @@ actor DiskAnalyzer {
     private static func buildNode(at url: URL, depth: Int, maxDepth: Int) async throws -> DiskNode {
         let resourceKeys: Set<URLResourceKey> = [
             .isDirectoryKey,
+            .isSymbolicLinkKey,
             .totalFileAllocatedSizeKey,
             .fileSizeKey,
             .contentModificationDateKey
         ]
 
         let values = try url.resourceValues(forKeys: resourceKeys)
-        let isDirectory = values.isDirectory == true
+        // A symlinked directory must be treated as a leaf: following it would let
+        // a self-referential link (e.g. ~/foo -> ~) recurse forever, and any link
+        // pointing inside the tree would double-count its target's bytes.
+        let isDirectory = values.isDirectory == true && values.isSymbolicLink != true
 
         if !isDirectory {
-            // It's a file
-            let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+            // It's a file (or a symlink, counted by its own small on-disk size)
+            let size = values.diskSize
             return DiskNode(
                 url: url,
                 name: url.lastPathComponent,
@@ -236,5 +240,16 @@ struct DiskQuickStats {
 
     var formattedUsed: String {
         ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+    }
+}
+
+// MARK: - Resource value sizing
+
+extension URLResourceValues {
+    /// Preferred on-disk allocated size, falling back to the logical file size.
+    /// Centralizes the `totalFileAllocatedSize ?? fileSize ?? 0` idiom that the
+    /// scan modules and disk analyzer all need.
+    var diskSize: Int64 {
+        Int64(totalFileAllocatedSize ?? fileSize ?? 0)
     }
 }

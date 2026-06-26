@@ -114,9 +114,13 @@ struct LargeFilesModule: ScanModule {
                             lastModified: activityDate
                         ))
 
-                        if depth >= maxDirectoryDepth {
-                            enumerator.skipDescendants()
-                        }
+                        // Always skip into a surfaced directory: its contents are
+                        // already counted in its size. Without this, scanKind=.both
+                        // would also surface large child files, producing overlapping
+                        // items — double-counted bytes in dry-run, and a trashItem
+                        // failure on the child after the parent was already trashed.
+                        // (Also avoids re-walking an already-sized subtree.)
+                        enumerator.skipDescendants()
 
                         if items.count >= maxResults {
                             break
@@ -128,7 +132,7 @@ struct LargeFilesModule: ScanModule {
                     guard scanKind.includesFiles else { continue }
 
                     // Get file size
-                    let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+                    let size = values.diskSize
                     guard size >= threshold else { continue }
 
                     items.append(CleanupItem(

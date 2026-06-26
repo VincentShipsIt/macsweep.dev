@@ -218,6 +218,9 @@ struct BrowserCleanupView: View {
         browserResults = []
         selectedItems = []
         errorMessage = nil
+        // Clear the previous scan's service-worker items first; otherwise each
+        // rescan appends a fresh set and the list (and reported size) doubles.
+        appState.scanResults.removeAll { $0.module == "service-workers" }
 
         defer { isScanning = false }
 

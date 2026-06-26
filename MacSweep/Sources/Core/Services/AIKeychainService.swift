@@ -12,14 +12,20 @@ final class AIKeychainService {
     @discardableResult
     func saveKey(_ key: String) -> Bool {
         let data = Data(key.utf8)
-        let query: [String: Any] = [
+        // Match by primary keys only when deleting any prior item.
+        let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data
+            kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
-        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
+        SecItemDelete(baseQuery as CFDictionary)
+
+        var addQuery = baseQuery
+        addQuery[kSecValueData as String] = data
+        // Local-tool credential: only readable while the device is unlocked, never
+        // synced to iCloud Keychain or migrated to another device on restore.
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
     }
 
     func loadKey() -> String? {

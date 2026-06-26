@@ -226,16 +226,27 @@ enum AssistantTOMLCodec {
     private static func stripComments(from line: String) -> String {
         var result = ""
         var inString = false
+        var escaped = false
 
         for character in line {
+            // Inside a string, a backslash escapes the next character, so neither
+            // `\"` (escaped quote) nor `\\` (escaped backslash) wrongly ends the
+            // string and exposes a following `#` as a comment marker.
+            if escaped {
+                result.append(character)
+                escaped = false
+                continue
+            }
+            if inString && character == "\\" {
+                result.append(character)
+                escaped = true
+                continue
+            }
             if character == "\"" {
                 inString.toggle()
-            }
-
-            if character == "#" && !inString {
+            } else if character == "#" && !inString {
                 break
             }
-
             result.append(character)
         }
 
@@ -265,7 +276,7 @@ enum AssistantTOMLCodec {
             throw AssistantTOMLError.invalidValue(key: key, value: rawValue)
         }
 
-        return String(rawValue.dropFirst().dropLast()).replacingOccurrences(of: "\\\"", with: "\"")
+        return unescape(String(rawValue.dropFirst().dropLast()))
     }
 
     private static func parseBool(_ rawValue: String, key: String) throws -> Bool {
@@ -291,26 +302,33 @@ enum AssistantTOMLCodec {
         var values: [String] = []
         var current = ""
         var inString = false
-        var shouldAppend = false
+        var escaped = false
 
         for character in inner {
+            if inString && escaped {
+                // Preserve the raw escape sequence so a `\"` doesn't prematurely
+                // close the element; `unescape` resolves it once at the boundary.
+                current.append("\\")
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if inString && character == "\\" {
+                escaped = true
+                continue
+            }
             if character == "\"" {
                 if inString {
-                    values.append(current.replacingOccurrences(of: "\\\"", with: "\""))
-                    current = ""
-                    shouldAppend = false
-                } else {
-                    shouldAppend = true
+                    values.append(unescape(current))
                 }
+                current = ""
                 inString.toggle()
                 continue
             }
-
             if inString {
                 current.append(character)
-            } else if shouldAppend && character == "," {
-                shouldAppend = false
             }
+            // Characters between elements (commas, whitespace) are ignored.
         }
 
         return values
@@ -331,6 +349,31 @@ enum AssistantTOMLCodec {
     }
 
     private static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\\\"")
+        // Backslash MUST be escaped before quote, otherwise a value already
+        // containing `\"` would gain an extra backslash that the un-escape step
+        // can't recover. `"\\"` is one backslash; `"\\\\"` is two.
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    /// Reverse of `escape`. Single pass so it can't suffer the ordering hazard of
+    /// chained `replacingOccurrences` calls: a backslash consumes the next
+    /// character literally, so `\\` → `\` and `\"` → `"` round-trip exactly.
+    private static func unescape(_ value: String) -> String {
+        var result = ""
+        var escaped = false
+        for character in value {
+            if escaped {
+                result.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else {
+                result.append(character)
+            }
+        }
+        if escaped { result.append("\\") }   // trailing lone backslash, kept as-is
+        return result
     }
 }

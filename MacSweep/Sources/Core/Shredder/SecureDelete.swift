@@ -10,7 +10,10 @@ import CryptoKit
 /// erasure on Apple Silicon / SSD / APFS hardware. The real guarantee is
 /// FileVault: with full-disk encryption on, deleted data is unreadable
 /// regardless of which physical blocks survive. UI copy must not overstate this.
-actor SecureDelete {
+// A namespace of static shredding helpers. (Previously an `actor`, but static
+// methods on an actor are NOT actor-isolated, so the keyword guaranteed no
+// serialization — `enum` states the "uninstantiable namespace" intent honestly.)
+enum SecureDelete {
 
     enum ShredLevel: String, CaseIterable, Identifiable {
         case quick = "Quick"        // 1 pass random
@@ -72,13 +75,15 @@ actor SecureDelete {
             return
         }
 
-        // Open file for writing
-        guard let handle = try? FileHandle(forWritingTo: url) else {
+        // Open file for writing. No `defer`-close: the handle is closed explicitly
+        // below, before the rename loop, and a deferred second close would just
+        // double-close (benign EBADF) the already-closed handle. On an error path
+        // the local handle is released and its fd closed at scope exit anyway.
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forWritingTo: url)
+        } catch {
             throw ShredError.cannotOpenFile(url)
-        }
-
-        defer {
-            try? handle.close()
         }
 
         let totalPasses = level.passes
@@ -346,14 +351,16 @@ extension SecureDelete {
 
             let tempFile = tempDir.appending(path: "wipe_\(fileIndex)")
 
-            // Create file with random data
+            // Create file with random data. We reserved 1 GB of headroom, so a
+            // failure here is a real error (I/O, permissions), NOT normal
+            // disk-full — surface it instead of silently reporting progress 1.0.
             let created = FileManager.default.createFile(atPath: tempFile.path, contents: nil)
             guard created else {
-                break
+                throw ShredError.writeFailed(tempFile)
             }
 
             guard let writeHandle = try? FileHandle(forWritingTo: tempFile) else {
-                break
+                throw ShredError.cannotOpenFile(tempFile)
             }
 
             // Write random data. A failure here (e.g. the volume filling

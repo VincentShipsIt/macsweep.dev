@@ -609,7 +609,11 @@ struct ProtectedPaths {
         "dist",
         "build",
         ".turbo",
-        "vendor/bundle",
+        // NB: do NOT add "vendor/bundle" here — `NSString.pathComponents` never
+        // yields a component containing "/", so it could never match, and the bare
+        // "vendor"/"bundle" alternatives are unsafe (Go's vendored source, macOS
+        // *.bundle packages). Ruby Bundler's vendor/bundle is cleaned with a
+        // concrete resolved path by DevToolsModule instead.
     ]
 }
 

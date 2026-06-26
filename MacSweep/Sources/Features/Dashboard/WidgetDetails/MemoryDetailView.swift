@@ -36,6 +36,11 @@ struct MemoryDetailView: View {
         .task {
             await processMonitor.startMonitoring()
         }
+        .onDisappear {
+            // Stop the 5s ps-sampling timer when the popover closes (otherwise it
+            // leaks and keeps spawning subprocesses).
+            processMonitor.stopMonitoring()
+        }
     }
 
     private var pressureIndicator: some View {
@@ -177,8 +182,8 @@ struct MemoryDetailView: View {
         Button {
             Task {
                 isFreeing = true
+                defer { isFreeing = false }   // reset even if cancelled / thrown
                 try? await monitor.freeUpMemory()
-                isFreeing = false
             }
         } label: {
             if isFreeing {

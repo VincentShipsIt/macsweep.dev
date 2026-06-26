@@ -229,48 +229,55 @@ struct AIAnalysisView: View {
 
     private func cleanSelected() {
         let pathsToDelete = selectedFindings.map { $0.path }
-        var deletedPaths: [String] = []
-        var failedPaths: [String] = []
-        var blockedPaths: [String] = []
+        Task {
+            // Do the blocking trashItem I/O OFF the main thread (returns only
+            // Sendable [String] arrays, so no @StateObject is captured by the
+            // detached task), then apply UI mutations back on the main actor.
+            let outcome = await Task.detached(priority: .userInitiated) {
+                () -> (deleted: [String], failed: [String], blocked: [String]) in
+                var deleted: [String] = []
+                var failed: [String] = []
+                var blocked: [String] = []
+                let safety = SafetyChecker()
 
-        let safety = SafetyChecker()
+                for path in pathsToDelete {
+                    let url = URL(fileURLWithPath: path)
 
-        for path in pathsToDelete {
-            let url = URL(fileURLWithPath: path)
+                    // AI suggestions are advisory — they MUST pass the same safety
+                    // gate as every other cleanup path. The `ai-analysis` module id
+                    // reaches the dedicated allow-zone (developer + AI-tool cache
+                    // roots outside ~/Library/Caches); without it those findings
+                    // fail closed and the feature's own results can't be cleaned.
+                    guard safety.validateForCleanup(url, moduleID: "ai-analysis").isSafe else {
+                        blocked.append(path)
+                        continue
+                    }
 
-            // AI suggestions are advisory — they MUST pass the same safety gate as
-            // every other cleanup path before anything is touched. Pass the
-            // `ai-analysis` module id so the dedicated allow-zone (the developer +
-            // AI-tool cache roots CacheAnalyzer surfaces, which live outside
-            // ~/Library/Caches) is reachable; without it those findings fail closed
-            // and the feature's own results can't be cleaned.
-            guard safety.validateForCleanup(url, moduleID: "ai-analysis").isSafe else {
-                blockedPaths.append(path)
-                continue
+                    do {
+                        // Recoverable: AI false positives are possible, so move to
+                        // Trash rather than deleting outright.
+                        try CleanupFileRemover.recoverable(url)
+                        deleted.append(path)
+                    } catch {
+                        failed.append(path)
+                    }
+                }
+                return (deleted, failed, blocked)
+            }.value
+
+            // Remove deleted items from findings
+            service.findings.removeAll { outcome.deleted.contains($0.path) }
+
+            var messages: [String] = []
+            if !outcome.blocked.isEmpty {
+                messages.append("\(outcome.blocked.count) item(s) blocked by safety checks")
             }
-
-            do {
-                // Recoverable: AI false positives are possible, so move to Trash
-                // rather than deleting outright.
-                try CleanupFileRemover.recoverable(url)
-                deletedPaths.append(path)
-            } catch {
-                failedPaths.append(path)
+            if !outcome.failed.isEmpty {
+                messages.append("\(outcome.failed.count) item(s) could not be moved to Trash (check permissions)")
             }
-        }
-
-        // Remove deleted items from findings
-        service.findings.removeAll { deletedPaths.contains($0.path) }
-
-        var messages: [String] = []
-        if !blockedPaths.isEmpty {
-            messages.append("\(blockedPaths.count) item(s) blocked by safety checks")
-        }
-        if !failedPaths.isEmpty {
-            messages.append("\(failedPaths.count) item(s) could not be moved to Trash (check permissions)")
-        }
-        if !messages.isEmpty {
-            service.error = messages.joined(separator: "; ")
+            if !messages.isEmpty {
+                service.error = messages.joined(separator: "; ")
+            }
         }
     }
 

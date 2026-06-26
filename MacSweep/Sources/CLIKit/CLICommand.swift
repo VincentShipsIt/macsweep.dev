@@ -143,6 +143,11 @@ public enum CLICommandParser {
             format = parsed
         }
         if let extra = trailing.first {
+            // A lone trailing `--format` (no value) is a missing-value error, not
+            // an unexpected-argument one — match the message the inline parsers give.
+            if extra == "--format" {
+                throw CLIParseError.missingValue("--format")
+            }
             throw CLIParseError.unexpectedArgument(extra)
         }
         return format
@@ -293,7 +298,13 @@ public enum CLICommandParser {
         for (suffix, factor) in multipliers where token.hasSuffix(suffix) {
             let numberPart = String(token.dropLast(suffix.count))
             guard let value = Double(numberPart), value >= 0 else { return nil }
-            return Int64(value * Double(factor))
+            // `Int64(Double)` traps on values that exceed Int64.max (e.g.
+            // `9999999TB`). Reject anything that won't fit rather than crash; the
+            // bound sits safely below Int64.max (~9.22e18) to dodge the
+            // Double-rounding edge at the very top of the range.
+            let product = value * Double(factor)
+            guard product < 9.2e18 else { return nil }
+            return Int64(product)
         }
         // No recognized suffix → treat as a raw byte count.
         guard let bytes = Int64(token), bytes >= 0 else { return nil }

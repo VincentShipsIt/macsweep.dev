@@ -53,9 +53,14 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        NSApp.activate(ignoringOtherApps: true)
-        // Open main window
-        NSApp.windows.first(where: { $0.level == .normal })?.makeKeyAndOrderFront(nil)
+        // UNUserNotificationCenterDelegate delivery is not documented as
+        // main-thread on macOS, so hop to the main actor before touching AppKit.
+        // completionHandler() stays outside the Task so the system gets it promptly.
+        Task { @MainActor in
+            NSApp.activate(ignoringOtherApps: true)
+            // Open main window
+            NSApp.windows.first(where: { $0.level == .normal })?.makeKeyAndOrderFront(nil)
+        }
         completionHandler()
     }
 

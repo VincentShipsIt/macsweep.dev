@@ -52,7 +52,7 @@ struct CloudCleanupModule: ScanModule {
                 guard values?.isDirectory == false else { continue }
                 guard values?.isUbiquitousItem == true || url.path.contains("/Mobile Documents/") else { continue }
 
-                let size = Int64(values?.totalFileAllocatedSize ?? values?.fileSize ?? 0)
+                let size = values?.diskSize ?? 0
                 guard size >= minimumFileSize else { continue }
 
                 let activityDate = values?.contentAccessDate ?? values?.contentModificationDate ?? .distantFuture
@@ -152,7 +152,15 @@ struct CloudCleanupModule: ScanModule {
             }
 
             do {
-                if item.moduleName.contains("Local Copy") {
+                // Route on the AUTHORITATIVE live ubiquitous status, not a display
+                // string: an iCloud-backed file must be evicted (non-destructive,
+                // stays in the cloud), never permanently deleted. The scan-time
+                // "Local Copy" name is only a secondary hint. Permanent deletion is
+                // reserved for items positively confirmed to be regenerable provider
+                // caches (not ubiquitous and not flagged a local copy), so a future
+                // rename of the moduleName can never turn an eviction into deletion.
+                let isUbiquitous = (try? item.path.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem ?? false
+                if isUbiquitous || item.moduleName.contains("Local Copy") {
                     // Non-destructive: frees the local copy, file stays in iCloud.
                     try FileManager.default.evictUbiquitousItem(at: item.path)
                 } else {

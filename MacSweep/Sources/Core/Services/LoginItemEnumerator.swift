@@ -75,7 +75,14 @@ actor LoginItemEnumerator {
                     .replacingOccurrences(of: "url = ", with: "")
                     .replacingOccurrences(of: "executableURL = ", with: "")
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-                currentPath = raw.hasPrefix("file://") ? String(raw.dropFirst(7)) : raw
+                // Decode the file:// URL via URL(string:) so percent-encoded
+                // components (e.g. "My%20App.app") become a real POSIX path;
+                // dropFirst(7) would leave them encoded and break path lookups.
+                if raw.hasPrefix("file://"), let fileURL = URL(string: raw) {
+                    currentPath = fileURL.path
+                } else {
+                    currentPath = raw
+                }
             } else if trimmed.hasPrefix("bundleIdentifier = ") {
                 currentBundleID = trimmed
                     .replacingOccurrences(of: "bundleIdentifier = ", with: "")

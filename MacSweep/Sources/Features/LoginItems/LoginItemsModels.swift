@@ -14,6 +14,12 @@ struct LoginItem: Identifiable, Codable {
     let bundleIdentifier: String?
     var isEnabled: Bool
     var aiAnalysis: AIItemAnalysis?
+    /// The exact on-disk plist path captured at scan time (launch agents only).
+    /// Mutations target THIS path, never a "<Label>.plist" guess, because a
+    /// plist's filename frequently differs from its Label. nil for app-service
+    /// items and legacy deserialized state. Declared last so the synthesized
+    /// memberwise init keeps the existing argument order working.
+    var plistPath: String? = nil
 }
 
 struct AIItemAnalysis: Codable {
