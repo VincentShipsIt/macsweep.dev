@@ -20,17 +20,7 @@ struct OptimizationView: View {
     var body: some View {
         FeaturePageShell(
             title: "Optimization",
-            subtitle: "Manage running processes and free up memory.",
-            trailing: AnyView(
-                Button {
-                    Task { await freeUpRAM() }
-                } label: {
-                    Label("Free Up RAM", systemImage: "memorychip")
-                }
-                .glassButton(prominent: true)
-                .controlSize(.small)
-                .disabled(isFreezingRAM)
-            )
+            subtitle: "Manage running processes and free up memory."
         ) {
             VStack(spacing: 0) {
                 // System stats row
@@ -57,7 +47,7 @@ struct OptimizationView: View {
     // MARK: - System Stats Row
 
     private var systemStatsRow: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 20) {
             // Memory pressure
             VStack(spacing: 8) {
                 ZStack {
@@ -122,8 +112,8 @@ struct OptimizationView: View {
 
             Spacer()
 
-            // Process count
-            VStack(spacing: 4) {
+            // Process count and primary memory action
+            VStack(spacing: 8) {
                 Text("\(processMonitor.processes.count)")
                     .font(.largeTitle)
                     .fontWeight(.bold)
@@ -131,7 +121,22 @@ struct OptimizationView: View {
                 Text("Processes")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button {
+                    Task { await freeUpRAM() }
+                } label: {
+                    Label(isFreezingRAM ? "Freeing RAM" : "Free Up RAM", systemImage: "memorychip")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MacSweepTheme.accent)
+                }
+                .labelStyle(.titleAndIcon)
+                .fixedSize()
+                .glassButton()
+                .controlSize(.small)
+                .disabled(isFreezingRAM)
+                .help("Free inactive memory with the macOS purge tool.")
             }
+            .frame(minWidth: 132, alignment: .trailing)
         }
     }
 
@@ -223,6 +228,7 @@ struct OptimizationView: View {
 
     private func freeUpRAM() async {
         isFreezingRAM = true
+        defer { isFreezingRAM = false }
 
         // Run purge command (requires admin privileges)
         let purgePath = "/usr/sbin/purge"
@@ -243,13 +249,11 @@ struct OptimizationView: View {
         // Refresh after a moment
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         await systemMonitor.refresh()
-
-        isFreezingRAM = false
     }
 
     private func quitSelectedProcesses() {
         for pid in selectedProcesses {
-            if let process = processMonitor.processes.first(where: { $0.pid == pid }) {
+            if processMonitor.processes.contains(where: { $0.pid == pid }) {
                 if let app = NSRunningApplication(processIdentifier: pid) {
                     app.terminate()
                 }
