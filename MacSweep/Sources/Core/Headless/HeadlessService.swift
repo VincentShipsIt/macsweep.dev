@@ -299,7 +299,7 @@ public actor MacSweepHeadlessService {
     public func diskTree(path: String?, depth: Int, minSize: Int64 = 0) async throws -> HeadlessDiskTree {
         let expanded: String
         if let path, !path.isEmpty {
-            expanded = (path as NSString).expandingTildeInPath
+            expanded = path.expandingTilde
         } else {
             expanded = FileManager.default.homeDirectoryForCurrentUser.path
         }
@@ -567,7 +567,7 @@ public actor MacSweepHeadlessService {
     // MARK: - Shred
 
     public func shred(path: String, level: String) async throws -> HeadlessShredResult {
-        let expanded = (path as NSString).expandingTildeInPath
+        let expanded = path.expandingTilde
         let url = URL(fileURLWithPath: expanded)
 
         var isDir: ObjCBool = false

@@ -116,7 +116,7 @@ struct AssistantWatchlistModule: ScanModule {
     }
 
     private func expand(path: String) -> URL {
-        URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        URL(fileURLWithPath: path.expandingTilde)
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {

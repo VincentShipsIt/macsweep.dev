@@ -217,7 +217,7 @@ actor AssistantConversationService {
             customTargets: payload.customTargets.map {
                 AssistantScanTarget(
                     path: $0.path,
-                    label: $0.label ?? URL(fileURLWithPath: ($0.path as NSString).expandingTildeInPath).lastPathComponent,
+                    label: $0.label ?? URL(fileURLWithPath: $0.path.expandingTilde).lastPathComponent,
                     sourceRuleID: nil,
                     excludePaths: $0.excludePaths ?? []
                 )
@@ -278,7 +278,7 @@ actor AssistantConversationService {
         let customTargets = extractPaths(from: prompt).map {
             AssistantScanTarget(
                 path: $0,
-                label: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath).lastPathComponent,
+                label: URL(fileURLWithPath: $0.expandingTilde).lastPathComponent,
                 sourceRuleID: nil,
                 excludePaths: []
             )

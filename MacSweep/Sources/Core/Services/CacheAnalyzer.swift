@@ -332,7 +332,7 @@ struct CacheAnalyzer {
         return nil
     }
 
-    private static func runProcess(_ arguments: [String]) -> AIProcessResult {
+    private static func runProcess(_ arguments: [String]) -> ProcessResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         task.arguments = arguments
@@ -344,16 +344,16 @@ struct CacheAnalyzer {
             try task.run()
             task.waitUntilExit()
         } catch {
-            return AIProcessResult(status: 127, output: "", error: error.localizedDescription)
+            return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
-        return AIProcessResult(
+        return ProcessResult(
             status: task.terminationStatus,
             output: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
             error: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         )
     }
 
-    private static func processError(_ provider: String, _ result: AIProcessResult) -> String {
+    private static func processError(_ provider: String, _ result: ProcessResult) -> String {
         let message = result.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             : result.error.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -395,8 +395,5 @@ struct CacheAnalyzer {
     }
 }
 
-private struct AIProcessResult: Sendable {
-    let status: Int32
-    let output: String
-    let error: String
-}
+// Process results use the shared `ProcessResult` (defined in DevToolsModule.swift,
+// same Core module) rather than a duplicate type.

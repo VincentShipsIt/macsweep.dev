@@ -26,11 +26,15 @@ final class LoginItemsService: ObservableObject {
         // 1. SMAppService items via sfltool dumpbtm
         collected += await scanSMAppServiceItems()
 
-        // 2. ~/Library/LaunchAgents
-        collected += scanLaunchAgents(at: userLaunchAgentsURL, type: .launchAgent)
-
-        // 3. /Library/LaunchAgents
-        collected += scanLaunchAgents(at: systemLaunchAgentsURL, type: .launchAgent)
+        // 2 & 3. ~/Library/LaunchAgents and /Library/LaunchAgents — directory
+        // enumeration + per-file plist reads run off the main actor (the helpers
+        // are nonisolated statics, so no main-actor hop / self capture).
+        let userURL = userLaunchAgentsURL
+        let sysURL = systemLaunchAgentsURL
+        collected += await Task.detached(priority: .userInitiated) {
+            Self.scanLaunchAgents(at: userURL, type: .launchAgent)
+                + Self.scanLaunchAgents(at: sysURL, type: .launchAgent)
+        }.value
 
         items = collected
         isLoading = false
@@ -115,7 +119,7 @@ final class LoginItemsService: ObservableObject {
 
     // MARK: - Launch Agents / Daemons
 
-    private func scanLaunchAgents(at directory: URL, type: LoginItemType) -> [LoginItem] {
+    nonisolated private static func scanLaunchAgents(at directory: URL, type: LoginItemType) -> [LoginItem] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
@@ -126,7 +130,7 @@ final class LoginItemsService: ObservableObject {
             .compactMap { url in parseLaunchAgentPlist(at: url, type: type) }
     }
 
-    private func parseLaunchAgentPlist(at url: URL, type: LoginItemType) -> LoginItem? {
+    nonisolated private static func parseLaunchAgentPlist(at url: URL, type: LoginItemType) -> LoginItem? {
         guard let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         else { return nil }

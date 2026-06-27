@@ -14,6 +14,25 @@ protocol ScanModule: Identifiable, Sendable {
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult
 }
 
+extension ScanModule {
+    /// Build a `CleanupItem` for a cache directory if it exists and has nonzero
+    /// size; returns nil otherwise. Centralizes the
+    /// exists → directorySize → size>0 → CleanupItem idiom the package-manager and
+    /// dev-tools scanners repeat dozens of times. Behaviour is identical to the
+    /// hand-written blocks, including the zero-size guard. Scan-only — the
+    /// safety-gated deletion path in `clean()` is untouched.
+    func scanCacheDirectory(
+        at url: URL,
+        moduleName displayName: String,
+        type: CleanupItem.ItemType = .directory
+    ) async -> CleanupItem? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
+        guard size > 0 else { return nil }
+        return CleanupItem(id: UUID(), path: url, size: size, type: type, module: id, moduleName: displayName)
+    }
+}
+
 // MARK: - Cleanup Item
 
 struct CleanupItem: Identifiable, Hashable, Sendable {

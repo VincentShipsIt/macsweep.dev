@@ -236,7 +236,7 @@ struct SafetyChecker: Sendable {
     // MARK: - Helpers
 
     private func expandedPathValue(for protectedPath: String) -> String {
-        (protectedPath as NSString).expandingTildeInPath
+        protectedPath.expandingTilde
     }
 
     /// `url` with parent-directory symlinks resolved, so protection checks see the
@@ -648,4 +648,14 @@ enum PreflightResult: Sendable, Equatable {
     case allowed
     case requiresConfirmation(size: Int64)
     case blocked(reason: String)
+}
+
+// MARK: - Path helpers
+
+extension String {
+    /// `~`-expanded copy of the path. Centralizes the `(self as NSString)`
+    /// bridge-cast that several Core files repeat.
+    var expandingTilde: String {
+        (self as NSString).expandingTildeInPath
+    }
 }

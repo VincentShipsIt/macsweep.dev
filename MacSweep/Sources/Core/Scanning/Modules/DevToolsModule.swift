@@ -25,91 +25,26 @@ struct DevToolsModule: ScanModule {
             items.append(contentsOf: found)
         }
 
-        // Add Xcode DerivedData (fixed location)
-        let derivedData = URL.libraryDirectory.appending(path: "Developer/Xcode/DerivedData")
-        if FileManager.default.fileExists(atPath: derivedData.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: derivedData)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: derivedData,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Xcode DerivedData"
-                ))
-            }
-        }
-
-        // Add Xcode Archives (fixed location)
-        let archives = URL.libraryDirectory.appending(path: "Developer/Xcode/Archives")
-        if FileManager.default.fileExists(atPath: archives.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: archives)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: archives,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Xcode Archives"
-                ))
-            }
-        }
-
-        // Add iOS Device Support (fixed location)
-        let deviceSupport = URL.libraryDirectory.appending(path: "Developer/Xcode/iOS DeviceSupport")
-        if FileManager.default.fileExists(atPath: deviceSupport.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: deviceSupport)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: deviceSupport,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "iOS Device Support"
-                ))
-            }
-        }
-
+        // Fixed Xcode / tooling cache locations under ~/Library, gated by the
+        // shared exists+size helper.
+        //
         // npm / pnpm / Bun / pip / cargo / Homebrew caches are intentionally NOT
         // scanned here. PackageManagerModule already covers them with correctly
         // SCOPED paths (~/.npm/_cacache, ~/.cargo/registry/cache, …). DevTools
         // previously registered the broad parents (whole ~/.npm, all of
         // ~/.cargo/registry — which also holds the `src/` tarballs cargo needs),
-        // double-counting the same bytes and risking over-deletion. Keep the
-        // narrow PackageManagerModule coverage as the single source of truth.
-
-        // Add Playwright browsers
-        let playwrightBrowsers = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/ms-playwright")
-        if FileManager.default.fileExists(atPath: playwrightBrowsers.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: playwrightBrowsers)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: playwrightBrowsers,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Playwright Browsers"
-                ))
-            }
-        }
-
-        // Add CoreSimulator (fixed location)
-        let simulators = URL.libraryDirectory.appending(path: "Developer/CoreSimulator/Devices")
-        if FileManager.default.fileExists(atPath: simulators.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: simulators)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: simulators,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "iOS Simulators"
-                ))
+        // double-counting the same bytes and risking over-deletion.
+        let library = URL.libraryDirectory
+        let fixedTargets: [(path: String, name: String)] = [
+            ("Developer/Xcode/DerivedData", "Xcode DerivedData"),
+            ("Developer/Xcode/Archives", "Xcode Archives"),
+            ("Developer/Xcode/iOS DeviceSupport", "iOS Device Support"),
+            ("Caches/ms-playwright", "Playwright Browsers"),
+            ("Developer/CoreSimulator/Devices", "iOS Simulators"),
+        ]
+        for target in fixedTargets {
+            if let item = await scanCacheDirectory(at: library.appending(path: target.path), moduleName: target.name) {
+                items.append(item)
             }
         }
 
@@ -1392,6 +1327,9 @@ private enum GitHubPRState: Sendable {
     case merged
 }
 
+/// Result of a Process run with separate stdout/stderr. Shared across Core
+/// (DevToolsModule + CacheAnalyzer). MalwareScannerService keeps its own type —
+/// it merges both streams into a single pipe, so its shape differs.
 struct ProcessResult: Sendable {
     let status: Int32
     let output: String

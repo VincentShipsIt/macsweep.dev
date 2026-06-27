@@ -58,7 +58,7 @@ struct ServiceWorkerModule: ScanModule {
         var items: [CleanupItem] = []
 
         for app in Self.electronApps {
-            let expandedPath = (app.path as NSString).expandingTildeInPath
+            let expandedPath = app.path.expandingTilde
             let url = URL(fileURLWithPath: expandedPath)
 
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
@@ -91,7 +91,7 @@ struct ServiceWorkerModule: ScanModule {
     /// Scan Application Support for any other Service Worker directories
     private func scanUnknownElectronApps() async -> [CleanupItem] {
         var items: [CleanupItem] = []
-        let knownPaths = Set(Self.electronApps.map { ($0.path as NSString).expandingTildeInPath })
+        let knownPaths = Set(Self.electronApps.map { $0.path.expandingTilde })
 
         let appSupportURL = URL.libraryDirectory.appending(path: "Application Support")
 
