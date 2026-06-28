@@ -16,6 +16,9 @@ public struct SchedulerConfig: @unchecked Sendable {
     public static let suiteName = "com.vincentshipsit.macsweep"
     static let intervalDaysKey = "scanIntervalDays"
     static let nextScheduledScanKey = "nextScheduledScan"
+    /// Key for the last-scan summary blob. Lives here so GUI (`LastScanStore`) and
+    /// any future CLI consumer read/write the same suite plist, not separate domains.
+    public static let lastScanKey = "lastScanSummary"
     public static let defaultIntervalDays = 7
     public static let minIntervalDays = 1
     public static let maxIntervalDays = 365
@@ -33,8 +36,10 @@ public struct SchedulerConfig: @unchecked Sendable {
     /// default when unset or non-positive.
     public var intervalDays: Int {
         let stored = defaults.integer(forKey: Self.intervalDaysKey)
-        guard stored > 0 else { return Self.defaultIntervalDays }
-        return min(max(stored, Self.minIntervalDays), Self.maxIntervalDays)
+        // Treat any value below the minimum (incl. 0 / unset, or a hand-edited
+        // plist) as "use the default"; only the upper bound needs clamping.
+        guard stored >= Self.minIntervalDays else { return Self.defaultIntervalDays }
+        return min(stored, Self.maxIntervalDays)
     }
 
     public var intervalSeconds: TimeInterval { TimeInterval(intervalDays) * 24 * 60 * 60 }

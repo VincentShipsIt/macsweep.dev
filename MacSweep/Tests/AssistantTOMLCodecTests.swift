@@ -32,6 +32,28 @@ struct AssistantTOMLCodecTests {
         #expect(parsed == rules)
     }
 
+    @Test func watchlistsRoundTripEscapeSensitiveCharacters() throws {
+        // Values containing quotes, backslashes, an escaped-quote sequence, and a
+        // `#` (which must not be mistaken for a comment) all have to survive a
+        // render → parse cycle intact.
+        let rules = [
+            AssistantWatchlistRule(
+                id: "tricky",
+                label: "Cache \"quoted\" \\ slash",
+                enabled: true,
+                source: "assistant",
+                rationale: "Has a literal \\\" sequence and a # hash inside.",
+                paths: ["~/path/with \"quote\"", "~/path/with\\backslash"],
+                excludePaths: ["~/keep # not-a-comment"]
+            )
+        ]
+
+        let rendered = AssistantTOMLCodec.renderWatchlists(rules)
+        let parsed = try AssistantTOMLCodec.parseWatchlists(rendered)
+
+        #expect(parsed == rules)
+    }
+
     @Test func providerRepositorySavesProviderConfig() async throws {
         let rootURL = FileManager.default.temporaryDirectory
             .appending(path: "macsweep-assistant-tests-\(UUID().uuidString)", directoryHint: .isDirectory)

@@ -6,6 +6,7 @@ struct OnboardingView: View {
     @Binding var isPresented: Bool
     @State private var currentPage: Int
     @State private var hasFullDiskAccess: Bool
+    @State private var fdaTimer: Timer?
 
     init(
         isPresented: Binding<Bool>,
@@ -103,13 +104,20 @@ struct OnboardingView: View {
         }
         .frame(width: 650, height: 550)
         .onAppear {
-            // Check permission status periodically
-            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            // Check permission status periodically. Invalidate any prior timer
+            // first so repeated onAppear (sheet re-presented) can't stack parallel
+            // 1s pollers, and store the reference so onDisappear can stop it.
+            fdaTimer?.invalidate()
+            fdaTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
                 hasFullDiskAccess = FullDiskAccess.hasAccess
                 if !isPresented {
                     timer.invalidate()
                 }
             }
+        }
+        .onDisappear {
+            fdaTimer?.invalidate()
+            fdaTimer = nil
         }
     }
 }

@@ -373,6 +373,12 @@ struct SpaceLensView: View {
 
     private func drillDown(_ node: DiskNode) {
         guard node.isDirectory else { return }
+        // Don't start a second drill-down while one is in flight (e.g. a quick
+        // double-tap): two concurrent Tasks would each append to currentPath,
+        // corrupting the breadcrumb trail, and the first to finish would clear the
+        // spinner while the other still runs. The guard inside the Task fires too
+        // late — the check has to happen before spawning.
+        guard !isScanning else { return }
 
         Task {
             isScanning = true

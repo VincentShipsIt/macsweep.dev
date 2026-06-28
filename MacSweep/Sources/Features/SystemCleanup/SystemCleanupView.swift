@@ -47,6 +47,17 @@ struct SystemCleanupView: View {
                 footer
             }
         }
+        .alert(
+            "Cleanup Failed",
+            isPresented: Binding(
+                get: { appState.lastDeletionError != nil },
+                set: { if !$0 { appState.lastDeletionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appState.lastDeletionError ?? "")
+        }
     }
 
     // MARK: - Results List

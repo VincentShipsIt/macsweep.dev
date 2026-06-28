@@ -29,10 +29,15 @@ struct TrashBinsModule: ScanModule {
 
         var items: [CleanupItem] = []
 
+        // Do NOT skip hidden files: the Trash legitimately holds dot-named items
+        // (deleted dotfiles, .DS_Store, external-volume housekeeping). Skipping
+        // them understates the reported size and leaves them behind on cleanup, so
+        // the Trash looks only partially emptied. SafetyChecker still gates each
+        // path by component.
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
+            options: []
         ) else { return nil }
 
         for itemURL in contents {

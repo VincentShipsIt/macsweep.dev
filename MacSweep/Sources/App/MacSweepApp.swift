@@ -15,13 +15,11 @@ struct MacSweepApp: App {
     @MainActor private static var didRunLaunchSideEffects = false
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
-    init() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            Task { @MainActor in
-                _ = AppDelegate.openMainWindowIfNeeded()
-            }
-        }
-    }
+    // No launch-time window timer here: AppDelegate (t+0.6s) and the menu-bar
+    // label task (t+0.7s) already cover opening the main window, and they stagger
+    // open-then-focus correctly. A third uncoordinated attempt at t+1.0s only
+    // raced the others and could spawn a duplicate fallback window over a valid
+    // SwiftUI window that wasn't visible yet.
 
     var body: some Scene {
         // Default launch window.
@@ -108,13 +106,17 @@ private struct MacSweepMenuBarLabel: View {
                 guard !didRequestInitialWindow else { return }
                 didRequestInitialWindow = true
 
-                try? await Task.sleep(nanoseconds: 700_000_000)
+                // Stop if the label view is torn down mid-sleep (cancellation):
+                // otherwise the window-open would still fire with no user intent.
+                // (`.task` takes a non-throwing closure, so guard on the throw
+                // rather than `try await`.)
+                guard (try? await Task.sleep(nanoseconds: 700_000_000)) != nil else { return }
                 await MainActor.run {
                     guard !AppDelegate.focusMainWindow() else { return }
                     openWindow(id: "main")
                 }
 
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard (try? await Task.sleep(nanoseconds: 300_000_000)) != nil else { return }
                 await MainActor.run {
                     _ = AppDelegate.focusMainWindow()
                 }

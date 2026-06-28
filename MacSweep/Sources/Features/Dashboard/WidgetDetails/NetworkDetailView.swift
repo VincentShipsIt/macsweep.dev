@@ -179,15 +179,9 @@ struct SpeedMeter: View {
     let speed: UInt64
     let color: Color
 
+    // Single source of truth: the model owns the bytes/sec → string formatting.
     private var formattedSpeed: String {
-        let kbps = Double(speed) / 1024
-        if kbps < 1 {
-            return "0 KB/s"
-        } else if kbps < 1024 {
-            return String(format: "%.1f KB/s", kbps)
-        } else {
-            return String(format: "%.1f MB/s", kbps / 1024)
-        }
+        NetworkUsage.formatSpeed(speed)
     }
 
     private var speedLevel: SpeedLevel {

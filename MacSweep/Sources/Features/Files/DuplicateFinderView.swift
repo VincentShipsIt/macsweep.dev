@@ -177,16 +177,23 @@ struct DuplicateFinderView: View {
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
+        let result: CleanupResult
         do {
-            _ = try await engine.clean(items: itemsToDelete, dryRun: false)
-            errorMessage = nil
+            result = try await engine.clean(items: itemsToDelete, dryRun: false)
         } catch {
             errorMessage = "Couldn't move duplicates to Trash: \(error.localizedDescription)"
             return
         }
 
-        duplicateItems.removeAll { selectedItems.contains($0.id) }
-        selectedItems.removeAll()
+        // Per-item safety failures are returned in result.errors (not thrown), so
+        // only drop the items that actually left disk — keep blocked ones visible
+        // and tell the user, rather than silently removing them from the list.
+        let blockedPaths = Set(result.errors.map(\.path))
+        duplicateItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        selectedItems = selectedItems.filter { id in duplicateItems.contains(where: { $0.id == id }) }
+        errorMessage = blockedPaths.isEmpty
+            ? nil
+            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
     }
 
     private var sortedItems: [CleanupItem] {

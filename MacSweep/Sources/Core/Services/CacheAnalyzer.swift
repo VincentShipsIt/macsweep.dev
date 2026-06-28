@@ -77,7 +77,7 @@ struct CacheAnalyzer {
 
     private func runFastScan() async -> [Finding] {
         let script = #"""
-        find ~ \( \
+        find ~ -maxdepth 8 \( \
           -path "*/Library/Application Support/*/Code Cache" \
           -o -path "*/Library/Application Support/*/GPUCache" \
           -o -path "*/Library/Application Support/*/DawnWebGPUCache" \
@@ -104,7 +104,7 @@ struct CacheAnalyzer {
           -o -path "*/.claude/shell-snapshots" \
           -o -path "*/.codex/log" \
           -o -path "*/.codex/archived_sessions" \
-        \) -maxdepth 8 -type d -prune -print0 2>/dev/null | xargs -0 du -sh 2>/dev/null | sort -rh
+        \) -type d -prune -print0 2>/dev/null | xargs -0 du -sh 2>/dev/null | sort -rh
         """#
         return await Task.detached(priority: .userInitiated) {
             let result = Self.shell(script)
@@ -186,12 +186,16 @@ struct CacheAnalyzer {
         var errors: [String] = []
 
         if Self.executablePath(for: "claude") != nil {
-            let result = Self.runProcess([
-                "claude",
-                "-p",
-                "--json-schema", Self.aiSchemaString,
-                prompt
-            ])
+            // Run off the cooperative pool — the CLI can take many seconds and
+            // runProcess blocks on waitUntilExit (matches runFastScan's pattern).
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.runProcess([
+                    "claude",
+                    "-p",
+                    "--json-schema", Self.aiSchemaString,
+                    prompt
+                ])
+            }.value
             if result.status == 0 {
                 if let findings = Self.parseAIFindings(result.output, source: "AI Analysis") {
                     return (findings, "Claude CLI", nil)
@@ -207,16 +211,18 @@ struct CacheAnalyzer {
             let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-\(UUID().uuidString).json")
             do {
                 try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
-                let result = Self.runProcess([
-                    "codex",
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--sandbox", "read-only",
-                    "--ephemeral",
-                    "--output-schema", schemaURL.path,
-                    "-o", outputURL.path,
-                    prompt
-                ])
+                let result = await Task.detached(priority: .userInitiated) {
+                    Self.runProcess([
+                        "codex",
+                        "exec",
+                        "--skip-git-repo-check",
+                        "--sandbox", "read-only",
+                        "--ephemeral",
+                        "--output-schema", schemaURL.path,
+                        "-o", outputURL.path,
+                        prompt
+                    ])
+                }.value
                 if result.status == 0 {
                     let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
                     if let findings = Self.parseAIFindings(text, source: "AI Analysis") {
@@ -326,7 +332,7 @@ struct CacheAnalyzer {
         return nil
     }
 
-    private static func runProcess(_ arguments: [String]) -> AIProcessResult {
+    private static func runProcess(_ arguments: [String]) -> ProcessResult {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         task.arguments = arguments
@@ -338,16 +344,16 @@ struct CacheAnalyzer {
             try task.run()
             task.waitUntilExit()
         } catch {
-            return AIProcessResult(status: 127, output: "", error: error.localizedDescription)
+            return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
-        return AIProcessResult(
+        return ProcessResult(
             status: task.terminationStatus,
             output: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
             error: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         )
     }
 
-    private static func processError(_ provider: String, _ result: AIProcessResult) -> String {
+    private static func processError(_ provider: String, _ result: ProcessResult) -> String {
         let message = result.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             : result.error.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -389,8 +395,5 @@ struct CacheAnalyzer {
     }
 }
 
-private struct AIProcessResult: Sendable {
-    let status: Int32
-    let output: String
-    let error: String
-}
+// Process results use the shared `ProcessResult` (defined in DevToolsModule.swift,
+// same Core module) rather than a duplicate type.

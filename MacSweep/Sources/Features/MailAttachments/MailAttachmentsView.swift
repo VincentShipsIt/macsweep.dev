@@ -11,6 +11,7 @@ struct MailAttachmentsView: View {
     @State private var filterSource: String? = nil
     @State private var filterType: String? = nil
     @State private var sizeThreshold: Double = 1  // MB
+    @State private var errorMessage: String?
 
     var body: some View {
         FeaturePageShell(
@@ -47,6 +48,17 @@ struct MailAttachmentsView: View {
                     footer
                 }
             }
+        }
+        .alert(
+            "Couldn't delete attachments",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -196,16 +208,25 @@ struct MailAttachmentsView: View {
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
+        let result: CleanupResult
         do {
-            _ = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false)
         } catch {
-            print("Mail attachments cleanup error: \(error)")
+            // The whole operation failed (e.g. deletion cap) — surface it and keep
+            // every item, since nothing was removed.
+            errorMessage = "Couldn't move attachments to Trash: \(error.localizedDescription)"
+            return
         }
 
-        // Refresh
-        attachments.removeAll { selectedItems.contains($0.id) }
-        selectedItems.removeAll()
+        // Per-item safety failures come back in result.errors (not thrown). Only
+        // drop the items that actually left disk; keep blocked ones visible.
+        let blockedPaths = Set(result.errors.map(\.path))
+        attachments.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        selectedItems = selectedItems.filter { id in attachments.contains(where: { $0.id == id }) }
         stats = MailStats.from(items: attachments)
+        if !blockedPaths.isEmpty {
+            errorMessage = "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+        }
     }
 
     // MARK: - Computed

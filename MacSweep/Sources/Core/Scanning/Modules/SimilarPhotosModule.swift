@@ -68,7 +68,7 @@ struct SimilarPhotosModule: ScanModule {
                 guard values?.contentType?.conforms(to: .image) == true else { continue }
                 guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
-                let size = Int64(values?.totalFileAllocatedSize ?? values?.fileSize ?? 0)
+                let size = values?.diskSize ?? 0
                 guard size >= minimumFileSize else { continue }
 
                 guard let signature = SimilarPhotoSignature.make(from: url) else { continue }

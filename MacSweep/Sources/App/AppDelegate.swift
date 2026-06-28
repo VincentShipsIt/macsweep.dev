@@ -51,8 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard closedWindow.level == .normal,
               closedWindow.styleMask.contains(.titled) else { return }
 
-        // After a brief delay, check if any main windows remain
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // After a brief delay, check if any main windows remain. Use a MainActor
+        // Task (not a bare DispatchQueue closure) so the AppKit reads and the
+        // @MainActor hideDockIcon() call stay inside the actor's isolation domain.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 100_000_000)
             let hasMainWindow = NSApplication.shared.windows.contains { window in
                 window.level == .normal &&
                 window.styleMask.contains(.titled) &&
@@ -100,7 +103,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
-        return window.isVisible
+        // The show request is dispatched to the window server asynchronously, so
+        // `window.isVisible` is still false here. Returning it would make
+        // openMainWindowIfNeeded() think focusing failed and spawn a SECOND
+        // fallback window on top of the one we just ordered front. We found a real
+        // main window and asked it to show — report success.
+        return true
     }
 
     @discardableResult

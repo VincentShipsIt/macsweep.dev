@@ -357,10 +357,16 @@ struct TrashItemRow: View {
     }
 
     private func putBack(_ item: CleanupItem) {
+        // Escape the path for an AppleScript string literal: backslash first, then
+        // double-quote. Without this, a trashed file whose name contains a `"`
+        // would break out of the string and inject arbitrary AppleScript.
+        let escapedPath = item.path.path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         // Use Finder to put back
         let script = """
         tell application "Finder"
-            set theItem to POSIX file "\(item.path.path)" as alias
+            set theItem to POSIX file "\(escapedPath)" as alias
             move theItem to original location
         end tell
         """

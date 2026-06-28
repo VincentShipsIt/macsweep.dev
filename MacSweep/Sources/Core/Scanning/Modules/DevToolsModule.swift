@@ -25,179 +25,26 @@ struct DevToolsModule: ScanModule {
             items.append(contentsOf: found)
         }
 
-        // Add Xcode DerivedData (fixed location)
-        let derivedData = URL.libraryDirectory.appending(path: "Developer/Xcode/DerivedData")
-        if FileManager.default.fileExists(atPath: derivedData.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: derivedData)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: derivedData,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Xcode DerivedData"
-                ))
-            }
-        }
-
-        // Add Xcode Archives (fixed location)
-        let archives = URL.libraryDirectory.appending(path: "Developer/Xcode/Archives")
-        if FileManager.default.fileExists(atPath: archives.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: archives)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: archives,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Xcode Archives"
-                ))
-            }
-        }
-
-        // Add iOS Device Support (fixed location)
-        let deviceSupport = URL.libraryDirectory.appending(path: "Developer/Xcode/iOS DeviceSupport")
-        if FileManager.default.fileExists(atPath: deviceSupport.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: deviceSupport)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: deviceSupport,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "iOS Device Support"
-                ))
-            }
-        }
-
-        // Add global npm cache
-        let npmCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".npm")
-        if FileManager.default.fileExists(atPath: npmCache.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: npmCache)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: npmCache,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "npm Global Cache"
-                ))
-            }
-        }
-
-        // Add global pnpm store
-        let pnpmStore = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/pnpm/store")
-        if FileManager.default.fileExists(atPath: pnpmStore.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: pnpmStore)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: pnpmStore,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "pnpm Global Store"
-                ))
-            }
-        }
-
-        // Add Bun install cache
-        let bunCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".bun/install/cache")
-        if FileManager.default.fileExists(atPath: bunCache.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: bunCache)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: bunCache,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Bun Install Cache"
-                ))
-            }
-        }
-
-        // Add pip cache
-        let pipCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/pip")
-        if FileManager.default.fileExists(atPath: pipCache.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: pipCache)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: pipCache,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "pip Cache"
-                ))
-            }
-        }
-
-        // Add cargo cache
-        let cargoCache = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".cargo/registry")
-        if FileManager.default.fileExists(atPath: cargoCache.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: cargoCache)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: cargoCache,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Cargo Registry Cache"
-                ))
-            }
-        }
-
-        // Add Homebrew cache
-        let brewCache = URL.libraryDirectory.appending(path: "Caches/Homebrew")
-        if FileManager.default.fileExists(atPath: brewCache.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: brewCache)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: brewCache,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Homebrew Cache"
-                ))
-            }
-        }
-
-        // Add Playwright browsers
-        let playwrightBrowsers = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Caches/ms-playwright")
-        if FileManager.default.fileExists(atPath: playwrightBrowsers.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: playwrightBrowsers)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: playwrightBrowsers,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Playwright Browsers"
-                ))
-            }
-        }
-
-        // Add CoreSimulator (fixed location)
-        let simulators = URL.libraryDirectory.appending(path: "Developer/CoreSimulator/Devices")
-        if FileManager.default.fileExists(atPath: simulators.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: simulators)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: simulators,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "iOS Simulators"
-                ))
+        // Fixed Xcode / tooling cache locations under ~/Library, gated by the
+        // shared exists+size helper.
+        //
+        // npm / pnpm / Bun / pip / cargo / Homebrew caches are intentionally NOT
+        // scanned here. PackageManagerModule already covers them with correctly
+        // SCOPED paths (~/.npm/_cacache, ~/.cargo/registry/cache, …). DevTools
+        // previously registered the broad parents (whole ~/.npm, all of
+        // ~/.cargo/registry — which also holds the `src/` tarballs cargo needs),
+        // double-counting the same bytes and risking over-deletion.
+        let library = URL.libraryDirectory
+        let fixedTargets: [(path: String, name: String)] = [
+            ("Developer/Xcode/DerivedData", "Xcode DerivedData"),
+            ("Developer/Xcode/Archives", "Xcode Archives"),
+            ("Developer/Xcode/iOS DeviceSupport", "iOS Device Support"),
+            ("Caches/ms-playwright", "Playwright Browsers"),
+            ("Developer/CoreSimulator/Devices", "iOS Simulators"),
+        ]
+        for target in fixedTargets {
+            if let item = await scanCacheDirectory(at: library.appending(path: target.path), moduleName: target.name) {
+                items.append(item)
             }
         }
 
@@ -309,14 +156,27 @@ struct DevArtifactPattern {
         let parent = url.deletingLastPathComponent()
 
         for indicator in siblingIndicators {
-            let indicatorPath = parent.appending(path: indicator)
-            if FileManager.default.fileExists(atPath: indicatorPath.path) {
+            if Self.parentContainsFile(matching: indicator, in: parent) {
                 return true
             }
         }
 
         // If no indicators specified, just match the directory name
         return siblingIndicators.isEmpty
+    }
+
+    /// Sibling-indicator match. `fileExists` does NOT interpret shell globs, so a
+    /// `"*.csproj"` indicator (used by the .NET/Xcode patterns) would look for a
+    /// file literally named `*.csproj` and never match. For a `*.ext` glob we
+    /// enumerate the directory and match by suffix; everything else keeps the fast
+    /// exact-name `fileExists` path.
+    private static func parentContainsFile(matching glob: String, in parent: URL) -> Bool {
+        guard glob.hasPrefix("*.") else {
+            return FileManager.default.fileExists(atPath: parent.appending(path: glob).path)
+        }
+        let suffix = String(glob.dropFirst(1))   // "*.csproj" -> ".csproj"
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+        return entries.contains { $0.hasSuffix(suffix) }
     }
 
     static let allPatterns: [DevArtifactPattern] = [
@@ -372,7 +232,7 @@ struct DevArtifactPattern {
         DevArtifactPattern(
             name: "mypy cache",
             directoryName: ".mypy_cache",
-            siblingIndicators: ["myproject.toml", "setup.py"]
+            siblingIndicators: ["pyproject.toml", "setup.py", "mypy.ini", ".mypy.ini"]
         ),
 
         // Gradle (Android/Java)
@@ -1467,6 +1327,9 @@ private enum GitHubPRState: Sendable {
     case merged
 }
 
+/// Result of a Process run with separate stdout/stderr. Shared across Core
+/// (DevToolsModule + CacheAnalyzer). MalwareScannerService keeps its own type —
+/// it merges both streams into a single pipe, so its shape differs.
 struct ProcessResult: Sendable {
     let status: Int32
     let output: String

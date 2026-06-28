@@ -10,8 +10,10 @@ struct MailAttachmentsModule: ScanModule {
     /// Minimum file size to report (1MB default)
     var threshold: Int64 = 1_048_576
 
-    /// Maximum age to scan (nil = all)
-    var maxAgeDays: Int? = nil
+    /// Minimum age in days: only report attachments at least this many days old.
+    /// nil = no minimum (all files included). The filter keeps OLDER files, so the
+    /// name reflects the actual behaviour.
+    var minAgeDays: Int? = nil
 
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
@@ -146,14 +148,14 @@ struct MailAttachmentsModule: ScanModule {
                 }
 
                 // Get file size
-                let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+                let size = values.diskSize
                 guard size >= threshold else { continue }
 
                 // Check age if specified
-                if let maxDays = maxAgeDays,
+                if let minDays = minAgeDays,
                    let modified = values.contentModificationDate {
                     let daysOld = Calendar.current.dateComponents([.day], from: modified, to: Date()).day ?? 0
-                    if daysOld < maxDays { continue }
+                    if daysOld < minDays { continue }
                 }
 
                 // Skip mail database files

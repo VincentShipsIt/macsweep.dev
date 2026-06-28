@@ -390,7 +390,7 @@ struct SSHHostsView: View {
             }
         }
         .task {
-            loadHosts()
+            await loadHosts()
         }
     }
 
@@ -429,7 +429,7 @@ struct SSHHostsView: View {
                 Spacer()
 
                 Button {
-                    loadHosts()
+                    Task { await loadHosts() }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
@@ -555,11 +555,15 @@ struct SSHHostsView: View {
 
     // MARK: - Actions
 
-    private func loadHosts() {
+    private func loadHosts() async {
         isLoading = true
         defer { isLoading = false }
 
-        hosts = SSHKnownHostsManager.getKnownHosts()
+        // Read/parse ~/.ssh/known_hosts off the main actor so the spinner can
+        // actually render and the UI doesn't block on the file read.
+        hosts = await Task.detached(priority: .userInitiated) {
+            SSHKnownHostsManager.getKnownHosts()
+        }.value
     }
 
     private func removeSelected() {
@@ -573,7 +577,7 @@ struct SSHHostsView: View {
             }
         }
         selectedHosts.removeAll()
-        loadHosts()
+        Task { await loadHosts() }
         errorMessage = failed == 0
             ? nil
             : "Couldn't remove \(failed) host\(failed == 1 ? "" : "s") from known_hosts."
@@ -587,7 +591,7 @@ struct SSHHostsView: View {
             errorMessage = "Couldn't clear known_hosts: \(error.localizedDescription)"
         }
         selectedHosts.removeAll()
-        loadHosts()
+        Task { await loadHosts() }
     }
 }
 

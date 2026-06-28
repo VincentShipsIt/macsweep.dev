@@ -15,6 +15,10 @@ final class AppState: ObservableObject {
     /// Last scan failure, surfaced to the UI. Cleared at the start of each scan.
     @Published var lastError: String?
 
+    /// Last deletion failure (cap hit, safety block, or per-item error), surfaced
+    /// to the UI separately from scan errors. Cleared at the start of each cleanup.
+    @Published var lastDeletionError: String?
+
     // MARK: - Disk Usage
     @Published var diskUsage: DiskUsage?
 
@@ -69,19 +73,34 @@ final class AppState: ObservableObject {
     }
 
     func deleteSelected(dryRun: Bool = false) async throws -> CleanupResult {
+        if !dryRun { lastDeletionError = nil }
         let itemsToDelete = scanResults.filter { selectedItems.contains($0.id) }
 
-        let result = try await scanEngine.clean(items: itemsToDelete, dryRun: dryRun)
+        let result: CleanupResult
+        do {
+            result = try await scanEngine.clean(items: itemsToDelete, dryRun: dryRun)
+        } catch {
+            // Surface the failure (e.g. the DeletionGuard cap) so callers using
+            // `try?` still give the user feedback instead of swallowing it.
+            if !dryRun { lastDeletionError = error.localizedDescription }
+            throw error
+        }
 
         if !dryRun {
             lastCleanup = result
-            // Remove deleted items from results
-            scanResults.removeAll { selectedItems.contains($0.id) }
-            selectedItems.removeAll()
+            // Per-item safety failures are returned in result.errors (not thrown).
+            // Only remove items that actually left disk; keep blocked ones in the
+            // list rather than silently dropping them.
+            let blockedPaths = Set(result.errors.map(\.path))
+            scanResults.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+            selectedItems = selectedItems.filter { id in scanResults.contains(where: { $0.id == id }) }
             smartCareSummary = scanResults.isEmpty
                 ? nil
                 : SmartCareAnalyzer().summarize(items: scanResults, diskUsage: diskUsage)
             await refreshDiskUsage()
+            if !blockedPaths.isEmpty {
+                lastDeletionError = "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+            }
         }
 
         return result
@@ -172,9 +191,13 @@ final class AppState: ObservableObject {
         modules: [String]?,
         assistantTargets: [AssistantScanTarget]
     ) async {
-        if let activeScanTask {
+        // Serialize concurrent scan requests instead of dropping them. The previous
+        // early `return` discarded this caller's modules/targets and let them see an
+        // unrelated in-flight scan's results (e.g. an assistant plan showing a
+        // background quick-scan's findings). Wait for any in-flight scan — and any a
+        // peer waiter starts ahead of us — to finish, THEN run the requested scan.
+        while let activeScanTask {
             await activeScanTask.value
-            return
         }
 
         let scanID = UUID()

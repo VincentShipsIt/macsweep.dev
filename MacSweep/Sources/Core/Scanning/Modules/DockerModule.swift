@@ -15,6 +15,23 @@ enum DockerCLI {
     static var path: String? {
         candidatePaths.first { FileManager.default.fileExists(atPath: $0) }
     }
+
+    /// Parse a Docker size token (e.g. "1.5GB", "256M", "512kB") into bytes.
+    /// Accepts both the two-letter (`GB`) and bare (`G`) unit forms Docker emits
+    /// across subcommands/versions. Single source of truth for both call sites.
+    static func parseBytes(_ str: String) -> Int64 {
+        let trimmed = str.trimmingCharacters(in: .whitespaces)
+        guard let value = Double(trimmed.filter { $0.isNumber || $0 == "." }) else { return 0 }
+        let upper = trimmed.uppercased()
+        if upper.hasSuffix("GB") || upper.hasSuffix("G") {
+            return Int64(value * 1_073_741_824)
+        } else if upper.hasSuffix("MB") || upper.hasSuffix("M") {
+            return Int64(value * 1_048_576)
+        } else if upper.hasSuffix("KB") || upper.hasSuffix("K") {
+            return Int64(value * 1024)
+        }
+        return Int64(value)
+    }
 }
 
 /// Module for cleaning Docker resources
@@ -65,25 +82,30 @@ struct DockerModule: ScanModule {
     private func getDockerDiskUsage() async -> [CleanupItem]? {
         guard let dockerPath = DockerCLI.path else { return nil }
 
-        let process = Process()
-        let pipe = Pipe()
+        // Run docker off the cooperative pool so waitUntilExit doesn't pin a
+        // concurrency thread. Only the captured String crosses in; parsing happens
+        // back here so `self` isn't captured by the detached task.
+        let data: Data? = await Task.detached(priority: .utility) {
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: dockerPath)
+            process.arguments = ["system", "df", "-v", "--format", "{{json .}}"]
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                // Drain before reaping to avoid a full-pipe deadlock.
+                let out = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { return nil }
+                return out
+            } catch {
+                return nil
+            }
+        }.value
 
-        process.executableURL = URL(fileURLWithPath: dockerPath)
-        process.arguments = ["system", "df", "-v", "--format", "{{json .}}"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            guard process.terminationStatus == 0 else { return nil }
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return parseDockerDF(data)
-        } catch {
-            return nil
-        }
+        guard let data else { return nil }
+        return parseDockerDF(data)
     }
 
     private func parseDockerDF(_ data: Data) -> [CleanupItem] {
@@ -207,7 +229,7 @@ struct DockerModule: ScanModule {
             if let range = output.range(of: "reclaimed space: "),
                let endRange = output.range(of: "B", range: range.upperBound..<output.endIndex) {
                 let sizeStr = String(output[range.upperBound..<endRange.lowerBound])
-                let bytes = parseSize(sizeStr)
+                let bytes = DockerCLI.parseBytes(sizeStr)
                 return (process.terminationStatus == 0, bytes)
             }
 
@@ -217,19 +239,6 @@ struct DockerModule: ScanModule {
         }
     }
 
-    private func parseSize(_ str: String) -> Int64 {
-        let trimmed = str.trimmingCharacters(in: .whitespaces)
-        guard let value = Double(trimmed.filter { $0.isNumber || $0 == "." }) else { return 0 }
-
-        if trimmed.contains("G") {
-            return Int64(value * 1_073_741_824)
-        } else if trimmed.contains("M") {
-            return Int64(value * 1_048_576)
-        } else if trimmed.contains("K") {
-            return Int64(value * 1024)
-        }
-        return Int64(value)
-    }
 }
 
 // MARK: - Docker Info
@@ -385,7 +394,7 @@ struct DockerCleanupActions {
                 let afterRange = output[range.upperBound...]
                 if let endIndex = afterRange.firstIndex(of: "\n") ?? afterRange.firstIndex(of: " ") {
                     let sizeStr = String(afterRange[..<endIndex])
-                    bytesFreed = parseDockerSize(sizeStr)
+                    bytesFreed = DockerCLI.parseBytes(sizeStr)
                 }
             }
 
@@ -395,18 +404,4 @@ struct DockerCleanupActions {
         }
     }
 
-    private static func parseDockerSize(_ str: String) -> Int64 {
-        let trimmed = str.trimmingCharacters(in: .whitespaces)
-        let numStr = trimmed.filter { $0.isNumber || $0 == "." }
-        guard let value = Double(numStr) else { return 0 }
-
-        if trimmed.hasSuffix("GB") {
-            return Int64(value * 1_073_741_824)
-        } else if trimmed.hasSuffix("MB") {
-            return Int64(value * 1_048_576)
-        } else if trimmed.hasSuffix("KB") || trimmed.hasSuffix("kB") {
-            return Int64(value * 1024)
-        }
-        return Int64(value)
-    }
 }

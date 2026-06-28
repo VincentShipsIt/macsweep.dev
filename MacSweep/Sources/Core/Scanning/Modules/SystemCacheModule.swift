@@ -86,7 +86,7 @@ struct SystemCacheModule: ScanModule {
                         size = try await DiskAnalyzer.directorySize(at: url)
                     } else {
                         let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                        size = Int64(sizeValues.totalFileAllocatedSize ?? sizeValues.fileSize ?? 0)
+                        size = sizeValues.diskSize
                     }
 
                     // Skip tiny items (less than 1KB)
@@ -156,7 +156,7 @@ struct SystemCacheModule: ScanModule {
                             size = try await DiskAnalyzer.directorySize(at: url)
                         } else {
                             let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                            size = Int64(sizeValues.totalFileAllocatedSize ?? sizeValues.fileSize ?? 0)
+                            size = sizeValues.diskSize
                         }
 
                         // Skip tiny items
@@ -237,16 +237,24 @@ struct SystemCacheModule: ScanModule {
                 }
                 do {
                     if item.type == .directory {
-                        // Remove contents but keep the directory
+                        // Remove contents but keep the directory. Re-validate EACH
+                        // child: between scan and clean an app may have written new
+                        // files into its cache dir, and only item.path itself was
+                        // gated above. Permanent deletion is intentional here — this
+                        // module's role is removing regenerable cache (trashing it
+                        // would just hold junk in the Trash until emptied).
                         let contents = try FileManager.default.contentsOfDirectory(
                             at: item.path,
                             includingPropertiesForKeys: nil
                         )
                         for content in contents {
-                            try FileManager.default.removeItem(at: content)
+                            guard checker.validateForCleanup(content, moduleID: id, itemType: .file).isSafe else {
+                                continue
+                            }
+                            try CleanupFileRemover.permanent(content)
                         }
                     } else {
-                        try FileManager.default.removeItem(at: item.path)
+                        try CleanupFileRemover.permanent(item.path)
                     }
                     processedCount += 1
                     bytesFreed += item.size

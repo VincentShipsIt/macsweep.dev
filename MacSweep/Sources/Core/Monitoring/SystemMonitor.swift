@@ -157,17 +157,10 @@ final class SystemMonitor: ObservableObject {
             return
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: purgePath)
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            // purge may fail silently - that's okay
-        }
+        // runCommand hops to a background queue and waits there, so purge (which
+        // can take several seconds walking inactive pages) does not block the
+        // MainActor and freeze the UI / progress spinner.
+        _ = await runCommand(purgePath, arguments: [])
 
         // Refresh after purge
         memoryUsage = await fetchMemoryUsage()
@@ -469,16 +462,21 @@ struct NetworkUsage: Sendable {
     var ssid: String? = nil
 
     var formattedDownload: String {
-        formatSpeed(downloadSpeed)
+        Self.formatSpeed(downloadSpeed)
     }
 
     var formattedUpload: String {
-        formatSpeed(uploadSpeed)
+        Self.formatSpeed(uploadSpeed)
     }
 
-    private func formatSpeed(_ bytesPerSecond: UInt64) -> String {
+    /// Canonical bytes/sec → human string. Shared by the dashboard's SpeedMeter so
+    /// the model and the view never drift. Sub-1 kbps reads as a flat "0 KB/s"
+    /// rather than a jittery "0.x KB/s".
+    static func formatSpeed(_ bytesPerSecond: UInt64) -> String {
         let kbps = Double(bytesPerSecond) / 1024
-        if kbps < 1024 {
+        if kbps < 1 {
+            return "0 KB/s"
+        } else if kbps < 1024 {
             return String(format: "%.1f KB/s", kbps)
         } else {
             return String(format: "%.1f MB/s", kbps / 1024)
@@ -501,14 +499,17 @@ extension SystemMonitor {
             // Look for en0 (Wi-Fi) or en1 (Ethernet)
             if line.hasPrefix("en0") || line.hasPrefix("en1") {
                 let columns = line.split(separator: " ").map(String.init)
-                if columns.count >= 10 {
-                    // Column 6 is Ibytes (received), Column 9 is Obytes (sent)
-                    if let rx = UInt64(columns[6]), let tx = UInt64(columns[9]) {
-                        totalRx += rx
-                        totalTx += tx
-                        usage.isConnected = true
-                        usage.interfaceName = columns[0]
-                    }
+                // netstat -ib prints one row per (interface, protocol-family):
+                // a <Link#N> row with the real hardware counters plus IPv4/IPv6
+                // rows that duplicate those same counts. Summing them all would
+                // inflate totals 2-3x, so only count the Link-layer row.
+                guard columns.count >= 10, columns[2].hasPrefix("<Link#") else { continue }
+                // Column 6 is Ibytes (received), Column 9 is Obytes (sent)
+                if let rx = UInt64(columns[6]), let tx = UInt64(columns[9]) {
+                    totalRx += rx
+                    totalTx += tx
+                    usage.isConnected = true
+                    usage.interfaceName = columns[0]
                 }
             }
         }
@@ -561,9 +562,11 @@ extension SystemMonitor {
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
-
+                    // Drain before reaping so verbose commands (e.g.
+                    // system_profiler) can't fill the 64 KB pipe buffer and
+                    // deadlock against waitUntilExit.
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
                     let output = String(data: data, encoding: .utf8) ?? ""
                     continuation.resume(returning: output)
                 } catch {

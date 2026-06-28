@@ -53,10 +53,17 @@ actor MaintenanceActions {
 
         do {
             try process.run()
-            process.waitUntilExit()
-
+            // Drain the pipe BEFORE reaping: readDataToEndOfFile blocks until the
+            // child closes its write end (on exit), so a verbose child can't fill
+            // the 64 KB pipe buffer and deadlock against waitUntilExit.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             guard let output = String(data: data, encoding: .utf8) else { return 0 }
+
+            // Page size is 4 KB on Intel but 16 KB on Apple Silicon — read it
+            // dynamically so the byte total isn't 4x wrong on Apple Silicon.
+            let pageSize = Int64(sysconf(Int32(_SC_PAGESIZE)))
+            let resolvedPageSize = pageSize > 0 ? pageSize : 4096
 
             // Parse free pages
             let lines = output.split(separator: "\n")
@@ -65,7 +72,7 @@ actor MaintenanceActions {
                     let parts = line.split(separator: ":")
                     if let valueStr = parts.last?.trimmingCharacters(in: CharacterSet(charactersIn: " .")) {
                         if let pages = Int64(valueStr) {
-                            return pages * 4096  // Page size is 4KB
+                            return pages * resolvedPageSize
                         }
                     }
                 }
@@ -170,9 +177,11 @@ actor MaintenanceActions {
 
         do {
             try process.run()
-            process.waitUntilExit()
-
+            // Drain before reaping: a damaged volume can emit thousands of error
+            // lines, overflowing the 64 KB pipe buffer and deadlocking a
+            // wait-then-read ordering.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             let output = String(data: data, encoding: .utf8) ?? ""
 
             let success = process.terminationStatus == 0
@@ -208,10 +217,15 @@ actor MaintenanceActions {
             try process.run()
             process.waitUntilExit()
 
+            // Whether the pressure file was actually allocated. If mkfile failed
+            // (e.g. the disk had < 1 GB free), no space pressure was applied and we
+            // must not report success as if reclamation was triggered.
+            let mkfileSucceeded = process.terminationStatus == 0
+
             // Delete the file
             try? FileManager.default.removeItem(at: tempFile)
 
-            // Run periodic scripts
+            // Run periodic scripts regardless — a useful side-effect either way.
             let periodic = Process()
             periodic.executableURL = URL(fileURLWithPath: "/usr/sbin/periodic")
             periodic.arguments = ["daily", "weekly", "monthly"]
@@ -223,6 +237,14 @@ actor MaintenanceActions {
 
             let afterPurgeable = await getPurgeableSpace()
             let freed = max(0, beforePurgeable - afterPurgeable)
+
+            guard mkfileSucceeded else {
+                return MaintenanceResult(
+                    success: false,
+                    message: "Could not allocate the 1 GB pressure file (disk may already be full); ran periodic scripts only",
+                    bytesFreed: freed
+                )
+            }
 
             return MaintenanceResult(
                 success: true,

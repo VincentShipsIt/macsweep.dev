@@ -33,6 +33,10 @@ final class ProcessMonitor: ObservableObject {
     private var timer: Timer?
 
     func startMonitoring() async {
+        // Don't schedule a second timer if one is already running (e.g. `.task`
+        // re-fires). The leaked-timer case is handled by the views calling
+        // stopMonitoring() in .onDisappear.
+        guard timer == nil else { return }
         await refresh()
 
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in

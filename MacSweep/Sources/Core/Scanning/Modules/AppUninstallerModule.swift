@@ -152,29 +152,37 @@ actor AppDiscovery {
         // name ("Google Chrome.app"), not the bundle ID ("com.google.Chrome"),
         // and ~/Applications apps aren't under /Applications at all. So mdls
         // always hit a non-existent path and last-used was perpetually nil.
-        let process = Process()
-        let pipe = Pipe()
+        // mdls blocks ~50-200ms per app. Run it on a detached task so it doesn't
+        // pin a cooperative-pool thread for every app in a sequential scan.
+        return await withCheckedContinuation { continuation in
+            Task.detached(priority: .utility) {
+                let process = Process()
+                let pipe = Pipe()
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
-        process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", bundleURL.path]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
+                process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", bundleURL.path]
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+                do {
+                    try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          output != "(null)"
+                    else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  output != "(null)"
-            else { return nil }
-
-            // Parse date (format: 2024-01-15 10:30:00 +0000)
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
-            return formatter.date(from: output)
-        } catch {
-            return nil
+                    // Parse date (format: 2024-01-15 10:30:00 +0000)
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+                    continuation.resume(returning: formatter.date(from: output))
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            }
         }
     }
 }

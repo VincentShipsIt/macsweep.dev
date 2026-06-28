@@ -174,7 +174,7 @@ actor AssistantConversationService {
 
         switch provider {
         case .codex:
-            result = try runProcess(
+            result = try await runProcess(
                 launchPath: "/usr/bin/env",
                 arguments: [
                     providerConfig.command,
@@ -191,7 +191,7 @@ actor AssistantConversationService {
             )
             _ = result
         case .claude:
-            result = try runProcess(
+            result = try await runProcess(
                 launchPath: "/usr/bin/env",
                 arguments: [
                     providerConfig.command,
@@ -217,7 +217,7 @@ actor AssistantConversationService {
             customTargets: payload.customTargets.map {
                 AssistantScanTarget(
                     path: $0.path,
-                    label: $0.label ?? URL(fileURLWithPath: ($0.path as NSString).expandingTildeInPath).lastPathComponent,
+                    label: $0.label ?? URL(fileURLWithPath: $0.path.expandingTilde).lastPathComponent,
                     sourceRuleID: nil,
                     excludePaths: $0.excludePaths ?? []
                 )
@@ -278,7 +278,7 @@ actor AssistantConversationService {
         let customTargets = extractPaths(from: prompt).map {
             AssistantScanTarget(
                 path: $0,
-                label: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath).lastPathComponent,
+                label: URL(fileURLWithPath: $0.expandingTilde).lastPathComponent,
                 sourceRuleID: nil,
                 excludePaths: []
             )
@@ -365,31 +365,60 @@ actor AssistantConversationService {
         return url
     }
 
-    private func runProcess(launchPath: String, arguments: [String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: launchPath)
-        process.arguments = arguments
+    /// Run an external CLI off the Swift cooperative thread pool.
+    ///
+    /// The assistant providers (codex/claude) can run for many seconds. Calling
+    /// `waitUntilExit()` directly on the cooperative pool would pin one of its
+    /// fixed threads for the whole run and, with concurrent calls, can starve or
+    /// deadlock the pool. We hop to a GCD background queue via a continuation, and
+    /// drain stdout/stderr on separate handles so a child that fills one pipe's
+    /// buffer can't block before exit.
+    private func runProcess(launchPath: String, arguments: [String]) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: launchPath)
+                process.arguments = arguments
 
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+                let stdout = Pipe()
+                let stderr = Pipe()
+                process.standardOutput = stdout
+                process.standardError = stderr
 
-        try process.run()
-        process.waitUntilExit()
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(throwing: error)
+                    return
+                }
 
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                // Drain stderr on a separate thread while we drain stdout here, so
+                // neither pipe's 64 KB buffer can fill and block the child before it
+                // exits (the classic two-pipe deadlock).
+                let stderrHandle = stderr.fileHandleForReading
+                let drainQueue = DispatchQueue(label: "macsweep.assistant.stderr-drain")
+                var errorData = Data()
+                drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
 
-        guard process.terminationStatus == 0 else {
-            let provider = arguments.first.flatMap(AssistantProviderKind.init(rawValue:)) ?? .codex
-            throw AssistantConversationError.processFailed(
-                provider: provider,
-                message: error.isEmpty ? output : error
-            )
+                let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                drainQueue.sync {}   // ensure stderr drain has completed
+
+                let output = String(data: outputData, encoding: .utf8) ?? ""
+                let error = String(data: errorData, encoding: .utf8) ?? ""
+
+                guard process.terminationStatus == 0 else {
+                    let provider = arguments.first.flatMap(AssistantProviderKind.init(rawValue:)) ?? .codex
+                    continuation.resume(throwing: AssistantConversationError.processFailed(
+                        provider: provider,
+                        message: error.isEmpty ? output : error
+                    ))
+                    return
+                }
+
+                continuation.resume(returning: output.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
         }
-
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func sanitizedRuleID(label: String) -> String {
@@ -484,10 +513,11 @@ final class AssistantCoordinator: ObservableObject {
     }
 
     deinit {
+        // The DispatchSource's cancel handler (set in startWatchingConfigDirectory)
+        // owns closing `watchedDescriptor`. Closing it here too double-closes the
+        // fd — and since the OS reuses fd numbers, that second close could clobber
+        // an unrelated descriptor opened concurrently elsewhere in the process.
         watcher?.cancel()
-        if watchedDescriptor >= 0 {
-            close(watchedDescriptor)
-        }
     }
 
     func reload() async {

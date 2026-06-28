@@ -61,6 +61,8 @@ struct DuplicateFinderModule: ScanModule {
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return }
 
+        // Hoisted out of the hot per-file loop (SafetyChecker is stateless).
+        let checker = SafetyChecker()
         while let url = enumerator.nextObject() as? URL {
             do {
                 let values = try url.resourceValues(forKeys: resourceKeys)
@@ -77,7 +79,6 @@ struct DuplicateFinderModule: ScanModule {
                 guard size64 >= minSize, size64 <= maxSize else { continue }
 
                 // Skip protected paths
-                let checker = SafetyChecker()
                 guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
                 sizeGroups[size64, default: []].append(url)

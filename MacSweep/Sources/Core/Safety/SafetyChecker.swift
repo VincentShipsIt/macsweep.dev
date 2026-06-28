@@ -236,7 +236,7 @@ struct SafetyChecker: Sendable {
     // MARK: - Helpers
 
     private func expandedPathValue(for protectedPath: String) -> String {
-        (protectedPath as NSString).expandingTildeInPath
+        protectedPath.expandingTilde
     }
 
     /// `url` with parent-directory symlinks resolved, so protection checks see the
@@ -609,7 +609,11 @@ struct ProtectedPaths {
         "dist",
         "build",
         ".turbo",
-        "vendor/bundle",
+        // NB: do NOT add "vendor/bundle" here — `NSString.pathComponents` never
+        // yields a component containing "/", so it could never match, and the bare
+        // "vendor"/"bundle" alternatives are unsafe (Go's vendored source, macOS
+        // *.bundle packages). Ruby Bundler's vendor/bundle is cleaned with a
+        // concrete resolved path by DevToolsModule instead.
     ]
 }
 
@@ -644,4 +648,14 @@ enum PreflightResult: Sendable, Equatable {
     case allowed
     case requiresConfirmation(size: Int64)
     case blocked(reason: String)
+}
+
+// MARK: - Path helpers
+
+extension String {
+    /// `~`-expanded copy of the path. Centralizes the `(self as NSString)`
+    /// bridge-cast that several Core files repeat.
+    var expandingTilde: String {
+        (self as NSString).expandingTildeInPath
+    }
 }

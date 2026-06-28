@@ -70,6 +70,8 @@ struct LargeFilesModule: ScanModule {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
+            // Hoisted out of the hot per-file loop (SafetyChecker is stateless).
+            let checker = SafetyChecker()
             while let url = enumerator.nextObject() as? URL {
                 // Check if we should skip this path
                 let relativePath = url.path.replacingOccurrences(
@@ -87,7 +89,6 @@ struct LargeFilesModule: ScanModule {
                     // Skip symlinks
                     guard values.isSymbolicLink == false else { continue }
 
-                    let checker = SafetyChecker()
                     guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
                     let activityDate = values.contentAccessDate ?? values.contentModificationDate
@@ -114,9 +115,13 @@ struct LargeFilesModule: ScanModule {
                             lastModified: activityDate
                         ))
 
-                        if depth >= maxDirectoryDepth {
-                            enumerator.skipDescendants()
-                        }
+                        // Always skip into a surfaced directory: its contents are
+                        // already counted in its size. Without this, scanKind=.both
+                        // would also surface large child files, producing overlapping
+                        // items — double-counted bytes in dry-run, and a trashItem
+                        // failure on the child after the parent was already trashed.
+                        // (Also avoids re-walking an already-sized subtree.)
+                        enumerator.skipDescendants()
 
                         if items.count >= maxResults {
                             break
@@ -128,7 +133,7 @@ struct LargeFilesModule: ScanModule {
                     guard scanKind.includesFiles else { continue }
 
                     // Get file size
-                    let size = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+                    let size = values.diskSize
                     guard size >= threshold else { continue }
 
                     items.append(CleanupItem(
