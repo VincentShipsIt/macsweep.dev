@@ -24,6 +24,7 @@ The safety architecture is genuinely good in the common path: `SafetyChecker` is
 | 7 | MED | SystemCache recursively permanent-deletes child subtrees without validating descendants | `SystemCacheModule.swift` |
 | 8 | LOW | Dev-artifact deletion has no active-project/git gate (mitigated: Trash + regenerable) | `DevToolsModule.swift` |
 | 9 | LOW | `SSHKnownHostsManager.removeHost` read-modify-write with no lock | `NetworkModule.swift` |
+| 10 | HIGH | Case-sensitive path compares let a case-variant of a protected root evade shred/trash on case-insensitive APFS | `SafetyChecker.swift` |
 
 Dismissed on hand-review: SystemCache permanently deleting `/private/var/folders/*/T` temp files — those are regenerable OS scratch, permanent removal is policy-consistent (`CleanupFileRemover` header); not a defect.
 
@@ -139,6 +140,30 @@ For a directory target, `clean()` validates `item.path` (`:231`) and each **imme
 **File:** `MacSweep/Sources/Core/Scanning/Modules/NetworkModule.swift:340-351`
 
 Removing a host entry reads the whole `~/.ssh/known_hosts`, filters, and rewrites — no file lock. A concurrent `ssh` TOFU append racing the rewrite can be lost. Low impact (host key re-prompted on next connect), but it mutates a security-relevant file non-atomically.
+
+## 10. HIGH — Case-variant of a protected root evades shred/trash on case-insensitive APFS
+
+**Files:** `MacSweep/Sources/Core/Safety/SafetyChecker.swift:80-118` (blocklist), `:274-287` (`longestPrefixLength`/`isUnder`), `:247-269` (`realParentPath`), `:468-475` / `:432-466` (root lists)
+
+**Found late:** this candidate's automated verifier was killed by a session limit, so it missed the first cut of this report; it was re-verified by hand and by a new test (below). The default macOS boot volume is **APFS case-insensitive** (`diskutil info /` → `File System Personality: APFS`, i.e. not "Case-sensitive"), so `~/documents` and `~/Documents`, or `~/.SSH` and `~/.ssh`, resolve to the **same on-disk directory**. But `SafetyChecker` compares against its protected-root lists with raw case-sensitive `==` / `hasPrefix`:
+
+```swift
+for root in ProtectedPaths.userManagedRoots where path == expandedPathValue(for: root) { … }   // :104
+if isUnder(path, anyOf: ProtectedPaths.neverDelete) { … }                                       // :113
+// isUnder → longestPrefixLength: `path == root || path.hasPrefix(root + "/")`                  // :278
+```
+
+`realParentPath` (`:247`) resolves parent symlinks via `resolvingSymlinksInPath`, which does **not** canonicalize case on a case-insensitive volume. So the string stays lowercase/variant and matches none of the protected entries. This is a pure string-comparison bug — independent of whether the target exists on disk.
+
+**Impact splits by mode:**
+- **Cleanup (default-deny):** a case-variant matches no allow-zone → `.unknown` → denied. **Fails safe.**
+- **Shred / explicit Trash (blocklist, `validateBlocklist:80-118`, where unrecognized == allowed):** a case-variant of a protected root passes the whole-user-folder guard (`:104`) and the `neverDelete` check (`:113`) and returns `.safe`. **Fails open.**
+
+**Scenario:** `validateForShred(~/.SSH)` on a stock Mac returns `.safe` — the shredder overwrites and permanently destroys `~/.ssh` (private keys). Likewise `validateForTrash(~/.AWS)`, `validateForShred(~/documents)`. The sensitive-*filename* check is unaffected (`:138` lowercases), but directory-root protection is case-blind.
+
+**Confirmed by test:** `MacSweep/Tests/SafetyCheckerCaseSensitivityTests.swift` — `validateForShred(~/.SSH)` and `validateForTrash(~/.AWS)` both return `.safe` (recorded as `withKnownIssue`, so the suite stays green until fixed); the cleanup-mode variant correctly returns non-safe.
+
+**Fix direction:** case-fold both sides of every root comparison (`longestPrefixLength`, `isUnder`, the `:104` whole-folder guard), or resolve each path to a canonical form (e.g. compare by resolved inode / `URL.resourceValues(.canonicalPathKey)`) before matching. Prefer canonicalization so case-*sensitive* volumes stay correct too. Tracked as issue #122.
 
 ---
 
