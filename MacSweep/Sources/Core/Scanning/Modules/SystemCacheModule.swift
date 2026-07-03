@@ -81,13 +81,7 @@ struct SystemCacheModule: ScanModule {
                         .contentModificationDateKey
                     ])
 
-                    let size: Int64
-                    if resourceValues.isDirectory == true {
-                        size = try await DiskAnalyzer.directorySize(at: url)
-                    } else {
-                        let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                        size = sizeValues.diskSize
-                    }
+                    let size = try await DiskAnalyzer.size(of: url)
 
                     // Skip tiny items (less than 1KB)
                     guard size > 1024 else { continue }
@@ -150,14 +144,7 @@ struct SystemCacheModule: ScanModule {
 
                     do {
                         let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
-                        let size: Int64
-
-                        if resourceValues.isDirectory == true {
-                            size = try await DiskAnalyzer.directorySize(at: url)
-                        } else {
-                            let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                            size = sizeValues.diskSize
-                        }
+                        let size = try await DiskAnalyzer.size(of: url)
 
                         // Skip tiny items
                         guard size > 10240 else { continue }  // 10KB threshold for system temp

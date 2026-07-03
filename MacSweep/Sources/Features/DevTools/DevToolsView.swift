@@ -742,6 +742,7 @@ struct ProjectRow: View {
         case .ruby: return .red
         case .php: return .indigo
         case .dotnet: return .purple
+        case .cmake: return .teal
         }
     }
 }
