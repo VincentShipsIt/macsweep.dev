@@ -284,15 +284,13 @@ Only return the JSON array, no other text.
     }
 
     func brewExists() -> Bool {
-        FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") ||
-        FileManager.default.fileExists(atPath: "/usr/local/bin/brew")
+        HomebrewPaths.isInstalled
     }
 
     private func brewPath() -> String {
-        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") {
-            return "/opt/homebrew/bin/brew"
-        }
-        return "/usr/local/bin/brew"
+        // Falls back to the Intel prefix when brew isn't installed, preserving the
+        // prior behaviour (callers gate on brewExists() first).
+        HomebrewPaths.brewPath ?? "/usr/local/bin/brew"
     }
 
     /// Run the brew binary DIRECTLY (no `/bin/bash -c`), off the MainActor.
