@@ -214,65 +214,38 @@ struct SystemCacheModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        var processedCount = 0
-        var bytesFreed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items {
-            guard item.module == id else { continue }
-
-            if dryRun {
-                processedCount += 1
-                bytesFreed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    if item.type == .directory {
-                        // Remove contents but keep the directory. Re-validate EACH
-                        // child: between scan and clean an app may have written new
-                        // files into its cache dir, and only item.path itself was
-                        // gated above. Permanent deletion is intentional here — this
-                        // module's role is removing regenerable cache (trashing it
-                        // would just hold junk in the Trash until emptied).
-                        let contents = try FileManager.default.contentsOfDirectory(
-                            at: item.path,
-                            includingPropertiesForKeys: nil
-                        )
-                        for content in contents {
-                            guard checker.validateForCleanup(content, moduleID: id, itemType: .file).isSafe else {
-                                continue
-                            }
-                            try CleanupFileRemover.permanent(content)
-                        }
+        await cleanItems(
+            items,
+            dryRun: dryRun,
+            errorMessage: { "Failed to delete: \($0.localizedDescription)" }
+        ) { item, checker in
+            if item.type == .directory {
+                // Remove contents but keep the directory. Re-validate EACH child:
+                // apps may write new files between scan and clean.
+                let contents = try FileManager.default.contentsOfDirectory(
+                    at: item.path,
+                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+                )
+                for content in contents {
+                    // Validate each child as what it actually is — a subdirectory
+                    // or symlink must not slip past checks meant for plain files.
+                    let values = try? content.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    let childType: CleanupItem.ItemType = if values?.isSymbolicLink == true {
+                        .symbolicLink
+                    } else if values?.isDirectory == true {
+                        .directory
                     } else {
-                        try CleanupFileRemover.permanent(item.path)
+                        .file
                     }
-                    processedCount += 1
-                    bytesFreed += item.size
-                } catch {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Failed to delete: \(error.localizedDescription)",
-                        underlyingError: error
-                    ))
+                    guard checker.validateForCleanup(content, moduleID: id, itemType: childType).isSafe else {
+                        continue
+                    }
+                    try CleanupFileRemover.permanent(content)
                 }
+            } else {
+                try CleanupFileRemover.permanent(item.path)
             }
         }
-
-        return CleanupResult(
-            itemsProcessed: processedCount,
-            bytesFreed: bytesFreed,
-            errors: errors
-        )
     }
 }
 

@@ -60,6 +60,28 @@ extension BrowserModule {
         }
         return .none
     }
+
+    func cleanBrowserItems(_ items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+        // Filter to this module BEFORE the running-browser guard: a running
+        // browser must not veto a cleanup that contains none of its items.
+        let moduleItems = items.filter { $0.module == id }
+        guard !moduleItems.isEmpty else {
+            return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: [])
+        }
+        if isRunning && !dryRun {
+            throw BrowserCleanupError.browserRunning(browserName)
+        }
+
+        return await cleanItems(moduleItems, dryRun: dryRun) { item, _ in
+            let contents = try FileManager.default.contentsOfDirectory(
+                at: item.path,
+                includingPropertiesForKeys: nil
+            )
+            for content in contents {
+                try FileManager.default.removeItem(at: content)
+            }
+        }
+    }
 }
 
 // MARK: - Chrome Module
@@ -164,47 +186,7 @@ struct ChromeModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    // Remove contents but keep directory
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 
@@ -301,46 +283,7 @@ struct SafariModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 
@@ -433,46 +376,7 @@ struct FirefoxModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 
@@ -571,46 +475,7 @@ struct BraveModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 
@@ -715,46 +580,7 @@ struct ArcModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 
@@ -854,46 +680,7 @@ struct EdgeModule: BrowserModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        if isRunning && !dryRun {
-            throw BrowserCleanupError.browserRunning(browserName)
-        }
-
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: item.path,
-                        includingPropertiesForKeys: nil
-                    )
-                    for content in contents {
-                        try FileManager.default.removeItem(at: content)
-                    }
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(path: item.path, message: error.localizedDescription))
-                }
-            }
-        }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
 

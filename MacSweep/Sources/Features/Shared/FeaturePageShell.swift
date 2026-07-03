@@ -209,3 +209,29 @@ struct CircularScanButton: View {
         .onHover { isHovering = $0 }
     }
 }
+
+struct MacSweepErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+
+            Text(message)
+                .font(.caption)
+
+            Spacer()
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.1))
+    }
+}

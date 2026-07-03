@@ -381,14 +381,26 @@ struct CacheAnalyzer {
         task.standardError = stderr
         do {
             try task.run()
-            task.waitUntilExit()
         } catch {
             return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
+        // Drain stderr concurrently with stdout, then wait. Reading only after
+        // waitUntilExit would deadlock once the child fills either pipe's 64 KB
+        // buffer. Mirrors the concurrent drain in
+        // AssistantConversationService.runProcess.
+        let stderrHandle = stderr.fileHandleForReading
+        let drainQueue = DispatchQueue(label: "macsweep.cacheanalyzer.stderr-drain")
+        var errorData = Data()
+        drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        drainQueue.sync {}   // ensure the stderr drain has completed
+
         return ProcessResult(
             status: task.terminationStatus,
-            output: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
-            error: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            output: String(data: outputData, encoding: .utf8) ?? "",
+            error: String(data: errorData, encoding: .utf8) ?? ""
         )
     }
 

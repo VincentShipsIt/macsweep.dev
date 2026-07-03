@@ -13,6 +13,7 @@ final class LoginItemsService: ObservableObject {
     private let userLaunchAgentsURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/LaunchAgents")
     private let systemLaunchAgentsURL = URL(fileURLWithPath: "/Library/LaunchAgents")
+    private let systemLaunchDaemonsURL = URL(fileURLWithPath: "/Library/LaunchDaemons")
 
     private init() {}
 
@@ -26,14 +27,19 @@ final class LoginItemsService: ObservableObject {
         // 1. SMAppService items via sfltool dumpbtm
         collected += await scanSMAppServiceItems()
 
-        // 2 & 3. ~/Library/LaunchAgents and /Library/LaunchAgents — directory
-        // enumeration + per-file plist reads run off the main actor (the helpers
-        // are nonisolated statics, so no main-actor hop / self capture).
+        // 2, 3 & 4. ~/Library/LaunchAgents, /Library/LaunchAgents, and
+        // /Library/LaunchDaemons — directory enumeration + per-file plist reads
+        // run off the main actor (the helpers are nonisolated statics, so no
+        // main-actor hop / self capture). LaunchDaemons was previously omitted
+        // here, so the GUI reported a different login-item set than the CLI
+        // (LoginItemEnumerator scans it too).
         let userURL = userLaunchAgentsURL
         let sysURL = systemLaunchAgentsURL
+        let daemonURL = systemLaunchDaemonsURL
         collected += await Task.detached(priority: .userInitiated) {
             Self.scanLaunchAgents(at: userURL, type: .launchAgent)
                 + Self.scanLaunchAgents(at: sysURL, type: .launchAgent)
+                + Self.scanLaunchAgents(at: daemonURL, type: .launchDaemon)
         }.value
 
         items = collected
@@ -43,6 +49,12 @@ final class LoginItemsService: ObservableObject {
     // MARK: - SMAppService (sfltool dumpbtm)
 
     private func scanSMAppServiceItems() async -> [LoginItem] {
+        // `sfltool dumpbtm` requires root on macOS 13+. Run without privileges it
+        // produces no output and never exits — it would hang the caller. Skip it
+        // unless we're root; the launch-agent/daemon scans below still enumerate
+        // fine for unprivileged callers. (Matches LoginItemEnumerator.)
+        guard geteuid() == 0 else { return [] }
+
         return await Task.detached(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/sfltool")

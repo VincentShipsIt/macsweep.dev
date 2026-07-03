@@ -105,40 +105,9 @@ struct DevToolsModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
-                    processed += 1
-                    freed += item.size
-                } catch {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: error.localizedDescription,
-                        underlyingError: error
-                    ))
-                }
-            }
+        await cleanItems(items, dryRun: dryRun) { item, _ in
+            try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
         }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
     }
 }
 
@@ -1177,13 +1146,26 @@ struct GitArtifactScanner: Sendable {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
 
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let error = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // Drain stderr on a separate thread while draining stdout here, then wait.
+        // Reading only after waitUntilExit would deadlock once the child fills
+        // either pipe's 64 KB buffer — `git status --porcelain` on a dirty tree
+        // with many untracked files easily exceeds that. Mirrors the concurrent
+        // drain in AssistantConversationService.runProcess.
+        let stderrHandle = stderr.fileHandleForReading
+        let drainQueue = DispatchQueue(label: "macsweep.devtools.stderr-drain")
+        var errorData = Data()
+        drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        drainQueue.sync {}   // ensure the stderr drain has completed
+
+        let output = String(data: outputData, encoding: .utf8) ?? ""
+        let error = String(data: errorData, encoding: .utf8) ?? ""
         return ProcessResult(status: process.terminationStatus, output: output, error: error)
     }
 
@@ -1197,9 +1179,7 @@ struct GitArtifactScanner: Sendable {
             return date
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
         return formatter.date(from: trimmed)
     }
 
