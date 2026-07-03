@@ -1,6 +1,19 @@
 import Foundation
 import AppKit
 
+extension DateFormatter {
+    /// A `DateFormatter` pinned to `en_US_POSIX` for parsing the fixed-format
+    /// timestamps emitted by shell tools (`mdls`, `git`, …). The POSIX locale is
+    /// mandatory: without it, a user on a 12-hour or non-Gregorian locale fails
+    /// to parse 24-hour format strings like `yyyy-MM-dd HH:mm:ss Z`.
+    static func posixShellDate(format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = format
+        return formatter
+    }
+}
+
 /// Module for app uninstallation with leftover detection
 struct AppUninstallerModule: ScanModule {
     let id = "app-uninstaller"
@@ -175,9 +188,11 @@ actor AppDiscovery {
                         return
                     }
 
-                    // Parse date (format: 2024-01-15 10:30:00 +0000)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+                    // Parse date (format: 2024-01-15 10:30:00 +0000). The POSIX
+                    // locale is required: on a 12-hour or non-Gregorian user
+                    // locale a plain DateFormatter fails to parse this 24-hour
+                    // format and "last used" silently reads back nil.
+                    let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
                     continuation.resume(returning: formatter.date(from: output))
                 } catch {
                     continuation.resume(returning: nil)

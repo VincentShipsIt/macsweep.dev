@@ -9,6 +9,7 @@ struct OptimizationView: View {
     @State private var selectedProcesses: Set<pid_t> = []
     @State private var showingQuitConfirmation = false
     @State private var isFreezingRAM = false
+    @State private var ramResult: MaintenanceResult?
     @State private var sortOrder: ProcessSortOrder = .memory
 
     enum ProcessSortOrder: String, CaseIterable {
@@ -26,6 +27,14 @@ struct OptimizationView: View {
                 // System stats row
                 systemStatsRow
                     .padding()
+
+                // Surface the outcome of Free Up RAM (success total or the purge
+                // failure) instead of silently swallowing it. (issue #88)
+                if let result = ramResult {
+                    ramResultBanner(result)
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                }
 
                 Divider()
 
@@ -228,35 +237,43 @@ struct OptimizationView: View {
 
     private func freeUpRAM() async {
         isFreezingRAM = true
-        defer { isFreezingRAM = false }   // reset even on the early-guard return
+        defer { isFreezingRAM = false }
+        ramResult = nil
 
-        // Run purge command (requires admin privileges)
-        let purgePath = "/usr/sbin/purge"
-        guard FileManager.default.fileExists(atPath: purgePath) else {
-            return
+        // Route through the shared MaintenanceActions.freeUpRAM() — the same
+        // implementation the Dashboard maintenance card and `macsweep maintenance
+        // free-ram` use — so purge failures (tool missing, non-zero exit, no admin
+        // rights) surface to the user instead of being silently swallowed. The
+        // previous private copy no-op'd on failure, contradicting CHANGELOG 1.0.2.
+        do {
+            ramResult = try await MaintenanceActions.freeUpRAM()
+        } catch {
+            ramResult = MaintenanceResult(success: false, message: error.localizedDescription)
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: purgePath)
-
-        // Await termination via a continuation so purge (which can take seconds)
-        // does not block the MainActor and freeze the UI. terminationHandler is set
-        // BEFORE run(); if run() throws (e.g. no admin rights) the handler never
-        // fires, so we resume inline.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            process.terminationHandler = { _ in continuation.resume() }
-            do {
-                try process.run()
-            } catch {
-                // purge may fail without admin privileges
-                process.terminationHandler = nil
-                continuation.resume()
-            }
-        }
-
-        // Refresh after a moment
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
         await systemMonitor.refresh()
+    }
+
+    @ViewBuilder
+    private func ramResultBanner(_ result: MaintenanceResult) -> some View {
+        HStack {
+            Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(result.success ? .green : .red)
+            Text(result.message)
+                .font(.caption)
+            Spacer()
+            Button {
+                ramResult = nil
+            } label: {
+                Image(systemName: "xmark").font(.caption)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(
+            result.success ? Color.green.opacity(0.1) : Color.red.opacity(0.1),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
     }
 
     private func quitSelectedProcesses() {
