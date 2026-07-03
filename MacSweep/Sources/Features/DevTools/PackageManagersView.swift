@@ -32,17 +32,7 @@ struct PackageManagersView: View {
         .task {
             await scan()
         }
-        .alert(
-            "Cleanup Failed",
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .errorAlert("Cleanup Failed", message: $errorMessage)
     }
 
     // MARK: - Header
@@ -163,8 +153,9 @@ struct PackageManagersView: View {
                         description: "Remove stopped containers",
                         icon: "cube.box"
                     ) {
-                        _ = try? await DockerCleanupActions.pruneContainers()
-                        await refreshDocker()
+                        await runDockerAction("Prune Containers") {
+                            try await DockerCleanupActions.pruneContainers()
+                        }
                     }
 
                     DockerActionButton(
@@ -172,8 +163,9 @@ struct PackageManagersView: View {
                         description: "Remove dangling images",
                         icon: "photo.stack"
                     ) {
-                        _ = try? await DockerCleanupActions.pruneImages()
-                        await refreshDocker()
+                        await runDockerAction("Prune Images") {
+                            try await DockerCleanupActions.pruneImages()
+                        }
                     }
 
                     DockerActionButton(
@@ -181,8 +173,9 @@ struct PackageManagersView: View {
                         description: "Remove unused volumes",
                         icon: "cylinder"
                     ) {
-                        _ = try? await DockerCleanupActions.pruneVolumes()
-                        await refreshDocker()
+                        await runDockerAction("Prune Volumes") {
+                            try await DockerCleanupActions.pruneVolumes()
+                        }
                     }
 
                     DockerActionButton(
@@ -190,8 +183,9 @@ struct PackageManagersView: View {
                         description: "Remove all build cache",
                         icon: "hammer"
                     ) {
-                        _ = try? await DockerCleanupActions.pruneBuildCache()
-                        await refreshDocker()
+                        await runDockerAction("Clear Build Cache") {
+                            try await DockerCleanupActions.pruneBuildCache()
+                        }
                     }
 
                     DockerActionButton(
@@ -200,8 +194,9 @@ struct PackageManagersView: View {
                         icon: "trash",
                         isDestructive: true
                     ) {
-                        _ = try? await DockerCleanupActions.systemPrune(includeVolumes: true)
-                        await refreshDocker()
+                        await runDockerAction("System Prune") {
+                            try await DockerCleanupActions.systemPrune(includeVolumes: true)
+                        }
                     }
                 }
             } else {
@@ -323,6 +318,25 @@ struct PackageManagersView: View {
         dockerInfo = await DockerInfo.current()
     }
 
+    /// Runs a Docker cleanup action and surfaces failures in the shared error
+    /// alert instead of dropping them. The prune helpers signal failure via
+    /// `itemsProcessed == 0` (e.g. Docker CLI missing or the daemon stopped)
+    /// rather than throwing.
+    private func runDockerAction(
+        _ title: String,
+        _ action: () async throws -> CleanupResult
+    ) async {
+        do {
+            let result = try await action()
+            if result.itemsProcessed == 0 {
+                errorMessage = "\(title) failed. Check that Docker is running and try again."
+            }
+        } catch {
+            errorMessage = "\(title) failed: \(error.localizedDescription)"
+        }
+        await refreshDocker()
+    }
+
     private func cleanSelected() async {
         let itemsToClean = cacheItems.filter { selectedItems.contains($0.id) }
 
@@ -333,10 +347,7 @@ struct PackageManagersView: View {
         var cleanupError: String?
         do {
             let result = try await engine.clean(items: itemsToClean, dryRun: false)
-            if !result.errors.isEmpty {
-                let count = result.errors.count
-                cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleaned and were kept."
-            }
+            cleanupError = result.failureSummaryMessage
         } catch {
             // Total failure (e.g. DeletionGuard cap): nothing was deleted.
             cleanupError = "Cleanup failed: \(error.localizedDescription)"

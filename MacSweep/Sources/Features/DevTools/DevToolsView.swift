@@ -62,6 +62,7 @@ struct BuildArtifactsView: View {
     @State private var gitArtifacts: [GitCleanupItem] = []
     @State private var selectedItems: Set<UUID> = []
     @State private var selectedGitItems: Set<UUID> = []
+    @State private var errorMessage: String?
     @State private var gitToolStatus: GitToolStatus?
     @State private var showingConfirmation = false
     @State private var viewMode: ViewMode = .projects
@@ -82,48 +83,51 @@ struct BuildArtifactsView: View {
     }
 
     var body: some View {
-        if isScanning {
-            ScanLandingView(
-                icon: "hammer",
-                title: "Find Developer Artifacts",
-                description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
-                ctaTitle: "Scan Developer Tools",
-                benefits: [
-                    ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
-                    ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
-                ],
-                illustration: "hammer",
-                isScanning: true,
-                action: { Task { await scan() } }
-            )
-        } else if !hasCompletedScan {
-            ScanLandingView(
-                icon: "hammer",
-                title: "Find Developer Artifacts",
-                description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
-                ctaTitle: "Scan Developer Tools",
-                benefits: [
-                    ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
-                    ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
-                ],
-                illustration: "hammer",
-                action: { Task { await scan() } }
-            )
-        } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
-            noArtifactsView
-        } else {
-            VStack(spacing: 0) {
-                toolbar
-                Divider()
-                    .overlay(MacSweepTheme.divider)
+        Group {
+            if isScanning {
+                ScanLandingView(
+                    icon: "hammer",
+                    title: "Find Developer Artifacts",
+                    description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
+                    ctaTitle: "Scan Developer Tools",
+                    benefits: [
+                        ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
+                        ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
+                    ],
+                    illustration: "hammer",
+                    isScanning: true,
+                    action: { Task { await scan() } }
+                )
+            } else if !hasCompletedScan {
+                ScanLandingView(
+                    icon: "hammer",
+                    title: "Find Developer Artifacts",
+                    description: "Scan for node_modules, DerivedData, stale worktrees, and merged branches.",
+                    ctaTitle: "Scan Developer Tools",
+                    benefits: [
+                        ScanBenefit("internaldrive", "Reclaims gigabytes of build junk", "Sweeps node_modules, DerivedData, and build caches that quietly pile up across every project on your Mac."),
+                        ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
+                    ],
+                    illustration: "hammer",
+                    action: { Task { await scan() } }
+                )
+            } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
+                noArtifactsView
+            } else {
+                VStack(spacing: 0) {
+                    toolbar
+                    Divider()
+                        .overlay(MacSweepTheme.divider)
 
-                contentView
+                    contentView
 
-                Divider()
-                    .overlay(MacSweepTheme.divider)
-                footer
+                    Divider()
+                        .overlay(MacSweepTheme.divider)
+                    footer
+                }
             }
         }
+        .errorAlert("Cleanup Failed", message: $errorMessage)
     }
 
     private var noArtifactsView: some View {
@@ -495,21 +499,27 @@ struct BuildArtifactsView: View {
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
+        var failures: [String] = []
         if !itemsToClean.isEmpty {
             let engine = ScanEngine()
             do {
-                _ = try await engine.clean(items: itemsToClean, dryRun: false)
+                let result = try await engine.clean(items: itemsToClean, dryRun: false)
+                if let summary = result.failureSummaryMessage {
+                    failures.append(summary)
+                }
             } catch {
-                print("Dev tools cleanup error: \(error)")
+                failures.append("Cleanup failed: \(error.localizedDescription)")
             }
         }
 
         if !gitItemsToClean.isEmpty {
             let result = await GitArtifactCleaner().clean(items: gitItemsToClean, dryRun: false)
-            if !result.errors.isEmpty {
-                print("Git cleanup errors: \(result.errors)")
+            if let summary = result.errors.failureSummaryMessage {
+                failures.append("Git artifacts: \(summary)")
             }
         }
+
+        errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
 
         // Refresh
         await scan()

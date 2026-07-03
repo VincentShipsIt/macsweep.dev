@@ -185,15 +185,13 @@ struct DuplicateFinderView: View {
             return
         }
 
-        // Per-item safety failures are returned in result.errors (not thrown), so
-        // only drop the items that actually left disk — keep blocked ones visible
-        // and tell the user, rather than silently removing them from the list.
-        let blockedPaths = Set(result.errors.map(\.path))
-        duplicateItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        // Per-item failures are returned in result.errors (not thrown), so only
+        // drop the items that actually left disk — keep failed ones visible and
+        // tell the user, rather than silently removing them from the list.
+        let failedPaths = Set(result.errors.map(\.path))
+        duplicateItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in duplicateItems.contains(where: { $0.id == id }) }
-        errorMessage = blockedPaths.isEmpty
-            ? nil
-            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+        errorMessage = result.failureSummaryMessage
     }
 
     private var sortedItems: [CleanupItem] {

@@ -645,14 +645,10 @@ struct SSHHostRow: View {
 
 struct DNSCacheView: View {
     @State private var isFlushingDNS = false
-    @State private var flushResult: FlushResult?
+    @State private var didFlushDNS = false
+    @State private var flushErrorMessage: String?
     @State private var cacheItems: [CleanupItem] = []
     @State private var isScanning = false
-
-    enum FlushResult {
-        case success
-        case failure(String)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -671,6 +667,7 @@ struct DNSCacheView: View {
         .task {
             await scanCaches()
         }
+        .errorAlert("DNS Flush Failed", message: $flushErrorMessage)
     }
 
     // MARK: - Header
@@ -740,25 +737,14 @@ struct DNSCacheView: View {
                 .disabled(isFlushingDNS)
             }
 
-            // Result indicator
-            if let result = flushResult {
-                switch result {
-                case .success:
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("DNS cache flushed successfully")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                case .failure(let message):
-                    HStack(spacing: 6) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+            // Result indicator (failures surface in the shared error alert)
+            if didFlushDNS {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("DNS cache flushed successfully")
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 }
             }
 
@@ -837,15 +823,16 @@ struct DNSCacheView: View {
 
     private func flushDNS() async {
         isFlushingDNS = true
-        flushResult = nil
+        didFlushDNS = false
+        flushErrorMessage = nil
 
         defer { isFlushingDNS = false }
 
         do {
             try await DNSCacheManager.flush()
-            flushResult = .success
+            didFlushDNS = true
         } catch {
-            flushResult = .failure(error.localizedDescription)
+            flushErrorMessage = error.localizedDescription
         }
     }
 

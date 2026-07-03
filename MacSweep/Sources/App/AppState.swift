@@ -88,18 +88,18 @@ final class AppState: ObservableObject {
 
         if !dryRun {
             lastCleanup = result
-            // Per-item safety failures are returned in result.errors (not thrown).
-            // Only remove items that actually left disk; keep blocked ones in the
-            // list rather than silently dropping them.
-            let blockedPaths = Set(result.errors.map(\.path))
-            scanResults.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+            // Per-item failures are returned in result.errors (not thrown). Only
+            // remove items that actually left disk; keep failed ones in the list
+            // rather than silently dropping them.
+            let failedPaths = Set(result.errors.map(\.path))
+            scanResults.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
             selectedItems = selectedItems.filter { id in scanResults.contains(where: { $0.id == id }) }
             smartCareSummary = scanResults.isEmpty
                 ? nil
                 : SmartCareAnalyzer().summarize(items: scanResults, diskUsage: diskUsage)
             await refreshDiskUsage()
-            if !blockedPaths.isEmpty {
-                lastDeletionError = "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+            if let summary = result.failureSummaryMessage {
+                lastDeletionError = summary
             }
         }
 
