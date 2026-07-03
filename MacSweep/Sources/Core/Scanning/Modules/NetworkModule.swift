@@ -361,26 +361,17 @@ struct DNSCacheManager {
         // The dscacheutil flush above handles most DNS cache clearing needs.
     }
 
-    /// Flush DNS with admin privileges (prompts user)
-    /// Note: May not work in sandboxed apps
+    /// Flush DNS with admin privileges (prompts user).
+    ///
+    /// This is the single privilege-escalation site in the app. It is routed
+    /// through `PrivilegedRunner` — the one named, audited escalation helper —
+    /// rather than an inline `osascript` call or `ProcessRunner`, because it runs
+    /// a shell script as root. The command string is a hard-coded constant; no
+    /// untrusted input is interpolated. Note: may not work in sandboxed apps.
     static func flushWithAdmin() async throws {
-        let script = """
-        do shell script "dscacheutil -flushcache; killall -HUP mDNSResponder" with administrator privileges
-        """
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
         do {
-            try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus != 0 {
-                throw DNSError.flushFailed
-            }
+            try await PrivilegedRunner.runShellScriptAsAdmin(
+                "dscacheutil -flushcache; killall -HUP mDNSResponder")
         } catch {
             throw DNSError.flushFailed
         }
