@@ -89,7 +89,10 @@ struct DockerModule: ScanModule {
             let process = Process()
             let pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: dockerPath)
-            process.arguments = ["system", "df", "-v", "--format", "{{json .}}"]
+            // Summary form (no `-v`) prints one JSON object per resource type,
+            // each carrying a human-readable `Reclaimable` field we parse into
+            // real per-category byte estimates.
+            process.arguments = ["system", "df", "--format", "{{json .}}"]
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
             do {
@@ -109,37 +112,58 @@ struct DockerModule: ScanModule {
     }
 
     private func parseDockerDF(_ data: Data) -> [CleanupItem] {
-        // Docker df output is complex, so we'll use simpler approach
-        // by scanning the actual Docker directories
+        guard !data.isEmpty else { return [] }
+
+        // Real reclaimable bytes per resource type, parsed from `docker system df`.
+        // Sizing the sentinel items with these (instead of a synthetic 0) makes
+        // the dry-run estimate and DeletionGuard's byte-cap honest about what a
+        // subsequent `prune` would reclaim. The paths remain nominal sentinels:
+        // reclamation happens via category-scoped `docker ... prune -f` in
+        // clean() (Docker's own "unused only" semantics), not by real file paths.
+        let reclaimableByType = Self.parseReclaimableByType(data)
+
+        let categories: [(name: String, itemId: String, dfType: String)] = [
+            ("Docker Build Cache", "docker-build-cache", "Build Cache"),
+            ("Docker Images", "docker-images", "Images"),
+            ("Docker Containers", "docker-containers", "Containers"),
+            ("Docker Volumes", "docker-volumes", "Local Volumes"),
+        ]
 
         var items: [CleanupItem] = []
-
-        // Only surface Docker cleanup actions when `docker system df` actually
-        // returned output (i.e. the daemon answered). The placeholder items below
-        // are sentinels — real reclamation happens via `docker ... prune` in
-        // clean(), keyed by moduleName, so their paths/sizes are intentionally nominal.
-        if !data.isEmpty {
-            let dockerItems: [(String, String)] = [
-                ("Docker Build Cache", "docker-build-cache"),
-                ("Docker Images", "docker-images"),
-                ("Docker Containers", "docker-containers"),
-                ("Docker Volumes", "docker-volumes"),
-            ]
-
-            for (name, itemId) in dockerItems {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: URL(fileURLWithPath: "/var/lib/docker/\(itemId)"),  // Placeholder
-                    size: 0,  // Will be updated by actual cleanup
-                    type: .directory,
-                    module: id,
-                    moduleName: name,
-                    lastModified: nil
-                ))
-            }
+        for category in categories {
+            let reclaimable = reclaimableByType[category.dfType] ?? 0
+            guard reclaimable > 0 else { continue }  // nothing to reclaim — don't surface
+            items.append(CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/var/lib/docker/\(category.itemId)"),  // sentinel
+                size: reclaimable,
+                type: .directory,
+                module: id,
+                moduleName: category.name,
+                lastModified: nil
+            ))
         }
 
         return items
+    }
+
+    /// Parse `docker system df --format "{{json .}}"` output — one JSON object
+    /// per line per resource type — into reclaimable bytes keyed by `Type`.
+    /// The `Reclaimable` field looks like `"1.2GB (80%)"` or `"0B"`; we take the
+    /// leading size token.
+    static func parseReclaimableByType(_ data: Data) -> [String: Int64] {
+        guard let text = String(data: data, encoding: .utf8) else { return [:] }
+
+        var result: [String: Int64] = [:]
+        for line in text.split(separator: "\n") {
+            guard let lineData = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let type = object["Type"] as? String,
+                  let reclaimable = object["Reclaimable"] as? String else { continue }
+            let sizeToken = reclaimable.split(separator: " ").first.map(String.init) ?? reclaimable
+            result[type] = DockerCLI.parseBytes(sizeToken)
+        }
+        return result
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
@@ -153,6 +177,10 @@ struct DockerModule: ScanModule {
 
         for item in items where item.module == id {
             if dryRun {
+                // item.size is the real reclaimable estimate from `docker system
+                // df` (see parseDockerDF), so this is an honest preview, not a
+                // synthetic echo. Actual runs below report the bytes Docker says
+                // it reclaimed.
                 processed += 1
                 freed += item.size
                 continue
