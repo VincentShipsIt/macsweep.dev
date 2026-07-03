@@ -1210,9 +1210,7 @@ struct GitArtifactScanner: Sendable {
             return date
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
         return formatter.date(from: trimmed)
     }
 
