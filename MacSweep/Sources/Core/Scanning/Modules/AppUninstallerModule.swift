@@ -377,12 +377,15 @@ struct AppUninstaller {
             throw UninstallError.cannotRemoveApp(app.name, error)
         }
 
-        // Remove leftovers if requested. Every leftover passes the blocklist gate
-        // first, so a fuzzy name match can never trash a protected, credential, or
-        // app-data path (#76) — a mismatch is recorded and skipped, not deleted.
+        // Remove leftovers if requested. Every leftover passes the dedicated
+        // uninstall-leftover gate first — it admits only direct children of the
+        // seven Library data roots the scanner enumerates (Preferences included,
+        // which the generic blocklist would wrongly refuse) and still rejects
+        // symlinks, credential-looking names, and anything outside those roots
+        // (#76) — a mismatch is recorded and skipped, not deleted.
         if includeLeftovers {
             for leftover in app.leftovers {
-                guard safety.validateForTrash(leftover.path).isSafe else {
+                guard safety.validateForUninstallLeftover(leftover.path).isSafe else {
                     errors.append(CleanupError(
                         path: leftover.path,
                         message: "Blocked by safety checks",

@@ -108,6 +108,57 @@ struct SafetyChecker: Sendable {
         return .protected(reason: "App bundle outside the standard Applications folders")
     }
 
+    /// Validate a leftover the uninstaller matched for removal.
+    ///
+    /// Leftovers live DIRECTLY inside the seven Library data roots
+    /// `LeftoverScanner` enumerates — one of which (`~/Library/Preferences`) is
+    /// in `neverDelete`, so the generic blocklist (`validateForTrash`) would
+    /// refuse every preference-plist leftover and silently break uninstall
+    /// cleanup. This dedicated gate instead requires the item to be a direct
+    /// child of one of those roots (matching how the scanner discovers them),
+    /// while still refusing symlinks, sensitive-looking filenames (keys,
+    /// credentials, keychains), the roots themselves, and anything outside
+    /// them. Removal is to Trash, so a matched leftover stays recoverable.
+    func validateForUninstallLeftover(_ url: URL) -> ValidationResult {
+        let standardized = url.standardized
+
+        // Refuse a symlinked leftover: trashing through a link could move an
+        // unintended target rather than the app data the scanner matched.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            return .symlink(reason: "Symlink — would affect the link target, not the leftover")
+        }
+
+        // Never trash something that looks like a key/credential store, even if
+        // its name fuzzy-matched an app.
+        let filename = standardized.lastPathComponent.lowercased()
+        for pattern in ProtectedPaths.sensitivePatterns {
+            if matchesPattern(filename, pattern: pattern) {
+                return .sensitive(pattern: pattern)
+            }
+        }
+
+        // Resolve parent symlinks, then require the leftover to sit DIRECTLY in
+        // one of the roots the scanner enumerates (not the root itself, not
+        // deeper, not elsewhere).
+        let path = Self.realParentPath(url)
+        let parent = (path as NSString).deletingLastPathComponent
+        let library = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library").standardized.path
+        let leftoverRoots = [
+            "\(library)/Preferences",
+            "\(library)/Application Support",
+            "\(library)/Caches",
+            "\(library)/Logs",
+            "\(library)/Containers",
+            "\(library)/Saved Application State",
+            "\(library)/LaunchAgents",
+        ]
+        for root in leftoverRoots where Self.caseNormalized(parent) == Self.caseNormalized(root) {
+            return .safe
+        }
+        return .protected(reason: "Leftover outside the app-data folders the uninstaller scans")
+    }
+
     private enum BlocklistAction {
         case shred, trash
         var verb: String { self == .shred ? "shred" : "move to Trash" }

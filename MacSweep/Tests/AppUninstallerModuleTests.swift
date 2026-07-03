@@ -88,4 +88,58 @@ struct AppUninstallerModuleTests {
         #expect(!LeftoverScanner.leftoverMatches(
             itemName: "com.someone.else", bundleID: "", appName: ""))
     }
+
+    // MARK: - Leftover removal gate (validateForUninstallLeftover)
+
+    @Test func leftoverGateAllowsPreferencePlists() {
+        // ~/Library/Preferences is in neverDelete, but preference plists are a
+        // first-class leftover category — the dedicated gate must admit them
+        // (the generic validateForTrash blocklist refuses them, which silently
+        // broke uninstall cleanup).
+        let plist = home.appending(path: "Library/Preferences/com.foo.App.plist")
+        #expect(checker.validateForUninstallLeftover(plist).isSafe)
+    }
+
+    @Test func leftoverGateAllowsEveryScannedRoot() {
+        let categories = [
+            "Application Support/FooApp",
+            "Caches/com.foo.App",
+            "Logs/FooApp",
+            "Containers/com.foo.App",
+            "Saved Application State/com.foo.App.savedState",
+            "LaunchAgents/com.foo.App.agent.plist",
+        ]
+        for relative in categories {
+            let leftover = home.appending(path: "Library/\(relative)")
+            #expect(checker.validateForUninstallLeftover(leftover).isSafe, "\(relative) must be removable")
+        }
+    }
+
+    @Test func leftoverGateBlocksTheRootsThemselves() {
+        for root in ["Preferences", "Application Support", "Caches", "Containers", "LaunchAgents"] {
+            let url = home.appending(path: "Library/\(root)")
+            #expect(!checker.validateForUninstallLeftover(url).isSafe, "\(root) root itself must never be trashed")
+        }
+    }
+
+    @Test func leftoverGateBlocksPathsOutsideScannedRoots() {
+        // Keychains is NOT a leftover root — a fuzzy match there must be refused.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Keychains/com.foo.App.keychain-db")).isSafe)
+        // Nested deeper than a root's direct children is not how the scanner
+        // discovers leftovers — refuse.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Preferences/ByHost/com.foo.App.plist")).isSafe)
+        // Entirely outside ~/Library.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Documents/com.foo.App")).isSafe)
+    }
+
+    @Test func leftoverGateBlocksSensitiveFilenames() {
+        // Even inside a scanned root, credential-looking names stay refused.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Application Support/credentials.json")).isSafe)
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Preferences/com.foo.App.keychain")).isSafe)
+    }
 }
