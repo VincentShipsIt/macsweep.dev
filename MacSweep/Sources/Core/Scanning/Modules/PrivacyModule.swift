@@ -22,57 +22,49 @@ struct PrivacyModule: ScanModule {
         return items.sorted { $0.size > $1.size }
     }
 
+    /// Build a `CleanupItem` for a single privacy artifact file if it exists.
+    /// Centralizes the exists → size → CleanupItem block the per-category scans
+    /// repeated inline. `ScanModule.scanCacheDirectory` is deliberately not
+    /// reused here: it sizes directories and drops zero-size results, while
+    /// these single files must be listed even when empty.
+    private func scanSingleFile(_ url: URL, moduleName: String) async -> CleanupItem? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let size = (try? await DiskAnalyzer.size(of: url)) ?? 0
+        return CleanupItem(
+            id: UUID(),
+            path: url,
+            size: size,
+            type: .file,
+            module: id,
+            moduleName: moduleName
+        )
+    }
+
     // MARK: - Recent Documents
 
     private func scanRecentDocuments() async -> [CleanupItem] {
         var items: [CleanupItem] = []
+        let home = FileManager.default.homeDirectoryForCurrentUser
 
         // Recent documents plist
-        let recentDocs = FileManager.default.homeDirectoryForCurrentUser
+        let recentDocs = home
             .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentDocuments.sfl2")
-
-        if FileManager.default.fileExists(atPath: recentDocs.path) {
-            let size = (try? await DiskAnalyzer.size(of: recentDocs)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: recentDocs,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Recent Documents"
-            ))
+        if let item = await scanSingleFile(recentDocs, moduleName: "Recent Documents") {
+            items.append(item)
         }
 
         // Recent applications
-        let recentApps = FileManager.default.homeDirectoryForCurrentUser
+        let recentApps = home
             .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentApplications.sfl2")
-
-        if FileManager.default.fileExists(atPath: recentApps.path) {
-            let size = (try? await DiskAnalyzer.size(of: recentApps)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: recentApps,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Recent Applications"
-            ))
+        if let item = await scanSingleFile(recentApps, moduleName: "Recent Applications") {
+            items.append(item)
         }
 
         // Finder recents
-        let finderRecents = FileManager.default.homeDirectoryForCurrentUser
+        let finderRecents = home
             .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentHosts.sfl2")
-
-        if FileManager.default.fileExists(atPath: finderRecents.path) {
-            let size = (try? await DiskAnalyzer.size(of: finderRecents)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: finderRecents,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Recent Hosts"
-            ))
+        if let item = await scanSingleFile(finderRecents, moduleName: "Recent Hosts") {
+            items.append(item)
         }
 
         return items
@@ -115,71 +107,32 @@ struct PrivacyModule: ScanModule {
     // MARK: - Recent Servers
 
     private func scanRecentServers() async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
         let recentServers = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentServers.sfl2")
 
-        if FileManager.default.fileExists(atPath: recentServers.path) {
-            let size = (try? await DiskAnalyzer.size(of: recentServers)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: recentServers,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Recent Servers"
-            ))
-        }
-
-        return items
+        guard let item = await scanSingleFile(recentServers, moduleName: "Recent Servers") else { return [] }
+        return [item]
     }
 
     // MARK: - Downloads History
 
     private func scanDownloadsHistory() async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
         // Safari downloads plist
         let safariDownloads = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Safari/Downloads.plist")
 
-        if FileManager.default.fileExists(atPath: safariDownloads.path) {
-            let size = (try? await DiskAnalyzer.size(of: safariDownloads)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: safariDownloads,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Safari Downloads History"
-            ))
-        }
-
-        return items
+        guard let item = await scanSingleFile(safariDownloads, moduleName: "Safari Downloads History") else { return [] }
+        return [item]
     }
 
     // MARK: - Quarantine Events (GateKeeper history)
 
     private func scanQuarantineEvents() async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
         let quarantine = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2")
 
-        if FileManager.default.fileExists(atPath: quarantine.path) {
-            let size = (try? await DiskAnalyzer.size(of: quarantine)) ?? 0
-            items.append(CleanupItem(
-                id: UUID(),
-                path: quarantine,
-                size: size,
-                type: .file,
-                module: id,
-                moduleName: "Download History (Quarantine)"
-            ))
-        }
-
-        return items
+        guard let item = await scanSingleFile(quarantine, moduleName: "Download History (Quarantine)") else { return [] }
+        return [item]
     }
 
     // MARK: - Recent Places (Finder sidebar)
