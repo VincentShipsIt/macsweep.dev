@@ -78,39 +78,56 @@ struct CacheAnalyzer {
 
     // MARK: - Fast Scan
 
+    /// Cache directories that regenerate automatically — safe to surface for
+    /// cleanup. Matched by `find -path`; the `*` globs are find's own, passed
+    /// through literally in the argv (no shell to expand them).
+    private static let fastScanPathPatterns = [
+        "*/Library/Application Support/*/Code Cache",
+        "*/Library/Application Support/*/GPUCache",
+        "*/Library/Application Support/*/DawnWebGPUCache",
+        "*/Library/Application Support/*/DawnGraphiteCache",
+        "*/Library/Application Support/*/ShaderCache",
+        "*/vm_bundles/warm",
+        "*/.npm/_cacache",
+        "*/.npm/_npx",
+        "*/.npm/_logs",
+        "*/.bun/install/cache",
+        "*/.yarn/cache",
+        "*/.pnpm-store",
+        "*/.cache/pip",
+        "*/.cache/uv",
+        "*/.cargo/registry",
+        "*/.cargo/git",
+        "*/go/pkg/mod",
+        "*/.cache/go-build",
+        "*/.gradle/caches",
+        "*/.m2/repository",
+        "*/.claude/debug",
+        "*/.claude/paste-cache",
+        "*/.claude/telemetry",
+        "*/.claude/shell-snapshots",
+        "*/.codex/log",
+        "*/.codex/archived_sessions"
+    ]
+
     private func runFastScan() async -> [Finding] {
-        let script = #"""
-        find ~ -maxdepth 8 \( \
-          -path "*/Library/Application Support/*/Code Cache" \
-          -o -path "*/Library/Application Support/*/GPUCache" \
-          -o -path "*/Library/Application Support/*/DawnWebGPUCache" \
-          -o -path "*/Library/Application Support/*/DawnGraphiteCache" \
-          -o -path "*/Library/Application Support/*/ShaderCache" \
-          -o -path "*/vm_bundles/warm" \
-          -o -path "*/.npm/_cacache" \
-          -o -path "*/.npm/_npx" \
-          -o -path "*/.npm/_logs" \
-          -o -path "*/.bun/install/cache" \
-          -o -path "*/.yarn/cache" \
-          -o -path "*/.pnpm-store" \
-          -o -path "*/.cache/pip" \
-          -o -path "*/.cache/uv" \
-          -o -path "*/.cargo/registry" \
-          -o -path "*/.cargo/git" \
-          -o -path "*/go/pkg/mod" \
-          -o -path "*/.cache/go-build" \
-          -o -path "*/.gradle/caches" \
-          -o -path "*/.m2/repository" \
-          -o -path "*/.claude/debug" \
-          -o -path "*/.claude/paste-cache" \
-          -o -path "*/.claude/telemetry" \
-          -o -path "*/.claude/shell-snapshots" \
-          -o -path "*/.codex/log" \
-          -o -path "*/.codex/archived_sessions" \
-        \) -type d -prune -print0 2>/dev/null | xargs -0 du -sk 2>/dev/null | sort -rn
-        """#
+        // Replaces `find ~ … -print0 | xargs -0 du -sk | sort -rn` with an
+        // argv-only pipeline. `~` is expanded here since there is no shell.
+        // `du -sk` (raw KiB, not -sh's human strings) feeds the exact byte
+        // counts the DTO layer serializes as `sizeBytes` (#99).
+        var findArguments = [NSHomeDirectory(), "-maxdepth", "8", "("]
+        for (index, pattern) in Self.fastScanPathPatterns.enumerated() {
+            if index > 0 { findArguments.append("-o") }
+            findArguments.append(contentsOf: ["-path", pattern])
+        }
+        findArguments.append(contentsOf: [")", "-type", "d", "-prune", "-print0"])
+
         return await Task.detached(priority: .userInitiated) {
-            let result = Self.shell(script)
+            let result = Self.pipeline([
+                (executable: "/usr/bin/find", arguments: findArguments),
+                (executable: "/usr/bin/xargs", arguments: ["-0", "du", "-sk"]),
+                (executable: "/usr/bin/sort", arguments: ["-rn"])
+            ])
             return Self.parseFastScanOutput(result)
         }.value
     }
@@ -163,7 +180,31 @@ struct CacheAnalyzer {
 
     private func largestApplicationSupportDirectories() async -> String {
         await Task.detached(priority: .userInitiated) {
-            Self.shell(#"du -sh ~/Library/Application\ Support/*/ 2>/dev/null | sort -rh | head -50"#)
+            // Replaces `du -sh ~/Library/Application\ Support/*/ | sort -rh | head -50`.
+            // The shell glob `*/` is expanded here to immediate, non-hidden
+            // subdirectories so no path is ever passed through a shell.
+            let appSupport = NSHomeDirectory() + "/Library/Application Support"
+            let fileManager = FileManager.default
+            let directories = ((try? fileManager.contentsOfDirectory(atPath: appSupport)) ?? [])
+                .filter { !$0.hasPrefix(".") }
+                .map { appSupport + "/" + $0 }
+                .filter { path in
+                    var isDirectory: ObjCBool = false
+                    return fileManager.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+                }
+                .sorted()
+                .map { $0 + "/" }   // trailing slash matches the `*/` the shell produced
+            guard !directories.isEmpty else { return "" }
+
+            let output = Self.pipeline([
+                (executable: "/usr/bin/du", arguments: ["-sh"] + directories),
+                (executable: "/usr/bin/sort", arguments: ["-rh"])
+            ])
+            // `head -50`
+            return output
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .prefix(50)
+                .joined(separator: "\n")
         }.value
     }
 
@@ -378,16 +419,43 @@ struct CacheAnalyzer {
         return "\(provider) scan failed: \(message)"
     }
 
-    private static func shell(_ cmd: String) -> String {
-        let task = Process()
-        task.launchPath = "/bin/bash"
-        task.arguments = ["-c", cmd]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        try? task.run()
-        task.waitUntilExit()
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    /// Runs a sequence of argv stages connected by pipes
+    /// (`stage[i]` stdout → `stage[i+1]` stdin) and returns the tail stage's
+    /// stdout. Argv-only — no `/bin/bash -c` — so a path can never be
+    /// reinterpreted as shell syntax (spaces, quotes, `$(...)`). Each stage's
+    /// stderr is discarded, matching the `2>/dev/null` the shell pipeline used.
+    private static func pipeline(_ stages: [(executable: String, arguments: [String])]) -> String {
+        guard !stages.isEmpty else { return "" }
+
+        var processes: [Process] = []
+        var upstream: Pipe?
+        let finalOutput = Pipe()
+
+        for (index, stage) in stages.enumerated() {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: stage.executable)
+            process.arguments = stage.arguments
+            process.standardError = FileHandle.nullDevice
+            if let upstream { process.standardInput = upstream }
+            let output = index == stages.count - 1 ? finalOutput : Pipe()
+            process.standardOutput = output
+            upstream = output
+            processes.append(process)
+        }
+
+        do {
+            for process in processes { try process.run() }
+        } catch {
+            for process in processes where process.isRunning { process.terminate() }
+            return ""
+        }
+
+        // Drain the tail pipe before reaping. Intermediate pipes are drained by
+        // the next stage; the final stage can't wedge on a full 64 KB buffer
+        // while we read here.
+        let data = finalOutput.fileHandleForReading.readDataToEndOfFile()
+        for process in processes { process.waitUntilExit() }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private static var aiSchemaString: String {

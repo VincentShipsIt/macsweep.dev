@@ -61,14 +61,7 @@ struct LoginItemsView: View {
                 Text("This will remove \"\(item.name)\" permanently.")
             }
         }
-        .alert("Error", isPresented: .init(
-            get: { service.errorMessage != nil },
-            set: { if !$0 { service.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { service.errorMessage = nil }
-        } message: {
-            Text(service.errorMessage ?? "")
-        }
+        .errorAlert(message: $service.errorMessage)
     }
 
     // MARK: - Items List (grouped by type)

@@ -49,17 +49,7 @@ struct MailAttachmentsView: View {
                 }
             }
         }
-        .alert(
-            "Couldn't delete attachments",
-            isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .errorAlert("Couldn't delete attachments", message: $errorMessage)
     }
 
     // MARK: - Filter Bar
@@ -218,15 +208,14 @@ struct MailAttachmentsView: View {
             return
         }
 
-        // Per-item safety failures come back in result.errors (not thrown). Only
-        // drop the items that actually left disk; keep blocked ones visible.
-        let blockedPaths = Set(result.errors.map(\.path))
-        attachments.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        // Per-item failures come back in result.errors (not thrown). Only drop
+        // the items that actually left disk; keep failed ones visible. Assign
+        // unconditionally so a clean retry clears any stale error.
+        let failedPaths = Set(result.errors.map(\.path))
+        attachments.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in attachments.contains(where: { $0.id == id }) }
         stats = MailStats.from(items: attachments)
-        if !blockedPaths.isEmpty {
-            errorMessage = "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
-        }
+        errorMessage = result.failureSummaryMessage
     }
 
     // MARK: - Computed
