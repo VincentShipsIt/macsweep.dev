@@ -224,10 +224,20 @@ struct SystemCacheModule: ScanModule {
                 // apps may write new files between scan and clean.
                 let contents = try FileManager.default.contentsOfDirectory(
                     at: item.path,
-                    includingPropertiesForKeys: nil
+                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
                 )
                 for content in contents {
-                    guard checker.validateForCleanup(content, moduleID: id, itemType: .file).isSafe else {
+                    // Validate each child as what it actually is — a subdirectory
+                    // or symlink must not slip past checks meant for plain files.
+                    let values = try? content.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    let childType: CleanupItem.ItemType = if values?.isSymbolicLink == true {
+                        .symbolicLink
+                    } else if values?.isDirectory == true {
+                        .directory
+                    } else {
+                        .file
+                    }
+                    guard checker.validateForCleanup(content, moduleID: id, itemType: childType).isSafe else {
                         continue
                     }
                     try CleanupFileRemover.permanent(content)

@@ -62,11 +62,17 @@ extension BrowserModule {
     }
 
     func cleanBrowserItems(_ items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+        // Filter to this module BEFORE the running-browser guard: a running
+        // browser must not veto a cleanup that contains none of its items.
+        let moduleItems = items.filter { $0.module == id }
+        guard !moduleItems.isEmpty else {
+            return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: [])
+        }
         if isRunning && !dryRun {
             throw BrowserCleanupError.browserRunning(browserName)
         }
 
-        return await cleanItems(items, dryRun: dryRun) { item, _ in
+        return await cleanItems(moduleItems, dryRun: dryRun) { item, _ in
             let contents = try FileManager.default.contentsOfDirectory(
                 at: item.path,
                 includingPropertiesForKeys: nil
