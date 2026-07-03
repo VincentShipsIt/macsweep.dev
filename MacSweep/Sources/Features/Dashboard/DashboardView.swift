@@ -9,6 +9,9 @@ enum WidgetType: String, CaseIterable {
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
+    /// One shared process monitor for the CPU and Memory popovers so they don't
+    /// each spin up an independent 5s `ps` sampling loop (issue #103).
+    @StateObject private var processMonitor = ProcessMonitor()
     @State private var expandedWidget: WidgetType? = nil
     @State private var isCleanupReviewExpanded = false
     @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
@@ -485,7 +488,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .memory), arrowEdge: .trailing) {
-            MemoryDetailView(monitor: monitor)
+            MemoryDetailView(monitor: monitor, processMonitor: processMonitor)
                 .dashboardPopoverContent()
         }
 
@@ -522,7 +525,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .cpu), arrowEdge: .trailing) {
-            CPUDetailView(monitor: monitor)
+            CPUDetailView(monitor: monitor, processMonitor: processMonitor)
                 .dashboardPopoverContent()
         }
 
@@ -685,21 +688,14 @@ struct DashboardView: View {
     }
 
     private var cpuTempColor: Color {
-        guard let temp = monitor.cpuUsage.temperature else { return .primary }
-        if temp > 80 { return .red }
-        if temp > 60 { return .orange }
-        return .green
+        guard monitor.cpuUsage.temperature != nil else { return .primary }
+        return MetricThresholds.cpuTemperature(monitor.cpuUsage.temperature).color
     }
 
     // MARK: - Connected Devices (merged from the connected-devices feature)
 
     private var connectedDevicesSubtitle: String {
-        let count = monitor.connectedDevices.count
-        switch count {
-        case 0: return "None connected"
-        case 1: return monitor.connectedDevices[0].name
-        default: return "\(count) devices"
-        }
+        ConnectedDevicesSummary.subtitle(for: monitor.connectedDevices)
     }
 
     private var lowestDeviceBattery: Int? {

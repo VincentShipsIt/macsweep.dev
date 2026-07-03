@@ -3,7 +3,9 @@ import SwiftUI
 /// Detailed Memory view shown in popover
 struct MemoryDetailView: View {
     @ObservedObject var monitor: SystemMonitor
-    @StateObject private var processMonitor = ProcessMonitor()
+    /// Shared with CPUDetailView via the parent, so only one 5s `ps` sampling
+    /// loop runs regardless of how many detail views have been opened (issue #103).
+    @ObservedObject var processMonitor: ProcessMonitor
     @State private var isFreeing = false
     @State private var pulseAnimation = false
 
@@ -57,14 +59,8 @@ struct MemoryDetailView: View {
                         style: StrokeStyle(lineWidth: 10, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .opacity(alertLevel == .critical ? (pulseAnimation ? 0.7 : 1.0) : 1.0)
-                    .onAppear {
-                        if alertLevel == .critical {
-                            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                                pulseAnimation = true
-                            }
-                        }
-                    }
+                    .criticalPulse(alertLevel, isPulsing: pulseAnimation)
+                    .startCriticalPulse(alertLevel, into: $pulseAnimation)
 
                 VStack(spacing: 2) {
                     Text("\(Int(monitor.memoryUsage.usedPercentage * 100))%")
@@ -112,15 +108,7 @@ struct MemoryDetailView: View {
             }
 
             // Alert badge
-            if alertLevel != .normal {
-                VStack {
-                    Image(systemName: alertLevel == .critical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(alertLevel.color)
-                    Text(alertLevel == .critical ? "Critical" : "Warning")
-                        .font(.caption2)
-                        .foregroundStyle(alertLevel.color)
-                }
-            }
+            AlertBadge(level: alertLevel, style: .stacked)
         }
     }
 
@@ -248,7 +236,7 @@ struct MemoryBar: View {
 
 #if !SWIFT_PACKAGE
 #Preview {
-    MemoryDetailView(monitor: SystemMonitor())
+    MemoryDetailView(monitor: SystemMonitor(), processMonitor: ProcessMonitor())
         .frame(width: 380, height: 500)
 }
 
