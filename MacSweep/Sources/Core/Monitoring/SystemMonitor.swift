@@ -225,15 +225,11 @@ extension SystemMonitor {
         // For now, return nil - temperature requires SMC access
         // Users can install osx-cpu-temp via Homebrew
 
-        // Check if osx-cpu-temp is available
-        let tempOutput = await runCommand("/usr/local/bin/osx-cpu-temp", arguments: [])
+        // Check if osx-cpu-temp is available under either Homebrew prefix
+        // (Intel /usr/local or Apple Silicon /opt/homebrew), resolved once.
+        guard let toolPath = HomebrewPaths.toolPath("osx-cpu-temp") else { return nil }
+        let tempOutput = await runCommand(toolPath, arguments: [])
         if let match = tempOutput.firstMatch(of: #/([0-9.]+)°C/#) {
-            return Double(match.1)
-        }
-
-        // Try Homebrew ARM path
-        let tempOutputARM = await runCommand("/opt/homebrew/bin/osx-cpu-temp", arguments: [])
-        if let match = tempOutputARM.firstMatch(of: #/([0-9.]+)°C/#) {
             return Double(match.1)
         }
 
@@ -549,30 +545,12 @@ extension SystemMonitor {
 // MARK: - Command Runner
 
 extension SystemMonitor {
-    private func runCommand(_ path: String, arguments: [String]) async -> String {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                let pipe = Pipe()
-
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = arguments
-                process.standardOutput = pipe
-                process.standardError = pipe
-
-                do {
-                    try process.run()
-                    // Drain before reaping so verbose commands (e.g.
-                    // system_profiler) can't fill the 64 KB pipe buffer and
-                    // deadlock against waitUntilExit.
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    continuation.resume(returning: output)
-                } catch {
-                    continuation.resume(returning: "")
-                }
-            }
-        }
+    /// Runs a metrics probe via the shared `ProcessRunner` (concurrent drain,
+    /// bounded wait). Returns stdout only — these parsers key on stdout tokens, so
+    /// dropping merged stderr removes noise (deprecation warnings from `airport`
+    /// etc.). A failure or timeout yields "".
+    private func runCommand(_ path: String, arguments: [String], timeout: TimeInterval = 20) async -> String {
+        let result = try? await ProcessRunner.run(executable: path, arguments: arguments, timeout: timeout)
+        return result?.output ?? ""
     }
 }

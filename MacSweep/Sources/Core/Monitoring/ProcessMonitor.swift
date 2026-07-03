@@ -95,47 +95,26 @@ final class ProcessMonitor: ObservableObject {
 
     /// Sample memory + CPU for every process in one `ps` invocation.
     ///
-    /// Runs off the main actor on a utility queue. The pipe is drained
-    /// (`readDataToEndOfFile`) BEFORE `waitUntilExit` — `ps -axo` for hundreds of
-    /// processes overflows the 64KB pipe buffer, and waiting first would deadlock
-    /// (child blocks on a full pipe, parent blocks on the child).
+    /// Runs through the shared `ProcessRunner`, which drains stdout concurrently
+    /// and enforces a watchdog timeout — `ps -axo` for hundreds of processes
+    /// overflows the 64KB pipe buffer, so a naive drain-after-wait would deadlock.
+    /// A failure or timeout yields an empty table (0/0 for every app).
     private static func sampleProcessStats() async -> [pid_t: (memoryMB: Double, cpuPercent: Double)] {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                let pipe = Pipe()
+        guard let output = try? await ProcessRunner.run(
+            executable: "/bin/ps", arguments: ["-axo", "pid=,rss=,%cpu="]).output
+        else { return [:] }
 
-                process.executableURL = URL(fileURLWithPath: "/bin/ps")
-                process.arguments = ["-axo", "pid=,rss=,%cpu="]
-                process.standardOutput = pipe
-                process.standardError = FileHandle.nullDevice
-
-                var result: [pid_t: (memoryMB: Double, cpuPercent: Double)] = [:]
-
-                do {
-                    try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-
-                    if let output = String(data: data, encoding: .utf8) {
-                        for line in output.split(separator: "\n") {
-                            let cols = line
-                                .split(whereSeparator: { $0 == " " || $0 == "\t" })
-                                .filter { !$0.isEmpty }
-                            guard cols.count >= 3,
-                                  let pid = pid_t(cols[0]),
-                                  let rssKB = Double(cols[1]),
-                                  let cpu = Double(cols[2]) else { continue }
-                            result[pid] = (memoryMB: rssKB / 1024, cpuPercent: cpu)
-                        }
-                    }
-                } catch {
-                    // Best-effort: an unreadable ps table means 0/0 for every app.
-                    Log.process.debug("ps resource sampling failed: \(error.localizedDescription, privacy: .public)")
-                }
-
-                continuation.resume(returning: result)
-            }
+        var result: [pid_t: (memoryMB: Double, cpuPercent: Double)] = [:]
+        for line in output.split(separator: "\n") {
+            let cols = line
+                .split(whereSeparator: { $0 == " " || $0 == "\t" })
+                .filter { !$0.isEmpty }
+            guard cols.count >= 3,
+                  let pid = pid_t(cols[0]),
+                  let rssKB = Double(cols[1]),
+                  let cpu = Double(cols[2]) else { continue }
+            result[pid] = (memoryMB: rssKB / 1024, cpuPercent: cpu)
         }
+        return result
     }
 }
