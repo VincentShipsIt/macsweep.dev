@@ -332,7 +332,7 @@ struct PackageManagersView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleaned and were kept."

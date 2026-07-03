@@ -251,7 +251,7 @@ struct BrowserCleanupView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            _ = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             cleanupError = "Couldn't clean browser data: \(error.localizedDescription)"
         }

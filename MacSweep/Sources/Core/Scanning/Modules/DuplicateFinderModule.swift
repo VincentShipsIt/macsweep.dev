@@ -215,7 +215,7 @@ struct DuplicateFinderModule: ScanModule {
             dryRun: dryRun,
             errorMessage: { _ in "Failed to remove duplicate" }
         ) { item, _ in
-            try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
+            try CleanupFileRemover.recoverable(item.path)
         }
     }
 }

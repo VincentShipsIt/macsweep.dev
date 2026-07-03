@@ -210,7 +210,7 @@ struct MailAttachmentsView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             // The whole operation failed (e.g. deletion cap) — surface it and keep
             // every item, since nothing was removed.
