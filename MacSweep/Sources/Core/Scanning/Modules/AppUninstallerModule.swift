@@ -1,6 +1,19 @@
 import Foundation
 import AppKit
 
+extension DateFormatter {
+    /// A `DateFormatter` pinned to `en_US_POSIX` for parsing the fixed-format
+    /// timestamps emitted by shell tools (`mdls`, `git`, …). The POSIX locale is
+    /// mandatory: without it, a user on a 12-hour or non-Gregorian locale fails
+    /// to parse 24-hour format strings like `yyyy-MM-dd HH:mm:ss Z`.
+    static func posixShellDate(format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = format
+        return formatter
+    }
+}
+
 /// Module for app uninstallation with leftover detection
 struct AppUninstallerModule: ScanModule {
     let id = "app-uninstaller"
@@ -175,9 +188,11 @@ actor AppDiscovery {
                         return
                     }
 
-                    // Parse date (format: 2024-01-15 10:30:00 +0000)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+                    // Parse date (format: 2024-01-15 10:30:00 +0000). The POSIX
+                    // locale is required: on a 12-hour or non-Gregorian user
+                    // locale a plain DateFormatter fails to parse this 24-hour
+                    // format and "last used" silently reads back nil.
+                    let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
                     continuation.resume(returning: formatter.date(from: output))
                 } catch {
                     continuation.resume(returning: nil)
@@ -258,37 +273,49 @@ actor LeftoverScanner {
             includingPropertiesForKeys: nil
         ) else { return [] }
 
-        let searchTerms = [
-            bundleID,
-            bundleID.lowercased(),
-            appName,
-            appName.lowercased(),
-            appName.replacingOccurrences(of: " ", with: ""),
-        ]
-
         for item in contents {
-            let itemName = item.lastPathComponent
-
-            // Check if item name matches app
-            let matches = searchTerms.contains { term in
-                itemName.localizedCaseInsensitiveContains(term) ||
-                term.localizedCaseInsensitiveContains(itemName.replacingOccurrences(of: ".plist", with: ""))
+            guard Self.leftoverMatches(itemName: item.lastPathComponent, bundleID: bundleID, appName: appName) else {
+                continue
             }
+            let size = (try? await DiskAnalyzer.size(of: item)) ?? 0
+            guard size > 0 else { continue }
 
-            if matches {
-                let size = (try? await DiskAnalyzer.size(of: item)) ?? 0
-                guard size > 0 else { continue }
-
-                found.append(AppLeftover(
-                    id: UUID(),
-                    path: item,
-                    size: size,
-                    type: type
-                ))
-            }
+            found.append(AppLeftover(
+                id: UUID(),
+                path: item,
+                size: size,
+                type: type
+            ))
         }
 
         return found
+    }
+
+    /// Whether a Library item named `itemName` belongs to the app identified by
+    /// `bundleID` / `appName`, for uninstaller leftover removal.
+    ///
+    /// The bundle id is the reliable key: leftovers are named exactly after it
+    /// (`com.foo.App.plist`) or carry it as a dotted prefix (`com.foo.App.savedState`,
+    /// container dirs `com.foo.App`). App-name matching is an EXACT compare on a
+    /// space- and case-folded form — deliberately not the old two-way substring,
+    /// so uninstalling an app named "Mail" can never sweep unrelated "MailChimp"
+    /// data, and a short folder name can't superstring-match the app name (#76).
+    nonisolated static func leftoverMatches(itemName: String, bundleID: String, appName: String) -> Bool {
+        let base = itemName.hasSuffix(".plist") ? String(itemName.dropLast(6)) : itemName
+        let itemLower = base.lowercased()
+
+        let bundleLower = bundleID.lowercased()
+        if !bundleLower.isEmpty, itemLower == bundleLower || itemLower.hasPrefix(bundleLower + ".") {
+            return true
+        }
+
+        let appCompact = appName.lowercased().replacingOccurrences(of: " ", with: "")
+        let itemCompact = itemLower.replacingOccurrences(of: " ", with: "")
+        if !appCompact.isEmpty, itemCompact == appCompact {
+            return true
+        }
+
+        return false
     }
 
     private func looksLikeAppData(_ url: URL) -> Bool {
@@ -332,6 +359,15 @@ struct AppUninstaller {
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
 
+        let safety = SafetyChecker()
+
+        // Gate the bundle removal: confirm it really is a `.app` in a known
+        // Applications root and isn't a symlink/relocated path that would
+        // redirect the trash to an unintended target (#81).
+        guard safety.validateForAppBundleRemoval(app.bundlePath).isSafe else {
+            throw UninstallError.blockedBySafety(app.name)
+        }
+
         // Move app to trash
         do {
             try FileManager.default.trashItem(at: app.bundlePath, resultingItemURL: nil)
@@ -341,9 +377,22 @@ struct AppUninstaller {
             throw UninstallError.cannotRemoveApp(app.name, error)
         }
 
-        // Remove leftovers if requested
+        // Remove leftovers if requested. Every leftover passes the dedicated
+        // uninstall-leftover gate first — it admits only direct children of the
+        // seven Library data roots the scanner enumerates (Preferences included,
+        // which the generic blocklist would wrongly refuse) and still rejects
+        // symlinks, credential-looking names, and anything outside those roots
+        // (#76) — a mismatch is recorded and skipped, not deleted.
         if includeLeftovers {
             for leftover in app.leftovers {
+                guard safety.validateForUninstallLeftover(leftover.path).isSafe else {
+                    errors.append(CleanupError(
+                        path: leftover.path,
+                        message: "Blocked by safety checks",
+                        underlyingError: nil
+                    ))
+                    continue
+                }
                 do {
                     try FileManager.default.trashItem(at: leftover.path, resultingItemURL: nil)
                     processedCount += 1
@@ -366,6 +415,7 @@ enum UninstallError: LocalizedError {
     case appRunning(String)
     case cannotRemoveApp(String, Error)
     case insufficientPermissions(String)
+    case blockedBySafety(String)
 
     var errorDescription: String? {
         switch self {
@@ -375,6 +425,8 @@ enum UninstallError: LocalizedError {
             return "Could not uninstall \(name): \(error.localizedDescription)"
         case .insufficientPermissions(let name):
             return "Cannot uninstall \(name): Administrator privileges required for apps in /Applications"
+        case .blockedBySafety(let name):
+            return "Cannot uninstall \(name): the app bundle failed a safety check (unexpected location or symlink)"
         }
     }
 }

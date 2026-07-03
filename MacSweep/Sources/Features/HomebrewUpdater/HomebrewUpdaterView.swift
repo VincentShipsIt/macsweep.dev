@@ -31,7 +31,9 @@ struct HomebrewUpdaterView: View {
                 }
 
                 if let error = service.error, error != "brew_not_found" {
-                    errorBanner(error)
+                    MacSweepErrorBanner(message: error) {
+                        service.error = nil
+                    }
                 }
 
                 if !service.packages.isEmpty && !service.isLoading {
@@ -136,21 +138,6 @@ struct HomebrewUpdaterView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { service.error = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Bottom Bar

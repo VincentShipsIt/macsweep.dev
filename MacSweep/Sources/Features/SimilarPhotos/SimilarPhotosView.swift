@@ -28,7 +28,9 @@ struct SimilarPhotosView: View {
             scrolls: photoItems.isEmpty
         ) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
 
             if photoItems.isEmpty {
@@ -53,21 +55,6 @@ struct SimilarPhotosView: View {
                 footer
             }
         }
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     private var filterBar: some View {
@@ -172,19 +159,17 @@ struct SimilarPhotosView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false)
+            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't move photos to Trash: \(error.localizedDescription)"
             return
         }
-        // Per-item safety failures come back in result.errors (not thrown). Only
-        // drop the photos that actually left disk; keep blocked ones visible.
-        let blockedPaths = Set(result.errors.map(\.path))
-        photoItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        // Per-item failures come back in result.errors (not thrown). Only drop
+        // the photos that actually left disk; keep failed ones visible.
+        let failedPaths = Set(result.errors.map(\.path))
+        photoItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in photoItems.contains(where: { $0.id == id }) }
-        errorMessage = blockedPaths.isEmpty
-            ? nil
-            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+        errorMessage = result.failureSummaryMessage
     }
 
     private var sortedItems: [CleanupItem] {
@@ -205,14 +190,11 @@ struct SimilarPhotosView: View {
     }
 
     private var totalSize: String {
-        ByteCountFormatter.string(fromByteCount: sortedItems.reduce(0) { $0 + $1.size }, countStyle: .file)
+        sortedItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: sortedItems.filter { selectedItems.contains($0.id) }.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        sortedItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

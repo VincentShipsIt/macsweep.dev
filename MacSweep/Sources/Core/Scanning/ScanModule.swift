@@ -31,6 +31,52 @@ extension ScanModule {
         guard size > 0 else { return nil }
         return CleanupItem(id: UUID(), path: url, size: size, type: type, module: id, moduleName: displayName)
     }
+
+    /// Shared implementation for modules that clean `CleanupItem`s one by one.
+    /// Keeps dry-run accounting, module filtering, and cleanup-time safety checks
+    /// consistent while each module supplies its own removal strategy.
+    func cleanItems(
+        _ items: [CleanupItem],
+        dryRun: Bool,
+        blockedMessage: String = "Blocked by safety checks",
+        errorMessage: @escaping (Error) -> String = { $0.localizedDescription },
+        remove: (CleanupItem, SafetyChecker) async throws -> Void
+    ) async -> CleanupResult {
+        var processed = 0
+        var freed: Int64 = 0
+        var errors: [CleanupError] = []
+        let checker = SafetyChecker()
+
+        for item in items where item.module == id {
+            if dryRun {
+                processed += 1
+                freed += item.size
+                continue
+            }
+
+            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: blockedMessage
+                ))
+                continue
+            }
+
+            do {
+                try await remove(item, checker)
+                processed += 1
+                freed += item.size
+            } catch {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: errorMessage(error),
+                    underlyingError: error
+                ))
+            }
+        }
+
+        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+    }
 }
 
 // MARK: - Cleanup Item
@@ -109,6 +155,11 @@ struct CleanupResult: Sendable {
         errors.isEmpty
     }
 
+    /// User-facing summary of per-item failures, or nil when everything succeeded.
+    var failureSummaryMessage: String? {
+        errors.failureSummaryMessage
+    }
+
     init(itemsProcessed: Int, bytesFreed: Int64, errors: [CleanupError] = []) {
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
@@ -126,6 +177,19 @@ struct CleanupError: Error, Sendable {
         self.path = path
         self.message = message
         self.underlyingError = underlyingError
+    }
+}
+
+extension Array where Element == CleanupError {
+    /// User-facing summary of per-item cleanup failures, or nil when empty.
+    /// Wording stays generic on purpose: cleanup errors mix safety vetoes with
+    /// ordinary deletion failures, so a blanket "blocked by safety checks" would
+    /// mislabel the latter. The first error's own message carries the actual
+    /// reason (safety-blocked items say so in their message).
+    var failureSummaryMessage: String? {
+        guard let first = first else { return nil }
+        let itemCount = count == 1 ? "1 item" : "\(count) items"
+        return "\(itemCount) couldn't be removed: \(first.message)"
     }
 }
 

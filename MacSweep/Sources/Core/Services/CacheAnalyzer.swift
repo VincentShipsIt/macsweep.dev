@@ -22,6 +22,9 @@ struct CacheAnalyzer {
 
     struct Finding {
         let path: String
+        /// Exact on-disk size when the finding comes from the deterministic fast
+        /// scan; `nil` for AI findings, whose sizes are free-text estimates.
+        let sizeBytes: Int64?
         let sizeText: String
         let category: Category
         let regeneratesAutomatically: Bool
@@ -108,8 +111,10 @@ struct CacheAnalyzer {
     ]
 
     private func runFastScan() async -> [Finding] {
-        // Replaces `find ~ … -print0 | xargs -0 du -sh | sort -rh` with an
+        // Replaces `find ~ … -print0 | xargs -0 du -sk | sort -rn` with an
         // argv-only pipeline. `~` is expanded here since there is no shell.
+        // `du -sk` (raw KiB, not -sh's human strings) feeds the exact byte
+        // counts the DTO layer serializes as `sizeBytes` (#99).
         var findArguments = [NSHomeDirectory(), "-maxdepth", "8", "("]
         for (index, pattern) in Self.fastScanPathPatterns.enumerated() {
             if index > 0 { findArguments.append("-o") }
@@ -120,14 +125,14 @@ struct CacheAnalyzer {
         return await Task.detached(priority: .userInitiated) {
             let result = Self.pipeline([
                 (executable: "/usr/bin/find", arguments: findArguments),
-                (executable: "/usr/bin/xargs", arguments: ["-0", "du", "-sh"]),
-                (executable: "/usr/bin/sort", arguments: ["-rh"])
+                (executable: "/usr/bin/xargs", arguments: ["-0", "du", "-sk"]),
+                (executable: "/usr/bin/sort", arguments: ["-rn"])
             ])
             return Self.parseFastScanOutput(result)
         }.value
     }
 
-    /// Pure transform of `du -sh` tab-separated output into findings.
+    /// Pure transform of `du -sk` tab-separated output (KiB + path) into findings.
     /// `internal` (not `private`) so the deterministic parse/categorize logic is
     /// reachable from `@testable import` unit tests.
     static func parseFastScanOutput(_ output: String) -> [Finding] {
@@ -136,10 +141,12 @@ struct CacheAnalyzer {
             guard parts.count == 2 else { return nil }
             let size = parts[0].trimmingCharacters(in: .whitespaces)
             let path = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !path.isEmpty else { return nil }
+            guard !path.isEmpty, let kibibytes = Int64(size) else { return nil }
+            let bytes = kibibytes * 1024
             return Finding(
                 path: path,
-                sizeText: size,
+                sizeBytes: bytes,
+                sizeText: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file),
                 category: categorize(path: path),
                 regeneratesAutomatically: true,
                 source: "Fast Scan",
@@ -225,14 +232,16 @@ struct CacheAnalyzer {
         var errors: [String] = []
 
         if Self.executablePath(for: "claude") != nil {
-            // ProcessRunner already runs off the cooperative pool; the AI CLI can
-            // take many seconds, so it gets a generous timeout (not the 10 s default).
-            let result = await Self.runProcess([
-                "claude",
-                "-p",
-                "--json-schema", Self.aiSchemaString,
-                prompt
-            ])
+            // Run off the cooperative pool — the CLI can take many seconds and
+            // runProcess blocks on waitUntilExit (matches runFastScan's pattern).
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.runProcess([
+                    "claude",
+                    "-p",
+                    "--json-schema", Self.aiSchemaString,
+                    prompt
+                ])
+            }.value
             if result.status == 0 {
                 if let findings = Self.parseAIFindings(result.output, source: "AI Analysis") {
                     return (findings, "Claude CLI", nil)
@@ -248,16 +257,18 @@ struct CacheAnalyzer {
             let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-\(UUID().uuidString).json")
             do {
                 try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
-                let result = await Self.runProcess([
-                    "codex",
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--sandbox", "read-only",
-                    "--ephemeral",
-                    "--output-schema", schemaURL.path,
-                    "-o", outputURL.path,
-                    prompt
-                ])
+                let result = await Task.detached(priority: .userInitiated) {
+                    Self.runProcess([
+                        "codex",
+                        "exec",
+                        "--skip-git-repo-check",
+                        "--sandbox", "read-only",
+                        "--ephemeral",
+                        "--output-schema", schemaURL.path,
+                        "-o", outputURL.path,
+                        prompt
+                    ])
+                }.value
                 if result.status == 0 {
                     let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
                     if let findings = Self.parseAIFindings(text, source: "AI Analysis") {
@@ -334,6 +345,7 @@ struct CacheAnalyzer {
             let reason = item["reason"] as? String
             return Finding(
                 path: path,
+                sizeBytes: nil,
                 sizeText: size,
                 category: Category(rawValue: cat) ?? .other,
                 regeneratesAutomatically: regen,
@@ -367,17 +379,37 @@ struct CacheAnalyzer {
         return nil
     }
 
-    /// Runs an AI CLI (`claude`/`codex`) via `/usr/bin/env` so it resolves on
-    /// PATH, through the shared `ProcessRunner` (concurrent drain, bounded wait).
-    /// The timeout is generous — these calls legitimately take many seconds — but
-    /// still bounded, where the old hand-rolled version could hang forever.
-    private static func runProcess(_ arguments: [String], timeout: TimeInterval = 300) async -> ProcessResult {
+    private static func runProcess(_ arguments: [String]) -> ProcessResult {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        task.arguments = arguments
+        let stdout = Pipe()
+        let stderr = Pipe()
+        task.standardOutput = stdout
+        task.standardError = stderr
         do {
-            return try await ProcessRunner.run(
-                executable: "/usr/bin/env", arguments: arguments, timeout: timeout)
+            try task.run()
         } catch {
-            return ProcessResult(status: 127, output: "", error: "\(error)")
+            return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
+        // Drain stderr concurrently with stdout, then wait. Reading only after
+        // waitUntilExit would deadlock once the child fills either pipe's 64 KB
+        // buffer. Mirrors the concurrent drain in
+        // AssistantConversationService.runProcess.
+        let stderrHandle = stderr.fileHandleForReading
+        let drainQueue = DispatchQueue(label: "macsweep.cacheanalyzer.stderr-drain")
+        var errorData = Data()
+        drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
+
+        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        drainQueue.sync {}   // ensure the stderr drain has completed
+
+        return ProcessResult(
+            status: task.terminationStatus,
+            output: String(data: outputData, encoding: .utf8) ?? "",
+            error: String(data: errorData, encoding: .utf8) ?? ""
+        )
     }
 
     private static func processError(_ provider: String, _ result: ProcessResult) -> String {

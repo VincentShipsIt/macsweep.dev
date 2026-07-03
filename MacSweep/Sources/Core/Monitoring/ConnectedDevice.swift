@@ -94,6 +94,21 @@ public struct ConnectedDevice: Identifiable, Equatable, Sendable {
     }
 }
 
+// MARK: - Summary
+
+/// Shared one-line subtitle for a set of connected devices. Both the menu-bar
+/// card and the dashboard row use this so the count wording can't diverge
+/// ("N connected" vs "N devices" — issue #102).
+public enum ConnectedDevicesSummary {
+    public static func subtitle(for devices: [ConnectedDevice]) -> String {
+        switch devices.count {
+        case 0: return "None connected"
+        case 1: return devices[0].name
+        default: return "\(devices.count) connected"
+        }
+    }
+}
+
 // MARK: - Scanner
 
 /// Discovers connected Bluetooth peripherals and their battery levels.

@@ -182,50 +182,10 @@ struct DualLineGraph: View {
     }
 }
 
-/// Alert level for color coding
-enum MetricAlertLevel {
-    case normal
-    case warning
-    case critical
-
-    var color: Color {
-        switch self {
-        case .normal: return .green
-        case .warning: return .orange
-        case .critical: return .red
-        }
-    }
-}
-
-/// Helper for determining alert levels
-struct MetricThresholds {
-    static func cpu(usage: Double, temperature: Double?) -> MetricAlertLevel {
-        let temp = temperature ?? 0
-        if usage >= 90 || temp > 80 { return .critical }
-        if usage >= 70 || temp > 60 { return .warning }
-        return .normal
-    }
-
-    static func memory(usagePercent: Double) -> MetricAlertLevel {
-        if usagePercent >= 0.90 { return .critical }
-        if usagePercent >= 0.75 { return .warning }
-        return .normal
-    }
-
-    static func storage(freePercent: Double) -> MetricAlertLevel {
-        if freePercent < 0.10 { return .critical }
-        if freePercent < 0.20 { return .warning }
-        return .normal
-    }
-
-    static func battery(percent: Int, isCharging: Bool, hasBattery: Bool = true) -> MetricAlertLevel {
-        guard hasBattery else { return .normal }
-        if isCharging { return .normal }
-        if percent < 20 { return .critical }
-        if percent < 50 { return .warning }
-        return .normal
-    }
-}
+// `MetricAlertLevel` and `MetricThresholds` now live in the MacSweepCore package
+// (Sources/Core/Monitoring/MetricThresholds.swift) so their boundaries are
+// unit-testable. The SwiftUI `Color` mapping and shared badge/column views live
+// in MetricUI.swift alongside this file.
 
 #if !SWIFT_PACKAGE
 #Preview {

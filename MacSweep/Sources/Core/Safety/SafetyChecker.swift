@@ -69,6 +69,96 @@ struct SafetyChecker: Sendable {
         validateBlocklist(url, action: .trash)
     }
 
+    /// Validate an application bundle the user explicitly chose to uninstall.
+    ///
+    /// The `.app` itself legitimately lives under `/Applications` or
+    /// `~/Applications` — both inside `neverDelete` — so the generic blocklist
+    /// (`validateForTrash`/`validateForCleanup`) would wrongly refuse every real
+    /// uninstall. This dedicated gate instead confirms the target genuinely is a
+    /// `.app` sitting *directly* in one of those known install roots and is not a
+    /// symlink — nor reached through a symlinked parent — that could redirect the
+    /// removal to an unintended target (issue #81). Removal is to Trash, so it
+    /// stays recoverable; this only stops a relocated/symlinked path from nuking
+    /// something other than the app the user picked.
+    func validateForAppBundleRemoval(_ url: URL) -> ValidationResult {
+        let standardized = url.standardized
+
+        // Refuse a symlinked bundle: trashing through a link could move an
+        // unintended target rather than the app the user selected.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            return .symlink(reason: "Symlink — would affect the link target, not the app")
+        }
+
+        guard standardized.pathExtension == "app" else {
+            return .unknown(reason: "Not an application bundle")
+        }
+
+        // Resolve parent symlinks, then require the bundle to sit DIRECTLY in a
+        // known Applications root (not merely somewhere beneath it).
+        let path = Self.realParentPath(url)
+        let parent = (path as NSString).deletingLastPathComponent
+        let appRoots = [
+            "/Applications",
+            FileManager.default.homeDirectoryForCurrentUser
+                .appending(path: "Applications").standardized.path,
+        ]
+        for root in appRoots where Self.caseNormalized(parent) == Self.caseNormalized(root) {
+            return .safe
+        }
+        return .protected(reason: "App bundle outside the standard Applications folders")
+    }
+
+    /// Validate a leftover the uninstaller matched for removal.
+    ///
+    /// Leftovers live DIRECTLY inside the seven Library data roots
+    /// `LeftoverScanner` enumerates — one of which (`~/Library/Preferences`) is
+    /// in `neverDelete`, so the generic blocklist (`validateForTrash`) would
+    /// refuse every preference-plist leftover and silently break uninstall
+    /// cleanup. This dedicated gate instead requires the item to be a direct
+    /// child of one of those roots (matching how the scanner discovers them),
+    /// while still refusing symlinks, sensitive-looking filenames (keys,
+    /// credentials, keychains), the roots themselves, and anything outside
+    /// them. Removal is to Trash, so a matched leftover stays recoverable.
+    func validateForUninstallLeftover(_ url: URL) -> ValidationResult {
+        let standardized = url.standardized
+
+        // Refuse a symlinked leftover: trashing through a link could move an
+        // unintended target rather than the app data the scanner matched.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            return .symlink(reason: "Symlink — would affect the link target, not the leftover")
+        }
+
+        // Never trash something that looks like a key/credential store, even if
+        // its name fuzzy-matched an app.
+        let filename = standardized.lastPathComponent.lowercased()
+        for pattern in ProtectedPaths.sensitivePatterns {
+            if matchesPattern(filename, pattern: pattern) {
+                return .sensitive(pattern: pattern)
+            }
+        }
+
+        // Resolve parent symlinks, then require the leftover to sit DIRECTLY in
+        // one of the roots the scanner enumerates (not the root itself, not
+        // deeper, not elsewhere).
+        let path = Self.realParentPath(url)
+        let parent = (path as NSString).deletingLastPathComponent
+        let library = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library").standardized.path
+        let leftoverRoots = [
+            "\(library)/Preferences",
+            "\(library)/Application Support",
+            "\(library)/Caches",
+            "\(library)/Logs",
+            "\(library)/Containers",
+            "\(library)/Saved Application State",
+            "\(library)/LaunchAgents",
+        ]
+        for root in leftoverRoots where Self.caseNormalized(parent) == Self.caseNormalized(root) {
+            return .safe
+        }
+        return .protected(reason: "Leftover outside the app-data folders the uninstaller scans")
+    }
+
     private enum BlocklistAction {
         case shred, trash
         var verb: String { self == .shred ? "shred" : "move to Trash" }
@@ -92,16 +182,22 @@ struct SafetyChecker: Sendable {
         // ~/link/secret where `link` -> /System) cannot masquerade as an
         // unrecognized-but-safe path while the op follows the link to the real file.
         let path = Self.realParentPath(url)
+        // Compare in the boot volume's case regime: on a case-INSENSITIVE volume
+        // (the macOS default) `~/.SSH` and `~/.ssh` are the same directory, so a
+        // case-sensitive `==`/`hasPrefix` would let a case-variant of a protected
+        // root slip past this blocklist and destroy it (issue #122).
+        let normalizedPath = Self.caseNormalized(path)
 
         // Refuse the filesystem root and the home directory itself.
         let home = FileManager.default.homeDirectoryForCurrentUser.standardized.path
-        if path == "/" || path == home {
+        if normalizedPath == "/" || normalizedPath == Self.caseNormalized(home) {
             return .protected(reason: "Refusing to \(action.verb) the home directory or filesystem root")
         }
 
         // Carve out the user document roots so files *inside* them are allowed, but
         // refuse a request to act on a whole root folder (e.g. all of ~/Documents).
-        for root in ProtectedPaths.userManagedRoots where path == expandedPathValue(for: root) {
+        for root in ProtectedPaths.userManagedRoots
+        where normalizedPath == Self.caseNormalized(expandedPathValue(for: root)) {
             return .protected(reason: "Refusing to \(action.verb) an entire user folder")
         }
         if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
@@ -272,10 +368,12 @@ struct SafetyChecker: Sendable {
     /// prefix of `path`, or -1 if none match. Boundary-safe: `/var` matches
     /// `/var/folders` but not `/variable`.
     private func longestPrefixLength(_ path: String, in roots: Set<String>) -> Int {
+        let normalizedPath = Self.caseNormalized(path)
         var best = -1
         for entry in roots {
             let root = expandedPathValue(for: entry)
-            if path == root || path.hasPrefix(root + "/") {
+            let normalizedRoot = Self.caseNormalized(root)
+            if normalizedPath == normalizedRoot || normalizedPath.hasPrefix(normalizedRoot + "/") {
                 if root.count > best { best = root.count }
             }
         }
@@ -284,6 +382,33 @@ struct SafetyChecker: Sendable {
 
     private func isUnder(_ path: String, anyOf roots: Set<String>) -> Bool {
         longestPrefixLength(path, in: roots) >= 0
+    }
+
+    /// Whether the volume backing the user's home directory distinguishes case.
+    ///
+    /// Every protected root lives on the boot volume (system dirs + `~`), so this
+    /// one property governs how path/root comparisons must be done. It is a
+    /// property of the *volume*, not of any file, so it is well-defined even when
+    /// the path being checked does not exist on disk — which is exactly the
+    /// shred/trash scenario (`validateForShred(~/.SSH)` must be refused whether or
+    /// not `~/.ssh` currently exists). Resolved once; the boot volume's case
+    /// sensitivity is fixed at format time and cannot change at runtime.
+    private static let bootVolumeIsCaseSensitive: Bool = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let values = try? home.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+        // Default to case-sensitive (the stricter, no-folding regime) if the query
+        // fails: folding a genuinely case-sensitive volume would wrongly protect
+        // distinct directories, whereas not folding only loses the #122 hardening.
+        return values?.volumeSupportsCaseSensitiveNames ?? true
+    }()
+
+    /// A path string normalized for protected-root comparison: folded to lowercase
+    /// on a case-INSENSITIVE boot volume (so `~/.SSH` matches the `~/.ssh` root),
+    /// left verbatim on a case-SENSITIVE volume (where the two are genuinely
+    /// distinct directories and must not be conflated). Chosen over blanket
+    /// case-folding precisely so case-sensitive volumes stay correct (issue #122).
+    private static func caseNormalized(_ path: String) -> String {
+        bootVolumeIsCaseSensitive ? path : path.lowercased()
     }
 
     private func isPrivacyArtifact(_ path: String) -> Bool {
