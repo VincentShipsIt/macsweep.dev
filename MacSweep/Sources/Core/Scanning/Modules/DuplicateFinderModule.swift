@@ -215,7 +215,7 @@ struct DuplicateFinderModule: ScanModule {
             dryRun: dryRun,
             errorMessage: { _ in "Failed to remove duplicate" }
         ) { item, _ in
-            try CleanupFileRemover.recoverable(item.path)
+            try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
     }
 }

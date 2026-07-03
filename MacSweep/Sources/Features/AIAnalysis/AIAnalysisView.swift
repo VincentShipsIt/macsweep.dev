@@ -256,7 +256,7 @@ struct AIAnalysisView: View {
                     do {
                         // Recoverable: AI false positives are possible, so move to
                         // Trash rather than deleting outright.
-                        try CleanupFileRemover.recoverable(url)
+                        try CleanupFileRemover.recoverable(url, module: "ai-analysis")
                         deleted.append(path)
                     } catch {
                         failed.append(path)

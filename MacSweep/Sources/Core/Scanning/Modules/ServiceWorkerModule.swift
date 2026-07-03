@@ -171,7 +171,7 @@ struct ServiceWorkerModule: ScanModule {
                         includingPropertiesForKeys: nil
                     )
                     for content in contents {
-                        try CleanupFileRemover.recoverable(content)
+                        try CleanupFileRemover.recoverable(content, module: item.module)
                     }
                     processed += 1
                     freed += item.size

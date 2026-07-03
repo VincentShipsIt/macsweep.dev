@@ -186,7 +186,7 @@ struct LargeFilesModule: ScanModule {
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         await cleanItems(items, dryRun: dryRun) { item, _ in
-            try CleanupFileRemover.recoverable(item.path)
+            try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
     }
 }

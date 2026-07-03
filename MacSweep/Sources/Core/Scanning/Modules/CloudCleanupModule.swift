@@ -138,7 +138,7 @@ struct CloudCleanupModule: ScanModule {
             if isUbiquitous || item.moduleName.contains("Local Copy") {
                 try FileManager.default.evictUbiquitousItem(at: item.path)
             } else {
-                try CleanupFileRemover.permanent(item.path)
+                try CleanupFileRemover.permanent(item.path, module: item.module)
             }
         }
     }

@@ -57,7 +57,7 @@ struct NetworkModule: ScanModule {
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         await cleanItems(items, dryRun: dryRun) { item, _ in
-            try CleanupFileRemover.permanent(item.path)
+            try CleanupFileRemover.permanent(item.path, module: item.module)
         }
     }
 }

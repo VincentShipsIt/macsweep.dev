@@ -164,7 +164,7 @@ struct AssistantWatchlistModule: ScanModule {
                     // to 0 rather than aborting the loop.
                     let childSize = (try? await DiskAnalyzer.size(of: content)) ?? 0
                     do {
-                        try CleanupFileRemover.recoverable(content)
+                        try CleanupFileRemover.recoverable(content, module: item.module)
                         bytesFreed += childSize
                         trashedAnyChild = true
                     } catch {
@@ -182,7 +182,7 @@ struct AssistantWatchlistModule: ScanModule {
                 if trashedAnyChild { processedCount += 1 }
             } else {
                 do {
-                    try CleanupFileRemover.recoverable(item.path)
+                    try CleanupFileRemover.recoverable(item.path, module: item.module)
                     processedCount += 1
                     bytesFreed += item.size
                 } catch {

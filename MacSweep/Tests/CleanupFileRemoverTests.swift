@@ -26,7 +26,7 @@ final class CleanupFileRemoverTests {
         try Data("regenerable".utf8).write(to: file)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
-        try CleanupFileRemover.permanent(file)
+        try CleanupFileRemover.permanent(file, module: "test")
 
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
@@ -37,7 +37,7 @@ final class CleanupFileRemoverTests {
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
         try Data("x".utf8).write(to: nested.appendingPathComponent("leaf.bin"))
 
-        try CleanupFileRemover.permanent(dir)
+        try CleanupFileRemover.permanent(dir, module: "test")
 
         #expect(!FileManager.default.fileExists(atPath: dir.path))
     }
@@ -45,7 +45,7 @@ final class CleanupFileRemoverTests {
     @Test func permanentThrowsOnMissingItem() {
         let missing = testDirectory.appendingPathComponent("never-existed.bin")
         #expect(throws: (any Error).self) {
-            try CleanupFileRemover.permanent(missing)
+            try CleanupFileRemover.permanent(missing, module: "test")
         }
     }
 
@@ -56,7 +56,7 @@ final class CleanupFileRemoverTests {
         try Data("user might want this back".utf8).write(to: file)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
-        try CleanupFileRemover.recoverable(file)
+        try CleanupFileRemover.recoverable(file, module: "test")
 
         // The whole point: it leaves the original location (it's now in Trash).
         #expect(!FileManager.default.fileExists(atPath: file.path))
@@ -65,7 +65,7 @@ final class CleanupFileRemoverTests {
     @Test func recoverableThrowsOnMissingItem() {
         let missing = testDirectory.appendingPathComponent("not-here.txt")
         #expect(throws: (any Error).self) {
-            try CleanupFileRemover.recoverable(missing)
+            try CleanupFileRemover.recoverable(missing, module: "test")
         }
     }
 }

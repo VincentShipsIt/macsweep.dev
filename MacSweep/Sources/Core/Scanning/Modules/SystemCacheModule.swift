@@ -222,7 +222,7 @@ struct SystemCacheModule: ScanModule {
                     removeValidatedNode(content, checker: checker)
                 }
             } else {
-                try CleanupFileRemover.permanent(item.path)
+                try CleanupFileRemover.permanent(item.path, module: item.module)
             }
         }
     }
@@ -261,7 +261,7 @@ struct SystemCacheModule: ScanModule {
         }
 
         do {
-            try CleanupFileRemover.permanent(url)
+            try CleanupFileRemover.permanent(url, module: id)
             return true
         } catch {
             return false

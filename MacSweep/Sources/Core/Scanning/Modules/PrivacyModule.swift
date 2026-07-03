@@ -148,7 +148,7 @@ struct PrivacyModule: ScanModule {
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         await cleanItems(items, dryRun: dryRun) { item, _ in
-            try CleanupFileRemover.recoverable(item.path)
+            try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
     }
 }
@@ -213,7 +213,7 @@ struct PrivacyActions {
                 do {
                     // Recoverable: shell history is not regenerable, so route
                     // through the Trash to make an accidental clear undoable.
-                    try CleanupFileRemover.recoverable(path)
+                    try CleanupFileRemover.recoverable(path, module: "privacy")
                 } catch {
                     if firstError == nil { firstError = error }
                 }
