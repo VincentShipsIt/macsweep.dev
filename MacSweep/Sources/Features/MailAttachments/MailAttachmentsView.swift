@@ -252,15 +252,11 @@ struct MailAttachmentsView: View {
     }
 
     private var filteredSize: String {
-        let total = filteredAttachments.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredAttachments.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = filteredAttachments
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredAttachments.formattedTotalSize(selected: selectedItems)
     }
 }
 

@@ -534,13 +534,10 @@ struct BuildArtifactsView: View {
     }
 
     private var selectedSize: String {
-        let cleanupTotal = allCleanupItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
         let gitTotal = gitArtifacts
             .filter { selectedGitItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
-        let total = cleanupTotal + gitTotal
+        let total = allCleanupItems.totalSize(selected: selectedItems) + gitTotal
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
     }
 

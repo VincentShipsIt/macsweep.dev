@@ -192,14 +192,11 @@ struct SimilarPhotosView: View {
     }
 
     private var totalSize: String {
-        ByteCountFormatter.string(fromByteCount: sortedItems.reduce(0) { $0 + $1.size }, countStyle: .file)
+        sortedItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: sortedItems.filter { selectedItems.contains($0.id) }.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        sortedItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

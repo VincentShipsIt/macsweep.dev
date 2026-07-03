@@ -201,15 +201,11 @@ struct DuplicateFinderView: View {
     }
 
     private var totalSize: String {
-        let total = sortedItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        sortedItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = sortedItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        sortedItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

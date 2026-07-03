@@ -139,9 +139,7 @@ final class AppState: ObservableObject {
     }
 
     var selectedSize: Int64 {
-        scanResults
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
+        scanResults.totalSize(selected: selectedItems)
     }
 
     func feature(for moduleID: String) -> Feature? {
