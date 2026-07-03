@@ -219,6 +219,11 @@ enum NetworkError: LocalizedError {
 
 // MARK: - SSH Known Hosts Management
 
+enum SSHKnownHostsError: Error {
+    /// The advisory lock guarding the read-modify-write could not be acquired.
+    case lockFailed
+}
+
 struct SSHKnownHostsManager {
     private static var knownHostsPath: URL {
         FileManager.default.homeDirectoryForCurrentUser.appending(path: ".ssh/known_hosts")
@@ -262,17 +267,42 @@ struct SSHKnownHostsManager {
         return hosts
     }
 
-    /// Remove a specific host entry
+    /// Remove a specific host entry.
+    ///
+    /// Serializes the whole read-modify-write behind an advisory lock (`flock`)
+    /// so concurrent MacSweep removals can't lose each other's edits, and
+    /// re-reads `known_hosts` *after* acquiring the lock so a host key appended
+    /// by `ssh` (trust-on-first-use) just before we rewrite is preserved. The
+    /// lock lives on a dedicated file, not `known_hosts` itself: the atomic
+    /// write below replaces the file's inode, which would strand a lock held on
+    /// the original.
     static func removeHost(_ host: SSHKnownHost) throws {
-        guard var content = try? String(contentsOf: knownHostsPath, encoding: .utf8) else {
+        try removeHost(host, from: knownHostsPath)
+    }
+
+    /// Path-injectable core of `removeHost`, exposed for testing.
+    static func removeHost(_ host: SSHKnownHost, from path: URL) throws {
+        // Nothing to remove if the file doesn't exist yet — don't create a lock
+        // file or throw in that case.
+        guard FileManager.default.fileExists(atPath: path.path) else { return }
+
+        let lockPath = path.deletingLastPathComponent().appending(path: ".known_hosts.macsweep.lock")
+        let fd = open(lockPath.path, O_CREAT | O_RDWR, 0o600)
+        guard fd != -1 else { throw SSHKnownHostsError.lockFailed }
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX) == 0 else { throw SSHKnownHostsError.lockFailed }
+        defer { flock(fd, LOCK_UN) }
+
+        // Read the freshest contents now that we hold the lock.
+        guard let content = try? String(contentsOf: path, encoding: .utf8) else {
             return
         }
 
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
         let filteredLines = lines.filter { String($0) != host.rawLine }
-        content = filteredLines.joined(separator: "\n")
+        let newContent = filteredLines.joined(separator: "\n")
 
-        try content.write(to: knownHostsPath, atomically: true, encoding: .utf8)
+        try newContent.write(to: path, atomically: true, encoding: .utf8)
     }
 
     /// Clear all known hosts (creates backup)

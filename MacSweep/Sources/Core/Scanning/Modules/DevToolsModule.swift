@@ -85,6 +85,15 @@ struct DevToolsModule: ScanModule {
                     let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
                     guard size > 1_048_576 else { continue }  // Skip if < 1MB
 
+                    // Skip artifacts whose project shows recent activity: a build
+                    // may be in progress, and removing artifacts mid-build can
+                    // corrupt it. Regenerable and removed to Trash, so this is
+                    // best-effort hardening, not a data-loss stop.
+                    if Self.projectHasRecentActivity(forArtifactAt: url) {
+                        enumerator.skipDescendants()
+                        break
+                    }
+
                     items.append(CleanupItem(
                         id: UUID(),
                         path: url,
@@ -108,6 +117,46 @@ struct DevToolsModule: ScanModule {
         await cleanItems(items, dryRun: dryRun) { item, _ in
             try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
         }
+    }
+
+    /// A project is "active" if a source/config file was modified within this
+    /// window. 3 days spans a normal work break (e.g. a weekend).
+    static let activeProjectWindow: TimeInterval = 3 * 24 * 60 * 60
+
+    /// Directory names that are themselves regenerable build artifacts — their
+    /// mtime bumps on every build, so they're excluded from the activity signal.
+    private static let artifactDirectoryNames: Set<String> =
+        Set(DevArtifactPattern.allPatterns.map(\.directoryName))
+
+    /// True if the artifact's project root shows recent activity.
+    ///
+    /// Cheap shallow heuristic: the newest content-modification date among the
+    /// parent directory's direct children, skipping regenerable artifact
+    /// directories and VCS metadata (both churn independently of real work). A
+    /// recently touched `package.json`, lockfile, or top-level source file trips
+    /// it. Deep edits that touch no root-level file are not detected — acceptable
+    /// for a best-effort, Trash-recoverable gate that avoids walking whole trees
+    /// mid-scan.
+    static func projectHasRecentActivity(forArtifactAt artifactURL: URL) -> Bool {
+        let parent = artifactURL.deletingLastPathComponent()
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: parent,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: []
+        ) else { return false }
+
+        let skip = artifactDirectoryNames.union([".git", ".svn", ".hg", ".DS_Store"])
+        let cutoff = Date().addingTimeInterval(-activeProjectWindow)
+
+        for entry in entries {
+            if skip.contains(entry.lastPathComponent) { continue }
+            if let modified = try? entry.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate, modified > cutoff {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -875,6 +924,10 @@ struct GitArtifactScanner: Sendable {
             guard let path = entry.path else { continue }
             guard FileManager.default.fileExists(atPath: path.path) else { continue }
             guard Self.isCleanWorkingTree(path) else { continue }
+            // Don't surface a worktree as clean/removable if it holds gitignored
+            // content (secrets, local DBs) that `git worktree remove` would
+            // permanently destroy.
+            guard !Self.worktreeHasValuableIgnoredContent(at: path) else { continue }
 
             let branch = entry.branchName
             let lastActivity = Self.commitDate(for: entry.head, in: repository.root)
@@ -1194,6 +1247,65 @@ struct GitArtifactScanner: Sendable {
             .isEmpty
     }
 
+    /// True if the worktree holds gitignored content that `git worktree remove`
+    /// would permanently destroy.
+    ///
+    /// `git worktree remove` (and git's own cleanliness guard) ignore gitignored
+    /// files, and `git status --porcelain` doesn't list them — only `--ignored`
+    /// does. So a worktree whose only extra content is a gitignored `.env` or a
+    /// local SQLite DB reads as "clean" and would be deleted permanently (not to
+    /// Trash), never passing `SafetyChecker`. We refuse when any ignored entry
+    /// has nonzero size on disk; empty ignored placeholders (e.g. an empty
+    /// `dist/`) don't count. Fails closed: if git can't report, we treat the
+    /// tree as unsafe to delete.
+    static func worktreeHasValuableIgnoredContent(at url: URL) -> Bool {
+        let result = run([
+            "git", "-C", url.path, "-c", "core.quotePath=false",
+            "status", "--porcelain", "--ignored", "--ignore-submodules"
+        ])
+        guard result.status == 0 else { return true }
+
+        for rawLine in result.output.split(separator: "\n") {
+            let line = String(rawLine)
+            guard line.hasPrefix("!!") else { continue }  // "!!" marks ignored entries
+            let entry = unquoteGitPath(String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces))
+            guard !entry.isEmpty else { continue }
+            if pathHasNonzeroContent(url.appending(path: entry)) { return true }
+        }
+        return false
+    }
+
+    private static func unquoteGitPath(_ path: String) -> String {
+        guard path.count >= 2, path.hasPrefix("\""), path.hasSuffix("\"") else { return path }
+        return String(path.dropFirst().dropLast())
+    }
+
+    /// Whether `url` is a nonempty file, or a directory containing at least one
+    /// nonempty regular file. Directories are enumerated lazily and the walk
+    /// short-circuits on the first nonzero-size file.
+    private static func pathHasNonzeroContent(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return false }
+
+        if !isDirectory.boolValue {
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return size > 0
+        }
+
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]
+        ) else {
+            return true  // can't enumerate — be conservative
+        }
+        for case let child as URL in enumerator {
+            let values = try? child.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            if values?.isRegularFile == true, (values?.fileSize ?? 0) > 0 { return true }
+        }
+        return false
+    }
+
     private static func isEphemeralWorktree(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
@@ -1311,6 +1423,18 @@ actor GitArtifactCleaner {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .isEmpty else {
                     errors.append(CleanupError(path: path, message: "Worktree has local changes"))
+                    continue
+                }
+
+                // `git status --porcelain` and `git worktree remove` both ignore
+                // gitignored files, so a worktree whose only extra content is a
+                // gitignored `.env` or local DB would be permanently destroyed.
+                // Refuse when valuable ignored content is present.
+                guard !GitArtifactScanner.worktreeHasValuableIgnoredContent(at: path) else {
+                    errors.append(CleanupError(
+                        path: path,
+                        message: "Worktree contains gitignored files (e.g. .env, local database); skipped to avoid permanent data loss"
+                    ))
                     continue
                 }
 
