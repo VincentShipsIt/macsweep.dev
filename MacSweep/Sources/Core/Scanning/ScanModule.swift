@@ -155,6 +155,11 @@ struct CleanupResult: Sendable {
         errors.isEmpty
     }
 
+    /// User-facing summary of per-item failures, or nil when everything succeeded.
+    var failureSummaryMessage: String? {
+        errors.failureSummaryMessage
+    }
+
     init(itemsProcessed: Int, bytesFreed: Int64, errors: [CleanupError] = []) {
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
@@ -172,6 +177,19 @@ struct CleanupError: Error, Sendable {
         self.path = path
         self.message = message
         self.underlyingError = underlyingError
+    }
+}
+
+extension Array where Element == CleanupError {
+    /// User-facing summary of per-item cleanup failures, or nil when empty.
+    /// Wording stays generic on purpose: cleanup errors mix safety vetoes with
+    /// ordinary deletion failures, so a blanket "blocked by safety checks" would
+    /// mislabel the latter. The first error's own message carries the actual
+    /// reason (safety-blocked items say so in their message).
+    var failureSummaryMessage: String? {
+        guard let first = first else { return nil }
+        let itemCount = count == 1 ? "1 item" : "\(count) items"
+        return "\(itemCount) couldn't be removed: \(first.message)"
     }
 }
 

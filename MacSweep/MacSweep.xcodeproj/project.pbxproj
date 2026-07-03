@@ -105,6 +105,7 @@
 		9B4C08CD76D969E80F29CBD6 /* DuplicateFinderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D0195B21A3DBA34CFD4ABB /* DuplicateFinderView.swift */; };
 		9D34A2116CB0B9DA175E87D4 /* AssistantConfigRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F87BF2EDBD2C6AD2E36D48 /* AssistantConfigRepository.swift */; };
 		9D35DD6CC9D9D07EC2494CD5 /* AssistantConfigRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F87BF2EDBD2C6AD2E36D48 /* AssistantConfigRepository.swift */; };
+		9DC552E509F8F9DF8F90AD6E /* ErrorAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = D17AC977C5DE1FE247021D49 /* ErrorAlert.swift */; };
 		9E7593871BA813D91F94FC1E /* HeadlessModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0AD8A72B6E0757A996EC3E /* HeadlessModels.swift */; };
 		A09AFE6A720E44CD080AE0BB /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D1D29F62578905046FEB269 /* LiquidGlass.swift */; };
 		A26F029E0D3F7B0E4E92F5E6 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031558E885A43C88426F8768 /* LoginItemController.swift */; };
@@ -141,6 +142,7 @@
 		DFF8B727F944B0C2B6F689F8 /* MetricGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127335B89003A611DF28B844 /* MetricGraph.swift */; };
 		E0B558E410437125884225B8 /* SystemMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF35B6EC00737A48EEE330C /* SystemMonitor.swift */; };
 		E106687BB21CF03479F03592 /* CLICommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2B12C483BEFA064667A415 /* CLICommand.swift */; };
+		E38B286CCD80B4B7A12851F8 /* ErrorAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = D17AC977C5DE1FE247021D49 /* ErrorAlert.swift */; };
 		E46F42BBE55BCB97044E78B4 /* ServiceWorkerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFE4FDD7AF6AD8B35EE7A522 /* ServiceWorkerModule.swift */; };
 		E5226AEFBC381C00EE70AE5B /* LastScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A475F44172F777C0A972740 /* LastScanStore.swift */; };
 		E6606D26B4216ED59B0A8031 /* StorageDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5C9FF45CF0417996607DD4 /* StorageDetailView.swift */; };
@@ -247,6 +249,7 @@
 		CE210F2835F5B4F8C57823A5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		CFB52563A224B33DA951FC0F /* CleanupItemFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupItemFormatting.swift; sourceTree = "<group>"; };
 		D044564FA58B970867F20BF7 /* ScanEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanEngine.swift; sourceTree = "<group>"; };
+		D17AC977C5DE1FE247021D49 /* ErrorAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorAlert.swift; sourceTree = "<group>"; };
 		D1D0195B21A3DBA34CFD4ABB /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
 		D288FAF0D38DB382FC4445F7 /* BrowserCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCleanupView.swift; sourceTree = "<group>"; };
 		D5780671CF8B4068DC75DCB7 /* ScanModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanModule.swift; sourceTree = "<group>"; };
@@ -307,6 +310,14 @@
 				3ECD39B7A0E6E2454436A2F4 /* AppUninstallerView.swift */,
 			);
 			path = AppUninstaller;
+			sourceTree = "<group>";
+		};
+		1420ED29B75BE2940F14CF90 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				D17AC977C5DE1FE247021D49 /* ErrorAlert.swift */,
+			);
+			path = UI;
 			sourceTree = "<group>";
 		};
 		259BB620912E2E71042FB8C9 /* LargeFiles */ = {
@@ -634,6 +645,7 @@
 				67C135C497C19A96553AAF9F /* Services */,
 				25F73693B5AEAF2AEFCA5312 /* Shredder */,
 				7ADADC897EB1A27CB04E4558 /* Storage */,
+				1420ED29B75BE2940F14CF90 /* UI */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -931,6 +943,7 @@
 				B25AC49939C36AFF1B5A2AB5 /* DockerModule.swift in Sources */,
 				086E96534DD85EF6D93C7C62 /* DuplicateFinderModule.swift in Sources */,
 				9B4C08CD76D969E80F29CBD6 /* DuplicateFinderView.swift in Sources */,
+				E38B286CCD80B4B7A12851F8 /* ErrorAlert.swift in Sources */,
 				56ADD6027A058B4227965B5C /* FeaturePageShell.swift in Sources */,
 				0EBECCC86597206E986B12ED /* FullDiskAccess.swift in Sources */,
 				BB1CAAD1E1C31B6BF9A0E847 /* HeadlessModels.swift in Sources */,
@@ -1015,6 +1028,7 @@
 				5DB70F6366D86DBFC400BCD9 /* DiskAnalyzer.swift in Sources */,
 				515C6E1B5F927411296FFE6A /* DockerModule.swift in Sources */,
 				58A9BD0BC76DCB8D09BADE06 /* DuplicateFinderModule.swift in Sources */,
+				9DC552E509F8F9DF8F90AD6E /* ErrorAlert.swift in Sources */,
 				96978BD57F210E2E4591D52B /* FullDiskAccess.swift in Sources */,
 				9E7593871BA813D91F94FC1E /* HeadlessModels.swift in Sources */,
 				1801250D8C8541C71DF7756D /* HeadlessService.swift in Sources */,
