@@ -232,7 +232,7 @@ struct TrashBinsView: View {
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
         do {
-            let result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            let result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 deletionError = "\(count) item\(count == 1 ? "" : "s") couldn't be deleted and were kept."
@@ -273,15 +273,11 @@ struct TrashBinsView: View {
     // MARK: - Helpers
 
     private var selectedSize: String {
-        let total = trashItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        trashItems.formattedTotalSize(selected: selectedItems)
     }
 
     private func formattedSize(for items: [CleanupItem]) -> String {
-        let total = items.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        items.formattedTotalSize()
     }
 }
 

@@ -251,7 +251,7 @@ struct BrowserCleanupView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            _ = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             cleanupError = "Couldn't clean browser data: \(error.localizedDescription)"
         }
@@ -279,10 +279,7 @@ struct BrowserCleanupView: View {
     }
 
     private var selectedSize: String {
-        let total = allItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        allItems.formattedTotalSize(selected: selectedItems)
     }
 }
 
@@ -296,11 +293,11 @@ struct BrowserScanResult: Identifiable {
     let items: [CleanupItem]
 
     var totalSize: Int64 {
-        items.reduce(0) { $0 + $1.size }
+        items.totalSize()
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        items.formattedTotalSize()
     }
 }
 
@@ -432,8 +429,7 @@ struct ServiceWorkerSection: View {
     @State private var isExpanded = false
 
     var totalSize: String {
-        let total = items.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        items.formattedTotalSize()
     }
 
     var body: some View {

@@ -2,190 +2,144 @@ import Testing
 import Foundation
 @testable import MacSweepCore
 
-/// Coverage for the app-uninstall path (#120): the running-app guard, disposal
-/// accounting, and leftover discovery. `AppUninstaller`'s running-check and
-/// trash hooks are injected so the guard/accounting assertions are
-/// deterministic and never write to the user's Trash; `LeftoverScanner` takes
-/// injected locations so it scans a fixture Library tree, never the real one.
-final class AppUninstallerModuleTests {
+/// Coverage for the two deletion-safety fixes in the app uninstaller:
+///   • #81 — the `.app` bundle removal is now gated by
+///     `SafetyChecker.validateForAppBundleRemoval`.
+///   • #76 — leftover matching is tightened from a loose two-way substring test
+///     to bundle-id (exact / dotted-prefix) plus an exact app-name compare.
+struct AppUninstallerModuleTests {
+    private let checker = SafetyChecker()
+    private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
-    private let temp: TempTestDirectory
+    // MARK: - Bundle removal gate (#81)
 
-    init() throws {
-        temp = try TempTestDirectory(prefix: "MacSweepUninstallTests")
+    @Test func allowsAppBundleInSystemApplications() {
+        let app = URL(fileURLWithPath: "/Applications/Some Thing.app")
+        #expect(checker.validateForAppBundleRemoval(app).isSafe)
     }
 
-    // MARK: - Fixtures
-
-    /// Spy trasher recording every disposed URL; throws for paths in `failing`.
-    private final class TrashSpy: @unchecked Sendable {
-        var trashed: [URL] = []
-        var failing: Set<String> = []
-
-        func trash(_ url: URL) throws {
-            if failing.contains(url.lastPathComponent) {
-                throw CocoaError(.fileWriteNoPermission)
-            }
-            trashed.append(url)
-        }
+    @Test func allowsAppBundleInUserApplications() {
+        let app = home.appending(path: "Applications/Tool.app")
+        #expect(checker.validateForAppBundleRemoval(app).isSafe)
     }
 
-    private func makeApp(
-        named name: String,
-        bundleSize: Int64 = 1_000,
-        leftovers: [AppLeftover] = []
-    ) -> InstalledApp {
-        var app = InstalledApp(
-            id: "com.example.\(name.lowercased())",
-            name: name,
-            bundlePath: temp.appendingPathComponent("\(name).app"),
-            version: "1.0",
-            bundleSize: bundleSize,
-            icon: nil,
-            lastUsed: nil
-        )
-        app.leftovers = leftovers
-        return app
+    @Test func blocksNonBundlePath() {
+        // A stray non-.app path in /Applications must not be treated as a bundle.
+        let notApp = URL(fileURLWithPath: "/Applications/config.plist")
+        #expect(!checker.validateForAppBundleRemoval(notApp).isSafe)
     }
 
-    private func makeLeftover(named name: String, size: Int64) -> AppLeftover {
-        AppLeftover(
-            id: UUID(),
-            path: temp.appendingPathComponent(name),
-            size: size,
-            type: .preferences
-        )
+    @Test func blocksBundleOutsideApplicationsRoots() {
+        // An .app the user dragged into Downloads is outside the known install
+        // roots — the gate refuses to trash from there via the uninstaller.
+        let app = home.appending(path: "Downloads/Sneaky.app")
+        #expect(!checker.validateForAppBundleRemoval(app).isSafe)
     }
 
-    // MARK: - AppUninstaller guards
-
-    @Test func uninstallRefusesRunningApp() async throws {
-        let spy = TrashSpy()
-        var uninstaller = AppUninstaller()
-        uninstaller.isAppRunning = { _ in true }
-        uninstaller.trashItem = { try spy.trash($0) }
-
-        let app = makeApp(named: "Running")
-
-        await #expect(throws: UninstallError.self) {
-            try await uninstaller.uninstall(app)
-        }
-        #expect(spy.trashed.isEmpty, "Nothing may be disposed once the running guard fires")
+    @Test func blocksBundleNestedBelowApplicationsRoot() {
+        // Must sit DIRECTLY in the root; a bundle one level down is not a
+        // top-level install and must not satisfy the gate.
+        let app = URL(fileURLWithPath: "/Applications/Utilities/Nested.app")
+        #expect(!checker.validateForAppBundleRemoval(app).isSafe)
     }
 
-    @Test func uninstallThrowsWhenBundleCannotBeRemoved() async throws {
-        let spy = TrashSpy()
-        spy.failing = ["Stuck.app"]
-        var uninstaller = AppUninstaller()
-        uninstaller.isAppRunning = { _ in false }
-        uninstaller.trashItem = { try spy.trash($0) }
+    // MARK: - Leftover matching (#76)
 
-        let app = makeApp(named: "Stuck", leftovers: [makeLeftover(named: "stuck.plist", size: 10)])
-
-        await #expect(throws: UninstallError.self) {
-            try await uninstaller.uninstall(app)
-        }
-        #expect(spy.trashed.isEmpty, "Leftovers must not be disposed when the bundle removal fails")
+    @Test func matchesExactBundleIDPlist() {
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.foo.App.plist", bundleID: "com.foo.App", appName: "App"))
     }
 
-    // MARK: - AppUninstaller accounting
+    @Test func matchesBundleIDDottedPrefix() {
+        // Saved-state / container / helper names carry the bundle id as a prefix.
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.foo.App.savedState", bundleID: "com.foo.App", appName: "App"))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.foo.App", bundleID: "com.foo.App", appName: "App"))
+    }
 
-    @Test func uninstallDisposesBundleAndLeftovers() async throws {
-        let spy = TrashSpy()
-        var uninstaller = AppUninstaller()
-        uninstaller.isAppRunning = { _ in false }
-        uninstaller.trashItem = { try spy.trash($0) }
+    @Test func matchesAppNameFolderIgnoringSpacesAndCase() {
+        // An Application Support folder named after the app ("Google Chrome").
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "Google Chrome", bundleID: "com.google.Chrome", appName: "Google Chrome"))
+    }
 
-        let leftovers = [
-            makeLeftover(named: "com.example.demo.plist", size: 200),
-            makeLeftover(named: "DemoCache", size: 300),
+    @Test func rejectsDecoySubstringOfAppName() {
+        // The core #76 regression: uninstalling "Mail" must NOT match "MailChimp"
+        // data — the old two-way substring test destroyed it.
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "MailChimp", bundleID: "com.apple.mail", appName: "Mail"))
+    }
+
+    @Test func rejectsUnrelatedBundleID() {
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.other.Thing.plist", bundleID: "com.foo.App", appName: "App"))
+    }
+
+    @Test func rejectsItemThatIsSubstringOfBundleID() {
+        // The old reverse-substring branch (`term.contains(itemName)`) matched a
+        // folder whose short name was a substring of the app name / bundle id.
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com", bundleID: "com.foo.App", appName: "App"))
+    }
+
+    @Test func rejectsEmptyBundleAndName() {
+        // A fallback app with no usable identifiers must not match arbitrary items.
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.someone.else", bundleID: "", appName: ""))
+    }
+
+    // MARK: - Leftover removal gate (validateForUninstallLeftover)
+
+    @Test func leftoverGateAllowsPreferencePlists() {
+        // ~/Library/Preferences is in neverDelete, but preference plists are a
+        // first-class leftover category — the dedicated gate must admit them
+        // (the generic validateForTrash blocklist refuses them, which silently
+        // broke uninstall cleanup).
+        let plist = home.appending(path: "Library/Preferences/com.foo.App.plist")
+        #expect(checker.validateForUninstallLeftover(plist).isSafe)
+    }
+
+    @Test func leftoverGateAllowsEveryScannedRoot() {
+        let categories = [
+            "Application Support/FooApp",
+            "Caches/com.foo.App",
+            "Logs/FooApp",
+            "Containers/com.foo.App",
+            "Saved Application State/com.foo.App.savedState",
+            "LaunchAgents/com.foo.App.agent.plist",
         ]
-        let app = makeApp(named: "Demo", bundleSize: 1_000, leftovers: leftovers)
-
-        let result = try await uninstaller.uninstall(app)
-
-        #expect(result.itemsProcessed == 3)
-        #expect(result.bytesFreed == 1_500)
-        #expect(result.errors.isEmpty)
-        #expect(spy.trashed.count == 3)
-        #expect(spy.trashed.first?.lastPathComponent == "Demo.app")
+        for relative in categories {
+            let leftover = home.appending(path: "Library/\(relative)")
+            #expect(checker.validateForUninstallLeftover(leftover).isSafe, "\(relative) must be removable")
+        }
     }
 
-    @Test func uninstallWithoutLeftoversKeepsThem() async throws {
-        let spy = TrashSpy()
-        var uninstaller = AppUninstaller()
-        uninstaller.isAppRunning = { _ in false }
-        uninstaller.trashItem = { try spy.trash($0) }
-
-        let app = makeApp(named: "Solo", bundleSize: 500, leftovers: [makeLeftover(named: "solo.plist", size: 100)])
-
-        let result = try await uninstaller.uninstall(app, includeLeftovers: false)
-
-        #expect(result.itemsProcessed == 1)
-        #expect(result.bytesFreed == 500)
-        #expect(spy.trashed.map(\.lastPathComponent) == ["Solo.app"])
+    @Test func leftoverGateBlocksTheRootsThemselves() {
+        for root in ["Preferences", "Application Support", "Caches", "Containers", "LaunchAgents"] {
+            let url = home.appending(path: "Library/\(root)")
+            #expect(!checker.validateForUninstallLeftover(url).isSafe, "\(root) root itself must never be trashed")
+        }
     }
 
-    @Test func uninstallCollectsLeftoverErrorsWithoutAborting() async throws {
-        let spy = TrashSpy()
-        spy.failing = ["broken.plist"]
-        var uninstaller = AppUninstaller()
-        uninstaller.isAppRunning = { _ in false }
-        uninstaller.trashItem = { try spy.trash($0) }
-
-        let leftovers = [
-            makeLeftover(named: "broken.plist", size: 100),
-            makeLeftover(named: "ok.plist", size: 50),
-        ]
-        let app = makeApp(named: "Partial", bundleSize: 1_000, leftovers: leftovers)
-
-        let result = try await uninstaller.uninstall(app)
-
-        // Bundle + the one removable leftover; the failure is surfaced, not fatal.
-        #expect(result.itemsProcessed == 2)
-        #expect(result.bytesFreed == 1_050)
-        #expect(result.errors.count == 1)
-        #expect(result.errors.first?.path.lastPathComponent == "broken.plist")
+    @Test func leftoverGateBlocksPathsOutsideScannedRoots() {
+        // Keychains is NOT a leftover root — a fuzzy match there must be refused.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Keychains/com.foo.App.keychain-db")).isSafe)
+        // Nested deeper than a root's direct children is not how the scanner
+        // discovers leftovers — refuse.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Preferences/ByHost/com.foo.App.plist")).isSafe)
+        // Entirely outside ~/Library.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Documents/com.foo.App")).isSafe)
     }
 
-    // MARK: - LeftoverScanner (fixture Library tree)
-
-    private func makeFixtureLibrary() throws -> [(URL, AppLeftover.LeftoverType)] {
-        let preferences = temp.appendingPathComponent("Library/Preferences")
-        let appSupport = temp.appendingPathComponent("Library/Application Support")
-        try FileManager.default.createDirectory(at: preferences, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        return [(preferences, .preferences), (appSupport, .applicationSupport)]
-    }
-
-    @Test func findLeftoversMatchesBundleIDAndAppName() async throws {
-        let locations = try makeFixtureLibrary()
-        try Data(repeating: 0, count: 64).write(to: locations[0].0.appendingPathComponent("com.example.demo.plist"))
-        try FileManager.default.createDirectory(
-            at: locations[1].0.appendingPathComponent("Demo"), withIntermediateDirectories: true)
-        try Data(repeating: 0, count: 4096).write(to: locations[1].0.appendingPathComponent("Demo/state.bin"))
-        try Data(repeating: 0, count: 64).write(to: locations[0].0.appendingPathComponent("com.other.tool.plist"))
-
-        let app = makeApp(named: "Demo")
-        let leftovers = await LeftoverScanner(leftoverLocations: locations).findLeftovers(for: app)
-
-        let names = Set(leftovers.map(\.path.lastPathComponent))
-        #expect(names.contains("com.example.demo.plist"))
-        #expect(names.contains("Demo"))
-        #expect(!names.contains("com.other.tool.plist"))
-    }
-
-    @Test func findOrphanedLeftoversSkipsInstalledApps() async throws {
-        let locations = try makeFixtureLibrary()
-        // > 1KB so the orphan-size floor doesn't drop the fixtures.
-        try Data(repeating: 0, count: 8_192).write(to: locations[0].0.appendingPathComponent("com.gone.app.plist"))
-        try Data(repeating: 0, count: 8_192).write(to: locations[0].0.appendingPathComponent("com.installed.app.plist"))
-
-        let orphans = await LeftoverScanner(leftoverLocations: locations)
-            .findOrphanedLeftovers(installedBundleIDs: ["com.installed.app"])
-
-        let names = Set(orphans.map(\.path.lastPathComponent))
-        #expect(names.contains("com.gone.app.plist"))
-        #expect(!names.contains("com.installed.app.plist"))
+    @Test func leftoverGateBlocksSensitiveFilenames() {
+        // Even inside a scanned root, credential-looking names stay refused.
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Application Support/credentials.json")).isSafe)
+        #expect(!checker.validateForUninstallLeftover(
+            home.appending(path: "Library/Preferences/com.foo.App.keychain")).isSafe)
     }
 }

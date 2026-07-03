@@ -264,7 +264,7 @@ struct LargeFilesView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
             return
@@ -329,15 +329,11 @@ struct LargeFilesView: View {
     }
 
     private var totalSize: String {
-        let total = filteredItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = filteredItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

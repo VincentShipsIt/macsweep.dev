@@ -190,19 +190,17 @@ struct CloudCleanupView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false)
+            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't reclaim cloud space: \(error.localizedDescription)"
             return
         }
-        // Per-item safety failures come back in result.errors (not thrown). Only
-        // drop the items that actually left disk; keep blocked ones visible.
-        let blockedPaths = Set(result.errors.map(\.path))
-        cloudItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        // Per-item failures come back in result.errors (not thrown). Only drop
+        // the items that actually left disk; keep failed ones visible.
+        let failedPaths = Set(result.errors.map(\.path))
+        cloudItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in cloudItems.contains(where: { $0.id == id }) }
-        errorMessage = blockedPaths.isEmpty
-            ? nil
-            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+        errorMessage = result.failureSummaryMessage
     }
 
     private var filteredItems: [CleanupItem] {
@@ -227,14 +225,11 @@ struct CloudCleanupView: View {
     }
 
     private var totalSize: String {
-        ByteCountFormatter.string(fromByteCount: filteredItems.reduce(0) { $0 + $1.size }, countStyle: .file)
+        filteredItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: filteredItems.filter { selectedItems.contains($0.id) }.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        filteredItems.formattedTotalSize(selected: selectedItems)
     }
 
     private func providerName(for moduleName: String) -> String {

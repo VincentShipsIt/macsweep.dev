@@ -279,4 +279,47 @@ final class SystemCacheModuleTests {
         // Scan should complete in less than 30 seconds for typical user
         #expect(elapsed < 30.0, "Scan should complete in less than 30 seconds")
     }
+
+    // MARK: - Recursive descendant protection (#82)
+
+    @Test func cleanPreservesProtectedDescendantsRecursively() async throws {
+        // Layout under a cache directory:
+        //   junk.txt                        → removed
+        //   CloudKit/secret.db              → protected top-level subdir → survives
+        //   normal/deep/com.apple.bird/x    → nested protected dir → survives
+        //   normal/deep/scratch.tmp         → removed
+        let cacheRoot = testDirectory.appendingPathComponent("cache-root")
+        let cloudKit = cacheRoot.appendingPathComponent("CloudKit")
+        let deep = cacheRoot.appendingPathComponent("normal/deep")
+        let bird = deep.appendingPathComponent("com.apple.bird")
+        let fm = FileManager.default
+        try fm.createDirectory(at: cloudKit, withIntermediateDirectories: true)
+        try fm.createDirectory(at: bird, withIntermediateDirectories: true)
+
+        try "junk".write(to: cacheRoot.appendingPathComponent("junk.txt"), atomically: true, encoding: .utf8)
+        try "secret".write(to: cloudKit.appendingPathComponent("secret.db"), atomically: true, encoding: .utf8)
+        try "protected".write(to: bird.appendingPathComponent("x"), atomically: true, encoding: .utf8)
+        try "scratch".write(to: deep.appendingPathComponent("scratch.tmp"), atomically: true, encoding: .utf8)
+
+        let item = CleanupItem(
+            id: UUID(),
+            path: cacheRoot,
+            size: 1000,
+            type: .directory,
+            module: "system-cache",
+            moduleName: "System Caches - Test"
+        )
+
+        let result = try await module.clean(items: [item], dryRun: false)
+
+        // Protected content — top-level AND nested — survives.
+        #expect(fm.fileExists(atPath: cloudKit.appendingPathComponent("secret.db").path))
+        #expect(fm.fileExists(atPath: bird.appendingPathComponent("x").path))
+        // Non-protected content is removed, even two levels deep.
+        #expect(!fm.fileExists(atPath: cacheRoot.appendingPathComponent("junk.txt").path))
+        #expect(!fm.fileExists(atPath: deep.appendingPathComponent("scratch.tmp").path))
+        // The cache directory itself is kept.
+        #expect(fm.fileExists(atPath: cacheRoot.path))
+        #expect(result.itemsProcessed == 1)
+    }
 }

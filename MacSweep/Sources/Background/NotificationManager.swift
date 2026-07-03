@@ -23,12 +23,12 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func sendScanComplete(bytesFound: Int64) {
         let content = UNMutableNotificationContent()
-        // Wording/thresholds live in MacSweepCore (ScanCompleteNotification) so
-        // they are covered by swift test; this class only does UN plumbing.
-        content.title = ScanCompleteNotification.title
-        content.body = ScanCompleteNotification.body(bytesFound: bytesFound)
+        // Wording lives in MacSweepCore (ScanNotificationContent) so it is
+        // covered by swift test; this class only does UN plumbing.
+        content.title = ScanNotificationContent.title
+        content.body = ScanNotificationContent.formattedBody(for: bytesFound)
         content.sound = .default
-        content.categoryIdentifier = ScanCompleteNotification.categoryIdentifier
+        content.categoryIdentifier = ScanNotificationContent.categoryIdentifier
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(

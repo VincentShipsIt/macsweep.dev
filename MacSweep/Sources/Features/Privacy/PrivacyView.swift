@@ -230,7 +230,7 @@ struct PrivacyView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleared and were kept."
@@ -288,15 +288,13 @@ struct PrivacyView: View {
     // MARK: - Computed
 
     private var totalSize: String {
-        let total = privacyItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        privacyItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = privacyItems
+        privacyItems
             .filter { selectedCategories.contains($0.moduleName) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+            .formattedTotalSize()
     }
 }
 
