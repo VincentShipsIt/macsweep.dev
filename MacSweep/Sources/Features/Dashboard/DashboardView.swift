@@ -9,10 +9,14 @@ enum WidgetType: String, CaseIterable {
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
+    /// One shared process monitor for the CPU and Memory popovers so they don't
+    /// each spin up an independent 5s `ps` sampling loop (issue #103).
+    @StateObject private var processMonitor = ProcessMonitor()
     @State private var expandedWidget: WidgetType? = nil
     @State private var isCleanupReviewExpanded = false
     @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
+    @State private var showingConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,6 +109,21 @@ struct DashboardView: View {
                 isCleanupReviewExpanded = false
             }
         }
+        .confirmationDialog(
+            "Clean \(appState.selectedItems.count) selected item\(appState.selectedItems.count == 1 ? "" : "s")?",
+            isPresented: $showingConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clean", role: .destructive) {
+                Task {
+                    // Behind this dialog → confirm the large-deletion gate.
+                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). Some items are deleted permanently and can't be recovered.")
+        }
     }
 
     private var rescanButton: some View {
@@ -121,9 +140,7 @@ struct DashboardView: View {
 
     private var cleanRecommendedButton: some View {
         Button {
-            Task {
-                _ = try? await appState.deleteSelected()
-            }
+            showingConfirmation = true
         } label: {
             Image(systemName: "trash")
         }
@@ -205,9 +222,7 @@ struct DashboardView: View {
                     .disabled(appState.isScanning)
 
                     Button {
-                        Task {
-                            _ = try? await appState.deleteSelected()
-                        }
+                        showingConfirmation = true
                     } label: {
                         Label("Clean Selected", systemImage: "trash")
                     }
@@ -323,10 +338,7 @@ struct DashboardView: View {
     }
 
     private var selectedCleanupSizeText: String {
-        ByteCountFormatter.string(
-            fromByteCount: selectedCleanupItems.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        selectedCleanupItems.formattedTotalSize()
     }
 
     private var cleanupReviewGroups: [CleanupReviewGroup] {
@@ -476,7 +488,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .memory), arrowEdge: .trailing) {
-            MemoryDetailView(monitor: monitor)
+            MemoryDetailView(monitor: monitor, processMonitor: processMonitor)
                 .dashboardPopoverContent()
         }
 
@@ -513,7 +525,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: binding(for: .cpu), arrowEdge: .trailing) {
-            CPUDetailView(monitor: monitor)
+            CPUDetailView(monitor: monitor, processMonitor: processMonitor)
                 .dashboardPopoverContent()
         }
 
@@ -622,10 +634,7 @@ struct DashboardView: View {
     // MARK: - Helpers
 
     private var scanResultsSizeText: String {
-        ByteCountFormatter.string(
-            fromByteCount: appState.scanResults.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        appState.scanResults.formattedTotalSize()
     }
 
     private var systemVersion: String {
@@ -688,21 +697,14 @@ struct DashboardView: View {
     }
 
     private var cpuTempColor: Color {
-        guard let temp = monitor.cpuUsage.temperature else { return .primary }
-        if temp > 80 { return .red }
-        if temp > 60 { return .orange }
-        return .green
+        guard monitor.cpuUsage.temperature != nil else { return .primary }
+        return MetricThresholds.cpuTemperature(monitor.cpuUsage.temperature).color
     }
 
     // MARK: - Connected Devices (merged from the connected-devices feature)
 
     private var connectedDevicesSubtitle: String {
-        let count = monitor.connectedDevices.count
-        switch count {
-        case 0: return "None connected"
-        case 1: return monitor.connectedDevices[0].name
-        default: return "\(count) devices"
-        }
+        ConnectedDevicesSummary.subtitle(for: monitor.connectedDevices)
     }
 
     private var lowestDeviceBattery: Int? {

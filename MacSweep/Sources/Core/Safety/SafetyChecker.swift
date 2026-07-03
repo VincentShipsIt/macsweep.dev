@@ -92,16 +92,22 @@ struct SafetyChecker: Sendable {
         // ~/link/secret where `link` -> /System) cannot masquerade as an
         // unrecognized-but-safe path while the op follows the link to the real file.
         let path = Self.realParentPath(url)
+        // Compare in the boot volume's case regime: on a case-INSENSITIVE volume
+        // (the macOS default) `~/.SSH` and `~/.ssh` are the same directory, so a
+        // case-sensitive `==`/`hasPrefix` would let a case-variant of a protected
+        // root slip past this blocklist and destroy it (issue #122).
+        let normalizedPath = Self.caseNormalized(path)
 
         // Refuse the filesystem root and the home directory itself.
         let home = FileManager.default.homeDirectoryForCurrentUser.standardized.path
-        if path == "/" || path == home {
+        if normalizedPath == "/" || normalizedPath == Self.caseNormalized(home) {
             return .protected(reason: "Refusing to \(action.verb) the home directory or filesystem root")
         }
 
         // Carve out the user document roots so files *inside* them are allowed, but
         // refuse a request to act on a whole root folder (e.g. all of ~/Documents).
-        for root in ProtectedPaths.userManagedRoots where path == expandedPathValue(for: root) {
+        for root in ProtectedPaths.userManagedRoots
+        where normalizedPath == Self.caseNormalized(expandedPathValue(for: root)) {
             return .protected(reason: "Refusing to \(action.verb) an entire user folder")
         }
         if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
@@ -272,10 +278,12 @@ struct SafetyChecker: Sendable {
     /// prefix of `path`, or -1 if none match. Boundary-safe: `/var` matches
     /// `/var/folders` but not `/variable`.
     private func longestPrefixLength(_ path: String, in roots: Set<String>) -> Int {
+        let normalizedPath = Self.caseNormalized(path)
         var best = -1
         for entry in roots {
             let root = expandedPathValue(for: entry)
-            if path == root || path.hasPrefix(root + "/") {
+            let normalizedRoot = Self.caseNormalized(root)
+            if normalizedPath == normalizedRoot || normalizedPath.hasPrefix(normalizedRoot + "/") {
                 if root.count > best { best = root.count }
             }
         }
@@ -284,6 +292,33 @@ struct SafetyChecker: Sendable {
 
     private func isUnder(_ path: String, anyOf roots: Set<String>) -> Bool {
         longestPrefixLength(path, in: roots) >= 0
+    }
+
+    /// Whether the volume backing the user's home directory distinguishes case.
+    ///
+    /// Every protected root lives on the boot volume (system dirs + `~`), so this
+    /// one property governs how path/root comparisons must be done. It is a
+    /// property of the *volume*, not of any file, so it is well-defined even when
+    /// the path being checked does not exist on disk — which is exactly the
+    /// shred/trash scenario (`validateForShred(~/.SSH)` must be refused whether or
+    /// not `~/.ssh` currently exists). Resolved once; the boot volume's case
+    /// sensitivity is fixed at format time and cannot change at runtime.
+    private static let bootVolumeIsCaseSensitive: Bool = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let values = try? home.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+        // Default to case-sensitive (the stricter, no-folding regime) if the query
+        // fails: folding a genuinely case-sensitive volume would wrongly protect
+        // distinct directories, whereas not folding only loses the #122 hardening.
+        return values?.volumeSupportsCaseSensitiveNames ?? true
+    }()
+
+    /// A path string normalized for protected-root comparison: folded to lowercase
+    /// on a case-INSENSITIVE boot volume (so `~/.SSH` matches the `~/.ssh` root),
+    /// left verbatim on a case-SENSITIVE volume (where the two are genuinely
+    /// distinct directories and must not be conflated). Chosen over blanket
+    /// case-folding precisely so case-sensitive volumes stay correct (issue #122).
+    private static func caseNormalized(_ path: String) -> String {
+        bootVolumeIsCaseSensitive ? path : path.lowercased()
     }
 
     private func isPrivacyArtifact(_ path: String) -> Bool {

@@ -3,7 +3,9 @@ import SwiftUI
 /// Detailed CPU view shown in popover
 struct CPUDetailView: View {
     @ObservedObject var monitor: SystemMonitor
-    @StateObject private var processMonitor = ProcessMonitor()
+    /// Shared with MemoryDetailView via the parent, so only one 5s `ps` sampling
+    /// loop runs regardless of how many detail views have been opened (issue #103).
+    @ObservedObject var processMonitor: ProcessMonitor
     @State private var pulseAnimation = false
 
     private var alertLevel: MetricAlertLevel {
@@ -50,14 +52,8 @@ struct CPUDetailView: View {
                     Text(temp)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(temperatureColor)
-                        .opacity(alertLevel == .critical ? (pulseAnimation ? 0.7 : 1.0) : 1.0)
-                        .onAppear {
-                            if alertLevel == .critical {
-                                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                                    pulseAnimation = true
-                                }
-                            }
-                        }
+                        .criticalPulse(alertLevel, isPulsing: pulseAnimation)
+                        .startCriticalPulse(alertLevel, into: $pulseAnimation)
                 } else {
                     Text("--°C")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
@@ -68,23 +64,8 @@ struct CPUDetailView: View {
             Spacer()
 
             // Alert badge
-            if alertLevel != .normal {
-                alertBadge
-            }
+            AlertBadge(level: alertLevel, style: .pill)
         }
-    }
-
-    private var alertBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: alertLevel == .critical ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
-            Text(alertLevel == .critical ? "Critical" : "Warning")
-        }
-        .font(.caption)
-        .fontWeight(.medium)
-        .foregroundStyle(.white)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(alertLevel.color, in: Capsule())
     }
 
     private var graphSection: some View {
@@ -142,10 +123,8 @@ struct CPUDetailView: View {
     }
 
     private var temperatureColor: Color {
-        guard let temp = monitor.cpuUsage.temperature else { return .primary }
-        if temp > 80 { return .red }
-        if temp > 60 { return .orange }
-        return .green
+        guard monitor.cpuUsage.temperature != nil else { return .primary }
+        return MetricThresholds.cpuTemperature(monitor.cpuUsage.temperature).color
     }
 }
 
@@ -244,7 +223,7 @@ struct ProcessConsumerRow: View {
 
 #if !SWIFT_PACKAGE
 #Preview {
-    CPUDetailView(monitor: SystemMonitor())
+    CPUDetailView(monitor: SystemMonitor(), processMonitor: ProcessMonitor())
         .frame(width: 380, height: 450)
 }
 

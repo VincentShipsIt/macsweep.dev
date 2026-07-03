@@ -377,6 +377,9 @@ public struct HeadlessDiskTree: Codable, Sendable {
 
 public struct HeadlessCacheFinding: Codable, Sendable {
     public let path: String
+    /// Exact on-disk size for deterministic fast-scan findings; `nil` for AI
+    /// findings, whose sizes are free-text estimates (see `sizeText`).
+    public let sizeBytes: Int64?
     public let sizeText: String
     public let category: String
     public let regeneratesAutomatically: Bool
@@ -385,6 +388,7 @@ public struct HeadlessCacheFinding: Codable, Sendable {
 
     public init(
         path: String,
+        sizeBytes: Int64?,
         sizeText: String,
         category: String,
         regeneratesAutomatically: Bool,
@@ -392,6 +396,7 @@ public struct HeadlessCacheFinding: Codable, Sendable {
         reason: String?
     ) {
         self.path = path
+        self.sizeBytes = sizeBytes
         self.sizeText = sizeText
         self.category = category
         self.regeneratesAutomatically = regeneratesAutomatically
@@ -528,27 +533,50 @@ public struct HeadlessUninstallResult: Codable, Sendable {
 // MARK: - Malware Scan
 
 public struct HeadlessThreatFinding: Codable, Sendable {
+    public let id: String
     public let path: String
     public let category: String
     public let threatLevel: String
     public let description: String
     public let aiExplanation: String?
     public let remediation: String?
+    /// `true` when the finding matched a known malware signature; `false` for
+    /// review-tier findings that are merely unrecognized or unverifiable.
+    public let isKnownSignature: Bool
 
     public init(
+        id: String,
         path: String,
         category: String,
         threatLevel: String,
         description: String,
         aiExplanation: String?,
-        remediation: String?
+        remediation: String?,
+        isKnownSignature: Bool
     ) {
+        self.id = id
         self.path = path
         self.category = category
         self.threatLevel = threatLevel
         self.description = description
         self.aiExplanation = aiExplanation
         self.remediation = remediation
+        self.isKnownSignature = isKnownSignature
+    }
+
+    // `id` and `isKnownSignature` were added after the CLI JSON contract
+    // shipped; tolerate their absence so reports emitted by older builds still
+    // decode. Encoding always writes both.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        self.path = try container.decode(String.self, forKey: .path)
+        self.category = try container.decode(String.self, forKey: .category)
+        self.threatLevel = try container.decode(String.self, forKey: .threatLevel)
+        self.description = try container.decode(String.self, forKey: .description)
+        self.aiExplanation = try container.decodeIfPresent(String.self, forKey: .aiExplanation)
+        self.remediation = try container.decodeIfPresent(String.self, forKey: .remediation)
+        self.isKnownSignature = try container.decodeIfPresent(Bool.self, forKey: .isKnownSignature) ?? false
     }
 }
 

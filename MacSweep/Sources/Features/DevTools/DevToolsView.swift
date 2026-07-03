@@ -488,7 +488,7 @@ struct BuildArtifactsView: View {
         if !itemsToClean.isEmpty {
             let engine = ScanEngine()
             do {
-                _ = try await engine.clean(items: itemsToClean, dryRun: false)
+                _ = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             } catch {
                 print("Dev tools cleanup error: \(error)")
             }
@@ -524,13 +524,10 @@ struct BuildArtifactsView: View {
     }
 
     private var selectedSize: String {
-        let cleanupTotal = allCleanupItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
         let gitTotal = gitArtifacts
             .filter { selectedGitItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
-        let total = cleanupTotal + gitTotal
+        let total = allCleanupItems.totalSize(selected: selectedItems) + gitTotal
         return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
     }
 
@@ -732,6 +729,7 @@ struct ProjectRow: View {
         case .ruby: return .red
         case .php: return .indigo
         case .dotnet: return .purple
+        case .cmake: return .teal
         }
     }
 }

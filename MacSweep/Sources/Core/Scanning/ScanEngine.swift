@@ -6,10 +6,18 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
     /// The aggregate deletion size exceeded the hard guard limit.
     case deletionBlocked(reason: String)
 
+    /// The aggregate deletion size crossed the confirmation threshold and the
+    /// caller has not confirmed. Callers behind a user confirmation (GUI dialog,
+    /// CLI `--yes`) pass `confirmedLargeDeletion: true` to proceed.
+    case confirmationRequired(size: Int64)
+
     var errorDescription: String? {
         switch self {
         case .deletionBlocked(let reason):
             return reason
+        case .confirmationRequired(let size):
+            let formatted = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+            return "This will delete \(formatted), which needs confirmation before proceeding."
         }
     }
 }
@@ -221,8 +229,15 @@ actor ScanEngine {
         }
     }
 
-    /// Clean specified items
-    func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+    /// Clean specified items.
+    ///
+    /// `confirmedLargeDeletion` records that a user has already confirmed a
+    /// large deletion (via a GUI dialog or CLI `--yes`). When the aggregate size
+    /// crosses `DeletionGuard.confirmationThreshold` and this is `false`, the
+    /// clean is refused with `.confirmationRequired` — the threshold is a live
+    /// gate, not advisory. Defaults to `false` so any caller that forgets to
+    /// confirm fails closed rather than silently deleting.
+    func clean(items: [CleanupItem], dryRun: Bool, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
@@ -275,12 +290,20 @@ actor ScanEngine {
 
         // Deletion guard: a hard backstop against runaway deletes. Enforced only
         // for real deletions — a dry run touches nothing, so previews of any size
-        // are always permitted. Confirmation-threshold gating is the caller's
-        // responsibility (CLI --yes / GUI prompt) before invoking with dryRun:false.
+        // are always permitted. Both the hard cap (.blocked) and the confirmation
+        // threshold (.requiresConfirmation) are enforced here; the latter demands
+        // the caller pass `confirmedLargeDeletion` (a GUI dialog or CLI --yes).
         if !dryRun {
             let aggregate = plan.flatMap { $0.items }
-            if case .blocked(let reason) = deletionGuard.preflightCheck(items: aggregate) {
+            switch deletionGuard.preflightCheck(items: aggregate) {
+            case .blocked(let reason):
                 throw ScanEngineError.deletionBlocked(reason: reason)
+            case .requiresConfirmation(let size):
+                if !confirmedLargeDeletion {
+                    throw ScanEngineError.confirmationRequired(size: size)
+                }
+            case .allowed:
+                break
             }
         }
 
