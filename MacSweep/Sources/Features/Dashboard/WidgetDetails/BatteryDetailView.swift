@@ -69,14 +69,8 @@ struct BatteryDetailView: View {
                             width: max(4, 112 * (Double(monitor.batteryInfo.percentage) / 100)),
                             height: 52
                         )
-                        .opacity(alertLevel == .critical ? (pulseAnimation ? 0.6 : 1.0) : 1.0)
-                        .onAppear {
-                            if alertLevel == .critical {
-                                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                                    pulseAnimation = true
-                                }
-                            }
-                        }
+                        .criticalPulse(alertLevel, isPulsing: pulseAnimation)
+                        .startCriticalPulse(alertLevel, into: $pulseAnimation)
 
                     Spacer(minLength: 0)
                 }
@@ -117,48 +111,29 @@ struct BatteryDetailView: View {
         HStack(spacing: 20) {
             // Time remaining
             if let time = monitor.batteryInfo.timeRemaining {
-                VStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                    Text(formatTime(time))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text("Remaining")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+                IconStatColumn(
+                    icon: "clock",
+                    value: formatTime(time),
+                    caption: "Remaining"
+                )
             }
 
             // Power source
-            VStack(spacing: 4) {
-                Image(systemName: monitor.batteryInfo.isPluggedIn ? "powerplug.fill" : "battery.100")
-                    .font(.title3)
-                    .foregroundStyle(monitor.batteryInfo.isPluggedIn ? .green : .orange)
-                Text(monitor.batteryInfo.hasBattery ? (monitor.batteryInfo.isPluggedIn ? "AC Power" : "Battery") : "AC Power")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                Text("Power Source")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
+            IconStatColumn(
+                icon: monitor.batteryInfo.isPluggedIn ? "powerplug.fill" : "battery.100",
+                value: monitor.batteryInfo.hasBattery ? (monitor.batteryInfo.isPluggedIn ? "AC Power" : "Battery") : "AC Power",
+                caption: "Power Source",
+                color: monitor.batteryInfo.isPluggedIn ? .green : .orange
+            )
 
             // Alert indicator
             if alertLevel != .normal {
-                VStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.title3)
-                        .foregroundStyle(alertLevel.color)
-                    Text(alertLevel == .critical ? "Critical" : "Low")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text("Battery")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+                IconStatColumn(
+                    icon: "exclamationmark.triangle.fill",
+                    value: alertLevel == .critical ? "Critical" : "Low",
+                    caption: "Battery",
+                    color: alertLevel.color
+                )
             }
         }
     }
@@ -202,11 +177,12 @@ struct BatteryDetailView: View {
                 }
                 .padding(.top, 4)
             } else if let health = monitor.batteryInfo.health {
+                let band = BatteryHealthBand(health: health)
                 HStack {
-                    Image(systemName: conditionIcon(for: health))
-                        .foregroundStyle(healthColor)
+                    Image(systemName: band.iconName)
+                        .foregroundStyle(band.color)
 
-                    Text(conditionText(for: health))
+                    Text(band.conditionText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -263,10 +239,7 @@ struct BatteryDetailView: View {
     }
 
     private var healthColor: Color {
-        guard let health = monitor.batteryInfo.health else { return .gray }
-        if health >= 80 { return .green }
-        if health >= 50 { return .orange }
-        return .red
+        monitor.batteryInfo.health.map { BatteryHealthBand(health: $0).color } ?? .gray
     }
 
     private var cycleColor: Color {
@@ -274,18 +247,6 @@ struct BatteryDetailView: View {
         if cycles < 500 { return .green }
         if cycles < 1000 { return .orange }
         return .red
-    }
-
-    private func conditionIcon(for health: Int) -> String {
-        if health >= 80 { return "checkmark.circle.fill" }
-        if health >= 50 { return "exclamationmark.circle.fill" }
-        return "xmark.circle.fill"
-    }
-
-    private func conditionText(for health: Int) -> String {
-        if health >= 80 { return "Battery condition is normal" }
-        if health >= 50 { return "Battery may need service soon" }
-        return "Battery needs service"
     }
 }
 

@@ -132,33 +132,19 @@ struct NetworkDetailView: View {
                 .fontWeight(.medium)
 
             HStack(spacing: 16) {
-                // Total downloaded
-                VStack(spacing: 4) {
-                    Image(systemName: "arrow.down.to.line")
-                        .font(.title3)
-                        .foregroundStyle(.green)
-                    Text(formatBytes(monitor.networkUsage.totalDownloaded))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text("Downloaded")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+                IconStatColumn(
+                    icon: "arrow.down.to.line",
+                    value: formatBytes(monitor.networkUsage.totalDownloaded),
+                    caption: "Downloaded",
+                    color: .green
+                )
 
-                // Total uploaded
-                VStack(spacing: 4) {
-                    Image(systemName: "arrow.up.to.line")
-                        .font(.title3)
-                        .foregroundStyle(.blue)
-                    Text(formatBytes(monitor.networkUsage.totalUploaded))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text("Uploaded")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+                IconStatColumn(
+                    icon: "arrow.up.to.line",
+                    value: formatBytes(monitor.networkUsage.totalUploaded),
+                    caption: "Uploaded",
+                    color: .blue
+                )
             }
             .padding()
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))

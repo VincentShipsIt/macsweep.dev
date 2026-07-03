@@ -307,36 +307,29 @@ struct MenuBarView: View {
         }
     }
 
+    // Colors routed through the shared MetricThresholds so the menu bar can't
+    // flip a metric to warning/critical at a different boundary than the
+    // dashboard or the detail popovers (issue #102).
     private var memoryColor: Color {
-        switch monitor.memoryUsage.pressureLevel {
-        case .normal: return .green
-        case .warning: return .orange
-        case .critical: return .red
-        }
+        MetricThresholds.memory(usagePercent: monitor.memoryUsage.usedPercentage).color
     }
 
     private var batteryColor: Color {
         if !monitor.batteryInfo.hasBattery { return .green }
-        if monitor.batteryInfo.isCharging { return .green }
-        if monitor.batteryInfo.percentage < 20 { return .red }
-        if monitor.batteryInfo.percentage < 50 { return .orange }
-        return .green
+        return MetricThresholds.battery(
+            percent: monitor.batteryInfo.percentage,
+            isCharging: monitor.batteryInfo.isCharging,
+            hasBattery: monitor.batteryInfo.hasBattery
+        ).color
     }
 
     private var cpuTempColor: Color {
-        guard let temp = monitor.cpuUsage.temperature else { return .primary }
-        if temp > 80 { return .red }
-        if temp > 60 { return .orange }
-        return .primary
+        guard monitor.cpuUsage.temperature != nil else { return .primary }
+        return MetricThresholds.cpuTemperature(monitor.cpuUsage.temperature).color
     }
 
     private var connectedDevicesSubtitle: String {
-        let count = monitor.connectedDevices.count
-        switch count {
-        case 0: return "None connected"
-        case 1: return monitor.connectedDevices[0].name
-        default: return "\(count) connected"
-        }
+        ConnectedDevicesSummary.subtitle(for: monitor.connectedDevices)
     }
 
     private var lowestDeviceBattery: Int? {
