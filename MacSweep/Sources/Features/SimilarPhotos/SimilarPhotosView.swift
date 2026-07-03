@@ -28,7 +28,9 @@ struct SimilarPhotosView: View {
             scrolls: photoItems.isEmpty
         ) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
 
             if photoItems.isEmpty {
@@ -53,21 +55,6 @@ struct SimilarPhotosView: View {
                 footer
             }
         }
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     private var filterBar: some View {

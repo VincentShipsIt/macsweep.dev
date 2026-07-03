@@ -56,44 +56,9 @@ struct NetworkModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        var processed = 0
-        var freed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items where item.module == id {
-            if dryRun {
-                processed += 1
-                freed += item.size
-                continue
-            }
-
-            // Defense-in-depth: every item passes the safety gate before we
-            // touch it, even though scan() only emits a known cache path.
-            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                errors.append(CleanupError(
-                    path: item.path,
-                    message: "Blocked by safety checks"
-                ))
-                continue
-            }
-
-            do {
-                // Caches regenerate; permanent removal actually frees the space
-                // (trashing would just hold a duplicate until the Trash is emptied).
-                try CleanupFileRemover.permanent(item.path)
-                processed += 1
-                freed += item.size
-            } catch {
-                errors.append(CleanupError(
-                    path: item.path,
-                    message: error.localizedDescription,
-                    underlyingError: error
-                ))
-            }
+        await cleanItems(items, dryRun: dryRun) { item, _ in
+            try CleanupFileRemover.permanent(item.path)
         }
-
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
     }
 }
 
