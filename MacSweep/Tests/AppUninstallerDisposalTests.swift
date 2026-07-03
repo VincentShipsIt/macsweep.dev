@@ -31,10 +31,11 @@ final class AppUninstallerDisposalTests {
         }
     }
 
-    /// Apps live under a fixture /Applications-shaped bundle path so the #81
-    /// bundle-removal gate admits them; leftovers under a real leftover root
-    /// path shape so the #76 leftover gate admits them. Nothing is ever written
-    /// to those real locations — the injected trash spy intercepts disposal.
+    /// Apps live under a ~/Applications-shaped bundle path so the #81
+    /// bundle-removal gate admits them (and the /Applications writability probe
+    /// doesn't fire for a nonexistent fixture); leftovers under a real leftover
+    /// root path shape so the #76 leftover gate admits them. Nothing is ever
+    /// written to those locations — the injected trash spy intercepts disposal.
     private func makeApp(
         named name: String,
         bundleSize: Int64 = 1_000,
@@ -43,7 +44,8 @@ final class AppUninstallerDisposalTests {
         var app = InstalledApp(
             id: "com.example.\(name.lowercased())",
             name: name,
-            bundlePath: URL(fileURLWithPath: "/Applications/\(name).app"),
+            bundlePath: FileManager.default.homeDirectoryForCurrentUser
+                .appending(path: "Applications/\(name).app"),
             version: "1.0",
             bundleSize: bundleSize,
             icon: nil,
