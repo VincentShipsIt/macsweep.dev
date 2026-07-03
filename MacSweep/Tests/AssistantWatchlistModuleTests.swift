@@ -9,18 +9,14 @@ import Foundation
 /// directly (path-based, no filesystem dependency) and the module's end-to-end
 /// scan behavior against real fixtures.
 final class AssistantWatchlistModuleTests {
+    private let temp: TempTestDirectory
     private let tempDir: URL
     private let checker = SafetyChecker()
     private let moduleID = AssistantWatchlistModule.moduleID
 
     init() throws {
-        tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacSweepWatchlistTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: tempDir)
+        temp = try TempTestDirectory(prefix: "MacSweepWatchlistTests")
+        tempDir = temp.url
     }
 
     private func home(_ relative: String) -> URL {

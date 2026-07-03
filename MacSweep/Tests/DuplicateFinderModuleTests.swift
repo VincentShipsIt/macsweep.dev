@@ -10,16 +10,12 @@ import Foundation
 /// duplicate, and that `DuplicateSelector.autoSelect` keeps the higher-value
 /// copy.
 final class DuplicateFinderModuleTests {
+    private let temp: TempTestDirectory
     private let tempDir: URL
 
     init() throws {
-        tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacSweepDupTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: tempDir)
+        temp = try TempTestDirectory(prefix: "MacSweepDupTests")
+        tempDir = temp.url
     }
 
     private func write(_ data: Data, _ name: String) throws -> URL {

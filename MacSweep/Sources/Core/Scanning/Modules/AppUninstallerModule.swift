@@ -205,7 +205,15 @@ actor AppDiscovery {
 // MARK: - Leftover Scanner
 
 actor LeftoverScanner {
-    private let leftoverLocations: [(URL, AppLeftover.LeftoverType)] = [
+    private let leftoverLocations: [(URL, AppLeftover.LeftoverType)]
+
+    /// `leftoverLocations` is injectable so tests can point the scanner at a
+    /// fixture Library tree; production callers use the real user Library.
+    init(leftoverLocations: [(URL, AppLeftover.LeftoverType)]? = nil) {
+        self.leftoverLocations = leftoverLocations ?? Self.defaultLeftoverLocations
+    }
+
+    private static let defaultLeftoverLocations: [(URL, AppLeftover.LeftoverType)] = [
         (URL.libraryDirectory.appending(path: "Preferences"), .preferences),
         (URL.libraryDirectory.appending(path: "Application Support"), .applicationSupport),
         (URL.libraryDirectory.appending(path: "Caches"), .caches),
@@ -326,11 +334,22 @@ actor LeftoverScanner {
 // MARK: - App Uninstaller
 
 struct AppUninstaller {
+    /// Running-app check; injected so tests can exercise the guard
+    /// deterministically instead of depending on what the host is running.
+    var isAppRunning: (InstalledApp) -> Bool = { app in
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == app.id }
+    }
+
+    /// Disposal hook; production moves items to the Trash. Injected so tests can
+    /// verify the guard/accounting paths without writing to the user's Trash.
+    var trashItem: (URL) throws -> Void = {
+        try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
+    }
+
     /// Uninstall an app and optionally its leftovers
     func uninstall(_ app: InstalledApp, includeLeftovers: Bool = true) async throws -> CleanupResult {
         // Check if app is running
-        let runningApps = NSWorkspace.shared.runningApplications
-        if runningApps.contains(where: { $0.bundleIdentifier == app.id }) {
+        if isAppRunning(app) {
             throw UninstallError.appRunning(app.name)
         }
 
@@ -349,7 +368,7 @@ struct AppUninstaller {
 
         // Move app to trash
         do {
-            try FileManager.default.trashItem(at: app.bundlePath, resultingItemURL: nil)
+            try trashItem(app.bundlePath)
             processedCount += 1
             bytesFreed += app.bundleSize
         } catch {
@@ -360,7 +379,7 @@ struct AppUninstaller {
         if includeLeftovers {
             for leftover in app.leftovers {
                 do {
-                    try FileManager.default.trashItem(at: leftover.path, resultingItemURL: nil)
+                    try trashItem(leftover.path)
                     processedCount += 1
                     bytesFreed += leftover.size
                 } catch {

@@ -1,0 +1,41 @@
+name: Nightly
+
+# Daily scheduled safety runs (#31, #32): the e2e smoke suite and the coverage
+# gate execute on a fixed GitHub Actions schedule, independent of pushes and of
+# any AI automation. Off-hour minute chosen deliberately to avoid the
+# top-of-hour scheduling stampede.
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-smoke:
+    name: E2E Smoke (nightly)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run e2e smoke suite
+        run: zsh ./scripts/e2e.sh
+
+  coverage:
+    name: Coverage (nightly)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test + coverage floors
+        run: ./scripts/coverage.sh
+
+      - name: Upload coverage export
+        uses: actions/upload-artifact@v4
+        with:
+          name: codecov-json
+          path: MacSweep/.build/**/debug/codecov/*.json
+          retention-days: 30

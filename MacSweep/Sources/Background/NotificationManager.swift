@@ -23,19 +23,12 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func sendScanComplete(bytesFound: Int64) {
         let content = UNMutableNotificationContent()
-        content.title = "MacSweep Weekly Scan"
-
-        let gb = Double(bytesFound) / 1_000_000_000
-        let mb = Double(bytesFound) / 1_000_000
-
-        if gb >= 1 {
-            content.body = String(format: "Found %.1f GB of dev junk ready to clean. Tap to review.", gb)
-        } else {
-            content.body = String(format: "Found %.0f MB of dev junk ready to clean. Tap to review.", mb)
-        }
-
+        // Wording/thresholds live in MacSweepCore (ScanCompleteNotification) so
+        // they are covered by swift test; this class only does UN plumbing.
+        content.title = ScanCompleteNotification.title
+        content.body = ScanCompleteNotification.body(bytesFound: bytesFound)
         content.sound = .default
-        content.categoryIdentifier = "SCAN_COMPLETE"
+        content.categoryIdentifier = ScanCompleteNotification.categoryIdentifier
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
