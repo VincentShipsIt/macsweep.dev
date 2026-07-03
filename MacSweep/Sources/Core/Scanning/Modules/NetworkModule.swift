@@ -70,52 +70,11 @@ struct WiFiNetworkManager {
         WiFiInterfaceManager.primaryInterface()
     }
 
-    /// Get list of saved WiFi networks
+    /// Get list of saved WiFi networks on the primary interface.
+    /// Delegates to `savedNetworks(interface:)` so there is a single
+    /// implementation of the drain-then-reap subprocess handling.
     static func savedNetworks() -> [SavedWiFiNetwork] {
-        var networks: [SavedWiFiNetwork] = []
-
-        // Use networksetup to get preferred networks
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        process.arguments = ["-listpreferredwirelessnetworks", wifiInterface]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return [] }
-
-            // Parse output - format: "\tNetworkName"
-            let lines = output.split(separator: "\n").dropFirst()  // Skip header
-            for line in lines {
-                let name = line.trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty {
-                    networks.append(SavedWiFiNetwork(
-                        ssid: name,
-                        isCurrentlyConnected: false  // Would need to check separately
-                    ))
-                }
-            }
-        } catch {
-            // Ignore
-        }
-
-        // Mark currently connected network
-        if let currentSSID = getCurrentSSID() {
-            for i in networks.indices {
-                if networks[i].ssid == currentSSID {
-                    networks[i].isCurrentlyConnected = true
-                    break
-                }
-            }
-        }
-
-        return networks
+        savedNetworks(interface: wifiInterface)
     }
 
     /// Get list of saved WiFi networks for a specific interface
@@ -132,9 +91,10 @@ struct WiFiNetworkManager {
 
         do {
             try process.run()
-            process.waitUntilExit()
-
+            // Drain the pipe before reaping: reading first guarantees the child
+            // can't wedge on a full pipe buffer while we block in waitUntilExit.
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             guard let output = String(data: data, encoding: .utf8) else { return [] }
 
             let lines = output.split(separator: "\n").dropFirst()
