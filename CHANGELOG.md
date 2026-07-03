@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- CLI JSON: malware-scan findings (`HeadlessThreatFinding`) now include `id` and
+  `isKnownSignature`, so automation consumers can dedupe/reference individual
+  findings and distinguish known-signature matches from review-tier items.
+- CLI JSON: cache-analysis findings (`HeadlessCacheFinding`) now include a raw
+  `sizeBytes` byte count (exact for fast-scan findings, absent for AI size
+  estimates) so consumers can sum, sort, and threshold sizes. `sizeText` is kept
+  for compatibility.
+
+### Changed
+
+- Cache-analysis `sizeText` for fast-scan findings is now derived from the exact
+  byte count (e.g. `1.26 GB` instead of `du`'s `1.2G`), matching the byte
+  formatting used everywhere else in the app.
+
 ## [1.0.6] - 2026-06-24
 
 ### Changed

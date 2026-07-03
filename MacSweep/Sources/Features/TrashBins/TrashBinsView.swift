@@ -232,7 +232,7 @@ struct TrashBinsView: View {
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
         do {
-            let result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            let result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 deletionError = "\(count) item\(count == 1 ? "" : "s") couldn't be deleted and were kept."

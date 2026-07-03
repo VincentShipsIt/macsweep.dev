@@ -264,7 +264,7 @@ struct LargeFilesView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
             return

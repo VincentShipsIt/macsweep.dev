@@ -40,6 +40,31 @@ extension BrowserModule {
     var cookiePaths: [URL] { [] }
     var historyPaths: [URL] { [] }
 
+    /// Build a `CleanupItem` for a browser data directory if it exists and is
+    /// larger than 1KB. Shared by every browser module's `scan()` — the previous
+    /// per-browser copies had drifted so only Chrome computed `lastModified`,
+    /// leaving the stale-data hint rendered for exactly one browser.
+    func scanPath(_ url: URL, category: String) async -> CleanupItem? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+
+        do {
+            let size = try await DiskAnalyzer.directorySize(at: url)
+            guard size > 1024 else { return nil }  // Skip tiny items
+
+            return CleanupItem(
+                id: UUID(),
+                path: url,
+                size: size,
+                type: .directory,
+                module: id,
+                moduleName: "\(browserName) \(category)",
+                lastModified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            )
+        } catch {
+            return nil
+        }
+    }
+
     /// Get risk level for a given path
     func riskLevel(for url: URL) -> BrowserDataRiskLevel {
         let path = url.path
@@ -164,27 +189,6 @@ struct ChromeModule: BrowserModule {
         return items
     }
 
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }  // Skip tiny items
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-            )
-        } catch {
-            return nil
-        }
-    }
-
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
@@ -261,27 +265,6 @@ struct SafariModule: BrowserModule {
         return items
     }
 
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: nil
-            )
-        } catch {
-            return nil
-        }
-    }
-
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
@@ -352,27 +335,6 @@ struct FirefoxModule: BrowserModule {
         }
 
         return items
-    }
-
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: nil
-            )
-        } catch {
-            return nil
-        }
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
@@ -451,27 +413,6 @@ struct BraveModule: BrowserModule {
         }
 
         return items
-    }
-
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: nil
-            )
-        } catch {
-            return nil
-        }
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
@@ -558,27 +499,6 @@ struct ArcModule: BrowserModule {
         return items
     }
 
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: nil
-            )
-        } catch {
-            return nil
-        }
-    }
-
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
@@ -656,27 +576,6 @@ struct EdgeModule: BrowserModule {
         }
 
         return items
-    }
-
-    private func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: nil
-            )
-        } catch {
-            return nil
-        }
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {

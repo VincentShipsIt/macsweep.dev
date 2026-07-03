@@ -13,6 +13,7 @@ struct DashboardView: View {
     @State private var isCleanupReviewExpanded = false
     @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
+    @State private var showingConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,6 +106,21 @@ struct DashboardView: View {
                 isCleanupReviewExpanded = false
             }
         }
+        .confirmationDialog(
+            "Clean \(appState.selectedItems.count) selected item\(appState.selectedItems.count == 1 ? "" : "s")?",
+            isPresented: $showingConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clean", role: .destructive) {
+                Task {
+                    // Behind this dialog → confirm the large-deletion gate.
+                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). Some items are deleted permanently and can't be recovered.")
+        }
     }
 
     private var rescanButton: some View {
@@ -121,9 +137,7 @@ struct DashboardView: View {
 
     private var cleanRecommendedButton: some View {
         Button {
-            Task {
-                _ = try? await appState.deleteSelected()
-            }
+            showingConfirmation = true
         } label: {
             Image(systemName: "trash")
         }
@@ -205,9 +219,7 @@ struct DashboardView: View {
                     .disabled(appState.isScanning)
 
                     Button {
-                        Task {
-                            _ = try? await appState.deleteSelected()
-                        }
+                        showingConfirmation = true
                     } label: {
                         Label("Clean Selected", systemImage: "trash")
                     }

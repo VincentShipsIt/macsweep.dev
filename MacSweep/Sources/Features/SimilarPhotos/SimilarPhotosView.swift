@@ -159,7 +159,7 @@ struct SimilarPhotosView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false)
+            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't move photos to Trash: \(error.localizedDescription)"
             return

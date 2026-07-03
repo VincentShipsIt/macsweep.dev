@@ -137,7 +137,8 @@ struct SystemCleanupView: View {
         ) {
             Button("Delete", role: .destructive) {
                 Task {
-                    _ = try? await appState.deleteSelected()
+                    // Behind this confirmation dialog → confirm the large-deletion gate.
+                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
                 }
             }
             Button("Cancel", role: .cancel) {}

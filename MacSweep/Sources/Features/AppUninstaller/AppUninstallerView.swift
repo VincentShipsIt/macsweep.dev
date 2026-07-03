@@ -280,7 +280,7 @@ struct AppUninstallerView: View {
         }
 
         do {
-            _ = try await ScanEngine().clean(items: items, dryRun: false)
+            _ = try await ScanEngine().clean(items: items, dryRun: false, confirmedLargeDeletion: true)
             errorMessage = nil
             orphanedLeftovers = []
             // Re-scan so anything the safety pipeline refused stays visible.

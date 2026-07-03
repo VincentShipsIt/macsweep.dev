@@ -9,18 +9,23 @@ struct CacheAnalyzerTests {
 
     // MARK: - parseFastScanOutput
 
-    @Test func parseValidTabSeparatedLine() {
-        let output = "1.2G\t/Users/x/.npm/_cacache"
+    @Test func parseValidTabSeparatedLine() throws {
+        // `du -sk` output: size in KiB, tab, path.
+        let output = "1258291\t/Users/x/.npm/_cacache"
         let findings = CacheAnalyzer.parseFastScanOutput(output)
         #expect(findings.count == 1)
-        #expect(findings.first?.path == "/Users/x/.npm/_cacache")
-        #expect(findings.first?.sizeText == "1.2G")
-        #expect(findings.first?.source == "Fast Scan")
-        #expect(findings.first?.regeneratesAutomatically == true)
+        let finding = try #require(findings.first)
+        let expectedBytes: Int64 = 1_258_291 * 1024
+        #expect(finding.path == "/Users/x/.npm/_cacache")
+        #expect(finding.sizeBytes == expectedBytes)
+        #expect(finding.sizeText ==
+            ByteCountFormatter.string(fromByteCount: expectedBytes, countStyle: .file))
+        #expect(finding.source == "Fast Scan")
+        #expect(finding.regeneratesAutomatically == true)
     }
 
     @Test func parseMultipleLines() {
-        let output = "1.2G\t/Users/x/.npm/_cacache\n4.0K\t/Users/x/.cache/uv"
+        let output = "1258291\t/Users/x/.npm/_cacache\n4\t/Users/x/.cache/uv"
         let findings = CacheAnalyzer.parseFastScanOutput(output)
         #expect(findings.count == 2)
     }
@@ -37,7 +42,12 @@ struct CacheAnalyzerTests {
 
     @Test func parseSkipsLineWithEmptyPath() {
         // Size present, path blank → not a real entry.
-        #expect(CacheAnalyzer.parseFastScanOutput("5.0M\t").isEmpty)
+        #expect(CacheAnalyzer.parseFastScanOutput("5120\t").isEmpty)
+    }
+
+    @Test func parseSkipsNonNumericSize() {
+        // Human-readable sizes (pre-`du -sk` format, or stray garbage) don't parse.
+        #expect(CacheAnalyzer.parseFastScanOutput("1.2G\t/Users/x/.npm/_cacache").isEmpty)
     }
 
     // MARK: - categorize (one representative path per Category)
