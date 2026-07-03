@@ -13,14 +13,27 @@ import Foundation
 /// package-manager stores, network config — is routed through `recoverable`.
 enum CleanupFileRemover {
     /// Move the item to the Trash (reversible). Throws if the item does not exist
-    /// or the volume has no Trash.
-    static func recoverable(_ url: URL) throws {
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    /// or the volume has no Trash. `module` attributes the deletion in the safety
+    /// audit log.
+    static func recoverable(_ url: URL, module: String) throws {
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        } catch {
+            Log.deletion(path: url, module: module, disposition: .trash, error: error)
+            throw error
+        }
+        Log.deletion(path: url, module: module, disposition: .trash)
     }
 
     /// Permanently delete the item. Only for modules whose purpose is irreversible
-    /// removal.
-    static func permanent(_ url: URL) throws {
-        try FileManager.default.removeItem(at: url)
+    /// removal. `module` attributes the deletion in the safety audit log.
+    static func permanent(_ url: URL, module: String) throws {
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            Log.deletion(path: url, module: module, disposition: .delete, error: error)
+            throw error
+        }
+        Log.deletion(path: url, module: module, disposition: .delete)
     }
 }

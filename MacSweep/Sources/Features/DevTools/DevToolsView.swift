@@ -500,14 +500,14 @@ struct BuildArtifactsView: View {
             do {
                 _ = try await engine.clean(items: itemsToClean, dryRun: false)
             } catch {
-                print("Dev tools cleanup error: \(error)")
+                Log.scan.error("Dev tools cleanup error: \(error.localizedDescription, privacy: .public)")
             }
         }
 
         if !gitItemsToClean.isEmpty {
             let result = await GitArtifactCleaner().clean(items: gitItemsToClean, dryRun: false)
             if !result.errors.isEmpty {
-                print("Git cleanup errors: \(result.errors)")
+                Log.scan.error("Git cleanup errors: \(result.errors.count, privacy: .public) error(s)")
             }
         }
 

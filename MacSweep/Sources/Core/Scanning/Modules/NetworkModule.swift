@@ -81,7 +81,7 @@ struct NetworkModule: ScanModule {
             do {
                 // Caches regenerate; permanent removal actually frees the space
                 // (trashing would just hold a duplicate until the Trash is emptied).
-                try CleanupFileRemover.permanent(item.path)
+                try CleanupFileRemover.permanent(item.path, module: item.module)
                 processed += 1
                 freed += item.size
             } catch {
@@ -137,7 +137,8 @@ struct WiFiNetworkManager {
                 }
             }
         } catch {
-            // Ignore
+            // Best-effort: an unreadable preferred-networks list just yields none.
+            Log.process.debug("networksetup preferred-networks read failed: \(error.localizedDescription, privacy: .public)")
         }
 
         // Mark currently connected network
@@ -183,7 +184,8 @@ struct WiFiNetworkManager {
                 }
             }
         } catch {
-            // Ignore
+            // Best-effort: an unreadable preferred-networks list just yields none.
+            Log.process.debug("networksetup preferred-networks read failed: \(error.localizedDescription, privacy: .public)")
         }
 
         if let currentSSID = getCurrentSSID() {
@@ -483,7 +485,8 @@ struct WiFiInterfaceManager {
                 }
             }
         } catch {
-            // Default to en0 if detection fails
+            // Default to en0 if detection fails.
+            Log.process.debug("network interface detection failed, defaulting to en0: \(error.localizedDescription, privacy: .public)")
         }
 
         return interfaces.isEmpty ? ["en0"] : interfaces

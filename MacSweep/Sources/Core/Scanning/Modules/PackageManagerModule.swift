@@ -74,7 +74,7 @@ struct PackageManagerModule: ScanModule {
                     continue
                 }
                 do {
-                    try CleanupFileRemover.recoverable(item.path)
+                    try CleanupFileRemover.recoverable(item.path, module: item.module)
                     processed += 1
                     freed += item.size
                 } catch {

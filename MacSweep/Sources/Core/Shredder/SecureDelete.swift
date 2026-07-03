@@ -72,6 +72,7 @@ enum SecureDelete {
         guard let fileSize = attributes[.size] as? Int64, fileSize > 0 else {
             // Empty file, just delete
             try FileManager.default.removeItem(at: url)
+            Log.deletion(path: url, module: "shredder", disposition: .shred)
             return
         }
 
@@ -127,6 +128,9 @@ enum SecureDelete {
 
         // Finally delete
         try FileManager.default.removeItem(at: currentURL)
+        // Log the ORIGINAL selected path (not the randomized temp name) so the
+        // audit line matches what the user chose to destroy.
+        Log.deletion(path: url, module: "shredder", disposition: .shred)
 
         progress?(1.0)
     }
@@ -182,8 +186,15 @@ enum SecureDelete {
             }
         }
 
-        // Remove empty directories
-        try? FileManager.default.removeItem(at: url)
+        // Remove the now-shredded directory tree. Log the outcome instead of
+        // silently swallowing it: this is the container removal after every file
+        // inside was individually shredded (and logged) above.
+        do {
+            try FileManager.default.removeItem(at: url)
+            Log.deletion(path: url, module: "shredder", disposition: .shred)
+        } catch {
+            Log.deletion(path: url, module: "shredder", disposition: .shred, error: error)
+        }
 
         progress?("Complete", 1.0)
 

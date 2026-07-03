@@ -251,10 +251,10 @@ struct SystemCacheModule: ScanModule {
                             guard checker.validateForCleanup(content, moduleID: id, itemType: .file).isSafe else {
                                 continue
                             }
-                            try CleanupFileRemover.permanent(content)
+                            try CleanupFileRemover.permanent(content, module: item.module)
                         }
                     } else {
-                        try CleanupFileRemover.permanent(item.path)
+                        try CleanupFileRemover.permanent(item.path, module: item.module)
                     }
                     processedCount += 1
                     bytesFreed += item.size

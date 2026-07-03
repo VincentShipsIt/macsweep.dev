@@ -214,7 +214,7 @@ struct PrivacyModule: ScanModule {
                     continue
                 }
                 do {
-                    try CleanupFileRemover.recoverable(item.path)
+                    try CleanupFileRemover.recoverable(item.path, module: item.module)
                     processed += 1
                     freed += item.size
                 } catch {
@@ -291,7 +291,7 @@ struct PrivacyActions {
                 do {
                     // Recoverable: shell history is not regenerable, so route
                     // through the Trash to make an accidental clear undoable.
-                    try CleanupFileRemover.recoverable(path)
+                    try CleanupFileRemover.recoverable(path, module: "privacy")
                 } catch {
                     if firstError == nil { firstError = error }
                 }

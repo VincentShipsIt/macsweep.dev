@@ -130,7 +130,8 @@ final class ProcessMonitor: ObservableObject {
                         }
                     }
                 } catch {
-                    // Ignore errors — empty table means 0/0 for every app.
+                    // Best-effort: an unreadable ps table means 0/0 for every app.
+                    Log.process.debug("ps resource sampling failed: \(error.localizedDescription, privacy: .public)")
                 }
 
                 continuation.resume(returning: result)

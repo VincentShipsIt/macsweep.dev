@@ -165,7 +165,7 @@ struct CloudCleanupModule: ScanModule {
                     try FileManager.default.evictUbiquitousItem(at: item.path)
                 } else {
                     // Provider caches regenerate; permanent removal frees the space.
-                    try CleanupFileRemover.permanent(item.path)
+                    try CleanupFileRemover.permanent(item.path, module: item.module)
                 }
                 processed += 1
                 freed += item.size
