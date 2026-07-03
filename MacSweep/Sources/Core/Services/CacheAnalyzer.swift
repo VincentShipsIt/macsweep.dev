@@ -225,16 +225,14 @@ struct CacheAnalyzer {
         var errors: [String] = []
 
         if Self.executablePath(for: "claude") != nil {
-            // Run off the cooperative pool — the CLI can take many seconds and
-            // runProcess blocks on waitUntilExit (matches runFastScan's pattern).
-            let result = await Task.detached(priority: .userInitiated) {
-                Self.runProcess([
-                    "claude",
-                    "-p",
-                    "--json-schema", Self.aiSchemaString,
-                    prompt
-                ])
-            }.value
+            // ProcessRunner already runs off the cooperative pool; the AI CLI can
+            // take many seconds, so it gets a generous timeout (not the 10 s default).
+            let result = await Self.runProcess([
+                "claude",
+                "-p",
+                "--json-schema", Self.aiSchemaString,
+                prompt
+            ])
             if result.status == 0 {
                 if let findings = Self.parseAIFindings(result.output, source: "AI Analysis") {
                     return (findings, "Claude CLI", nil)
@@ -250,18 +248,16 @@ struct CacheAnalyzer {
             let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-\(UUID().uuidString).json")
             do {
                 try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
-                let result = await Task.detached(priority: .userInitiated) {
-                    Self.runProcess([
-                        "codex",
-                        "exec",
-                        "--skip-git-repo-check",
-                        "--sandbox", "read-only",
-                        "--ephemeral",
-                        "--output-schema", schemaURL.path,
-                        "-o", outputURL.path,
-                        prompt
-                    ])
-                }.value
+                let result = await Self.runProcess([
+                    "codex",
+                    "exec",
+                    "--skip-git-repo-check",
+                    "--sandbox", "read-only",
+                    "--ephemeral",
+                    "--output-schema", schemaURL.path,
+                    "-o", outputURL.path,
+                    prompt
+                ])
                 if result.status == 0 {
                     let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
                     if let findings = Self.parseAIFindings(text, source: "AI Analysis") {
@@ -371,25 +367,17 @@ struct CacheAnalyzer {
         return nil
     }
 
-    private static func runProcess(_ arguments: [String]) -> ProcessResult {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = arguments
-        let stdout = Pipe()
-        let stderr = Pipe()
-        task.standardOutput = stdout
-        task.standardError = stderr
+    /// Runs an AI CLI (`claude`/`codex`) via `/usr/bin/env` so it resolves on
+    /// PATH, through the shared `ProcessRunner` (concurrent drain, bounded wait).
+    /// The timeout is generous — these calls legitimately take many seconds — but
+    /// still bounded, where the old hand-rolled version could hang forever.
+    private static func runProcess(_ arguments: [String], timeout: TimeInterval = 300) async -> ProcessResult {
         do {
-            try task.run()
-            task.waitUntilExit()
+            return try await ProcessRunner.run(
+                executable: "/usr/bin/env", arguments: arguments, timeout: timeout)
         } catch {
-            return ProcessResult(status: 127, output: "", error: error.localizedDescription)
+            return ProcessResult(status: 127, output: "", error: "\(error)")
         }
-        return ProcessResult(
-            status: task.terminationStatus,
-            output: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
-            error: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        )
     }
 
     private static func processError(_ provider: String, _ result: ProcessResult) -> String {

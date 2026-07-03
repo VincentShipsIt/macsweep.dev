@@ -1327,14 +1327,10 @@ private enum GitHubPRState: Sendable {
     case merged
 }
 
-/// Result of a Process run with separate stdout/stderr. Shared across Core
-/// (DevToolsModule + CacheAnalyzer). MalwareScannerService keeps its own type —
-/// it merges both streams into a single pipe, so its shape differs.
-struct ProcessResult: Sendable {
-    let status: Int32
-    let output: String
-    let error: String
-}
+// `ProcessResult` now lives in ProcessRunner.swift (the canonical subprocess
+// result type). `DevToolsModule.run` still produces it directly — migrating this
+// synchronous git runner to the async `ProcessRunner` is tracked as remainder on
+// #93 because it would ripple `async` through every synchronous git call site.
 
 private extension String {
     func removingPrefix(_ prefix: String) -> String? {

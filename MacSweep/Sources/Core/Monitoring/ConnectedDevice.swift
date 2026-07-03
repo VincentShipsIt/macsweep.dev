@@ -299,35 +299,11 @@ public enum ConnectedDeviceScanner {
         return .other
     }
 
+    /// Runs a probe (`system_profiler`/`ioreg`) via the shared `ProcessRunner`,
+    /// which supplies the watchdog timeout and concurrent drain. stderr is
+    /// discarded (these probes are noisy); a failure or timeout yields "".
     private static func runProcess(_ path: String, _ arguments: [String], timeout: TimeInterval = 10) async -> String {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                let pipe = Pipe()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = arguments
-                process.standardOutput = pipe
-                process.standardError = FileHandle.nullDevice
-
-                // Watchdog: terminate a stuck system_profiler/ioreg so a hung probe
-                // can't block readDataToEndOfFile()/waitUntilExit() indefinitely and
-                // pile up tasks. Termination closes the pipe, unblocking the read.
-                let watchdog = DispatchWorkItem {
-                    if process.isRunning { process.terminate() }
-                }
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: watchdog)
-
-                do {
-                    try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    watchdog.cancel()
-                    continuation.resume(returning: String(data: data, encoding: .utf8) ?? "")
-                } catch {
-                    watchdog.cancel()
-                    continuation.resume(returning: "")
-                }
-            }
-        }
+        let result = try? await ProcessRunner.run(executable: path, arguments: arguments, timeout: timeout)
+        return result?.output ?? ""
     }
 }

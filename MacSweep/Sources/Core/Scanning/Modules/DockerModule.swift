@@ -5,15 +5,15 @@ import Foundation
 /// `docker info` probes silently no-op'd on Apple Silicon, where Homebrew lives
 /// at `/opt/homebrew`. Checks each candidate for existence and returns the first.
 enum DockerCLI {
-    static let candidatePaths = [
-        "/usr/local/bin/docker",                                   // Intel Homebrew
-        "/opt/homebrew/bin/docker",                                // Apple Silicon Homebrew
-        "/Applications/Docker.app/Contents/Resources/bin/docker",  // Docker Desktop bundle
-    ]
+    /// Docker Desktop's bundled CLI — the only location outside Homebrew.
+    static let dockerDesktopPath = "/Applications/Docker.app/Contents/Resources/bin/docker"
 
-    /// First docker binary that actually exists, or nil if none is installed.
+    /// First docker binary that actually exists — Homebrew under either prefix
+    /// (Intel `/usr/local` or Apple Silicon `/opt/homebrew`, resolved by the
+    /// shared `HomebrewPaths`), else the Docker Desktop bundle — or nil.
     static var path: String? {
-        candidatePaths.first { FileManager.default.fileExists(atPath: $0) }
+        if let brewDocker = HomebrewPaths.toolPath("docker") { return brewDocker }
+        return FileManager.default.fileExists(atPath: dockerDesktopPath) ? dockerDesktopPath : nil
     }
 
     /// Parse a Docker size token (e.g. "1.5GB", "256M", "512kB") into bytes.
