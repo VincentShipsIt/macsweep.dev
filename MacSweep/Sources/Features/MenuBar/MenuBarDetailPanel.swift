@@ -92,7 +92,7 @@ struct MenuBarDetailContent: View {
                 case .devices:
                     ConnectedDevicesDetailView(monitor: monitor, showsHeader: false)
                 case .system:
-                    EmptyView()
+                    SystemDetailView(monitor: monitor)
                 }
             }
             .frame(maxWidth: .infinity)

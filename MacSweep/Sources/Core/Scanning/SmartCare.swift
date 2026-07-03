@@ -5,7 +5,6 @@ struct SmartCareFinding: Identifiable, Hashable, Sendable {
     let title: String
     let itemCount: Int
     let reclaimableBytes: Int64
-    let recommendedFeatureName: String
     let autoCleanRecommended: Bool
 
     var id: String { moduleID }
@@ -59,7 +58,6 @@ struct SmartCareAnalyzer {
                 title: title(for: moduleID),
                 itemCount: moduleItems.count,
                 reclaimableBytes: moduleItems.reduce(0) { $0 + $1.size },
-                recommendedFeatureName: featureName(for: moduleID),
                 autoCleanRecommended: SmartCareDefaults.autoCleanModules.contains(moduleID)
             )
         }
@@ -98,10 +96,6 @@ struct SmartCareAnalyzer {
         case AssistantWatchlistModule.moduleID: return "Assistant Watchlists"
         default: return moduleID.replacingOccurrences(of: "-", with: " ").capitalized
         }
-    }
-
-    private func featureName(for moduleID: String) -> String {
-        title(for: moduleID)
     }
 
     private func score(

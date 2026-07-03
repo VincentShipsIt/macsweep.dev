@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The dashboard's Mac-overview row now opens a System detail popover (chip,
+  macOS version, memory, storage, uptime), matching the other six status rows.
 - CLI JSON: malware-scan findings (`HeadlessThreatFinding`) now include `id` and
   `isKnownSignature`, so automation consumers can dedupe/reference individual
   findings and distinguish known-signature matches from review-tier items.
@@ -22,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cache-analysis `sizeText` for fast-scan findings is now derived from the exact
   byte count (e.g. `1.26 GB` instead of `du`'s `1.2G`), matching the byte
   formatting used everywhere else in the app.
+
+### Removed
+
+- Unused `logo.png`/`logo.svg` are no longer bundled into the app (~1.5 MB
+  smaller); the assets moved to `docs/assets/`.
 
 ## [1.0.6] - 2026-06-24
 

@@ -148,10 +148,6 @@ private struct MacSweepPanelModifier: ViewModifier {
 }
 
 extension View {
-    func macSweepDetailSurface() -> some View {
-        background(MacSweepDetailBackground().ignoresSafeArea())
-    }
-
     func macSweepPanel(radius: CGFloat = MacSweepTheme.mediumRadius) -> some View {
         modifier(MacSweepPanelModifier(radius: radius))
     }
@@ -159,33 +155,5 @@ extension View {
     func macSweepListSurface() -> some View {
         scrollContentBackground(.hidden)
             .background(Color.clear)
-    }
-}
-
-struct MacSweepEmptyState: View {
-    let icon: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 4) {
-                Text(title)
-                    .font(.headline)
-
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(22)
-        .frame(width: 320)
-        .macSweepPanel()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

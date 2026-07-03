@@ -482,16 +482,6 @@ struct BuildArtifactsView: View {
         selectedGitItems = Set(gitArtifacts.map(\.id))
     }
 
-    private func selectCachesOnly() {
-        // Select only cache-type artifacts (not source dependencies)
-        let cacheNames = ["DerivedData", "__pycache__", ".gradle", "build", ".build", "target", "bin", "obj", ".next", ".nuxt", ".turbo", ".cache"]
-        selectedItems = Set(
-            allCleanupItems.filter { item in
-                cacheNames.contains(where: { item.path.lastPathComponent.contains($0) || item.moduleName.contains($0) })
-            }.map(\.id)
-        )
-    }
-
     private func cleanSelected() async {
         let itemsToClean = allCleanupItems.filter { selectedItems.contains($0.id) }
         let gitItemsToClean = gitArtifacts.filter { selectedGitItems.contains($0.id) }
