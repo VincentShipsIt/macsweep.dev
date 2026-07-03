@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard's Mac-overview row now opens a System detail popover (chip,
+  macOS version, memory, storage, uptime), matching the other six status rows.
+
+### Removed
+
+- Unused `logo.png`/`logo.svg` are no longer bundled into the app (~1.5 MB
+  smaller); the assets moved to `docs/assets/`.
+
 ## [1.0.6] - 2026-06-24
 
 ### Changed

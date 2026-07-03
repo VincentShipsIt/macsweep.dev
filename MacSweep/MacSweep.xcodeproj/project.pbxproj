@@ -86,7 +86,6 @@
 		8570389DD7FCDE991FFA7665 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C966FB7F1A9AD8C09EB48B /* ContentView.swift */; };
 		8584BB46592C2E8C9F77F808 /* ConnectedDevicesDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003DF9FFDB5B4302F946766A /* ConnectedDevicesDetailView.swift */; };
 		878DCAF648A5B7BC2F61E976 /* SafetyChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC7738E561B403C960BF591 /* SafetyChecker.swift */; };
-		89CB1161C0EC529A698AA457 /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = FFABC633903A58298E030636 /* logo.png */; };
 		89FC9D5F428C0FD73D0861A1 /* PrivacyModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50DAAD50600EAFBF671312DC /* PrivacyModule.swift */; };
 		8D463547995A1A0177954D13 /* NetworkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1165CC0384EBFF4A498CA /* NetworkModule.swift */; };
 		8D88C7402F908CCC16829BBF /* HomebrewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A343341FCF8DCA77D89DDAC /* HomebrewService.swift */; };
@@ -138,8 +137,8 @@
 		E46F42BBE55BCB97044E78B4 /* ServiceWorkerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFE4FDD7AF6AD8B35EE7A522 /* ServiceWorkerModule.swift */; };
 		E5226AEFBC381C00EE70AE5B /* LastScanStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A475F44172F777C0A972740 /* LastScanStore.swift */; };
 		E6606D26B4216ED59B0A8031 /* StorageDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5C9FF45CF0417996607DD4 /* StorageDetailView.swift */; };
+		5A15D3E1C4B27F9A0D6E8B21 /* SystemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C82F1D7A9B3E065C1D42F88 /* SystemDetailView.swift */; };
 		E71D3D51ACFEF6A32523DAF7 /* SafetyChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC7738E561B403C960BF591 /* SafetyChecker.swift */; };
-		ECB59A59668B41366DE77C5A /* logo.svg in Resources */ = {isa = PBXBuildFile; fileRef = D67D611E6F493AAE21303372 /* logo.svg */; };
 		EFF99C43B9A43BBBBD93769A /* MaintenanceActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3279030532A2A61732FAA14 /* MaintenanceActions.swift */; };
 		F1347577E42311E7CB6220A2 /* ScanScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39662D83826F51912E43A9EC /* ScanScheduler.swift */; };
 		F203446ED100568F0DDB68C6 /* CLIExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F96D1EC382075A5427AF150C /* CLIExecutor.swift */; };
@@ -240,7 +239,6 @@
 		D1D0195B21A3DBA34CFD4ABB /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
 		D288FAF0D38DB382FC4445F7 /* BrowserCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserCleanupView.swift; sourceTree = "<group>"; };
 		D5780671CF8B4068DC75DCB7 /* ScanModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanModule.swift; sourceTree = "<group>"; };
-		D67D611E6F493AAE21303372 /* logo.svg */ = {isa = PBXFileReference; path = logo.svg; sourceTree = "<group>"; };
 		D6CB00C693668D798E757F5F /* SimilarPhotosModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosModule.swift; sourceTree = "<group>"; };
 		D70DEE234385630F130EEADC /* MacSweepApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSweepApp.swift; sourceTree = "<group>"; };
 		D922FDDDD0DCE526933E8B1B /* MalwareScannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MalwareScannerService.swift; sourceTree = "<group>"; };
@@ -257,9 +255,9 @@
 		F96D1EC382075A5427AF150C /* CLIExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIExecutor.swift; sourceTree = "<group>"; };
 		FB2B12C483BEFA064667A415 /* CLICommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLICommand.swift; sourceTree = "<group>"; };
 		FC5C9FF45CF0417996607DD4 /* StorageDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageDetailView.swift; sourceTree = "<group>"; };
+		4C82F1D7A9B3E065C1D42F88 /* SystemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemDetailView.swift; sourceTree = "<group>"; };
 		FD9618B9E4FA3D8C232BC3BA /* SmartCare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCare.swift; sourceTree = "<group>"; };
 		FDF35B6EC00737A48EEE330C /* SystemMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMonitor.swift; sourceTree = "<group>"; };
-		FFABC633903A58298E030636 /* logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -348,6 +346,7 @@
 				4A0CD8EA90C8C1C33422724B /* MemoryDetailView.swift */,
 				B64AD2211FAD97A32B224C24 /* NetworkDetailView.swift */,
 				FC5C9FF45CF0417996607DD4 /* StorageDetailView.swift */,
+				4C82F1D7A9B3E065C1D42F88 /* SystemDetailView.swift */,
 				CFCAB33EC9EBABF80F990871 /* Components */,
 			);
 			path = WidgetDetails;
@@ -653,8 +652,6 @@
 			isa = PBXGroup;
 			children = (
 				08A7D4BCB2F27E312AAA7651 /* Assets.xcassets */,
-				FFABC633903A58298E030636 /* logo.png */,
-				D67D611E6F493AAE21303372 /* logo.svg */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -886,8 +883,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5958F2CC98DE8131AF74A68E /* Assets.xcassets in Resources */,
-				89CB1161C0EC529A698AA457 /* logo.png in Resources */,
-				ECB59A59668B41366DE77C5A /* logo.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -983,6 +978,7 @@
 				64C6E13AFEB974BA977FD593 /* SmartCare.swift in Sources */,
 				784AA8D0B2D9BC7BCA0A80D6 /* SpaceLensView.swift in Sources */,
 				E6606D26B4216ED59B0A8031 /* StorageDetailView.swift in Sources */,
+				5A15D3E1C4B27F9A0D6E8B21 /* SystemDetailView.swift in Sources */,
 				C2CC33674C713784E8CABCDD /* SystemCacheModule.swift in Sources */,
 				95A148F295CED3AA97945847 /* SystemCleanupView.swift in Sources */,
 				E0B558E410437125884225B8 /* SystemMonitor.swift in Sources */,

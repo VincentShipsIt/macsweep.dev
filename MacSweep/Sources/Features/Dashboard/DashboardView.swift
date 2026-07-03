@@ -552,12 +552,21 @@ struct DashboardView: View {
                 .dashboardScrollablePopoverContent()
         }
 
-        SystemStatusRow(
-            icon: "desktopcomputer",
-            tint: .secondary,
-            title: Host.current().localizedName ?? "Mac",
-            detail: systemVersion
-        )
+        Button {
+            toggleWidget(.system)
+        } label: {
+            SystemStatusRow(
+                icon: "desktopcomputer",
+                tint: .secondary,
+                title: Host.current().localizedName ?? "Mac",
+                detail: systemVersion
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: binding(for: .system), arrowEdge: .trailing) {
+            SystemDetailView(monitor: monitor)
+                .dashboardPopoverContent()
+        }
     }
 
     private func toggleWidget(_ widget: WidgetType) {
