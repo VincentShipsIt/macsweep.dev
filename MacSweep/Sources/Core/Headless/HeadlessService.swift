@@ -89,7 +89,14 @@ public actor MacSweepHeadlessService {
     }
 
     public func executeCleanup(_ plan: HeadlessPreparedCleanupPlan) async throws -> HeadlessApplyResult {
-        let result = try await engine.clean(items: plan.selectedItems, dryRun: false)
+        // The CLI reaches executeCleanup only after its own confirmation gate
+        // (`--yes` or an interactive prompt in CLIExecutor), so the large-deletion
+        // confirmation is already satisfied here.
+        let result = try await engine.clean(
+            items: plan.selectedItems,
+            dryRun: false,
+            confirmedLargeDeletion: true
+        )
         return HeadlessApplyResult(
             scan: plan.scan,
             cleanup: serializeCleanupResult(result, dryRun: false)

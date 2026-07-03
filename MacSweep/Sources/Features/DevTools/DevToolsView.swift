@@ -498,7 +498,7 @@ struct BuildArtifactsView: View {
         if !itemsToClean.isEmpty {
             let engine = ScanEngine()
             do {
-                _ = try await engine.clean(items: itemsToClean, dryRun: false)
+                _ = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             } catch {
                 print("Dev tools cleanup error: \(error)")
             }
