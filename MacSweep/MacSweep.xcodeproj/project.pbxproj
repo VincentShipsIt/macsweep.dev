@@ -37,6 +37,7 @@
 		36FE4752AA53E323DB35936B /* OptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFBC54E02A2A920F54CD0CEC /* OptimizationView.swift */; };
 		3B1885214EE053FFB0A7EE34 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031558E885A43C88426F8768 /* LoginItemController.swift */; };
 		3C2850158B369FC2B4AB0366 /* AssistantTOMLCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 828F767CE55CDD133F7E4144 /* AssistantTOMLCodec.swift */; };
+		3C2E200477C334195D1F4C3A /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558F1012F64AA10119DC2DC8 /* Log.swift */; };
 		3E949DE17BC45A0CAC9CE86C /* AIAnalysisService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8DE9353BD1DB279C2A620B /* AIAnalysisService.swift */; };
 		4591141D0AF1CC82F436BD3C /* BrowserModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E11C498D39AE322D704E25 /* BrowserModule.swift */; };
 		45BDD3935A27FA74515EFCA8 /* SimilarPhotosModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6CB00C693668D798E757F5F /* SimilarPhotosModule.swift */; };
@@ -67,6 +68,7 @@
 		6AD5416C84A5C3A9E4252B0C /* HomebrewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545127CF3689967D9C31502B /* HomebrewModels.swift */; };
 		6C18025243F6DB895B9A085F /* ShredderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361A2FBE47230BF7079C0AED /* ShredderView.swift */; };
 		6FE989179CB765D633C99AFC /* SchedulerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C60D491EB2F91065E1CAA314 /* SchedulerConfig.swift */; };
+		711C81E489279D05AAB419BD /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 558F1012F64AA10119DC2DC8 /* Log.swift */; };
 		713047BAE412E4E66B5ECB71 /* MailAttachmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE5776F79C1FE736127D7367 /* MailAttachmentsView.swift */; };
 		71E8C43356C81313E9BFC436 /* SimilarPhotosView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 518772795E55D6ABE04AEE1C /* SimilarPhotosView.swift */; };
 		73CA1ECA7C3C8A3111F72B93 /* CleanupFileRemover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596F39F6CBA6900B9B28707B /* CleanupFileRemover.swift */; };
@@ -192,6 +194,7 @@
 		518772795E55D6ABE04AEE1C /* SimilarPhotosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimilarPhotosView.swift; sourceTree = "<group>"; };
 		536F06694304C235D62347B1 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		545127CF3689967D9C31502B /* HomebrewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomebrewModels.swift; sourceTree = "<group>"; };
+		558F1012F64AA10119DC2DC8 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		596F39F6CBA6900B9B28707B /* CleanupFileRemover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupFileRemover.swift; sourceTree = "<group>"; };
 		5C27F5DE04268CCDC8C81A66 /* TrashBinsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashBinsView.swift; sourceTree = "<group>"; };
 		63E48AAFBFB4ABFE894F0494 /* PackageManagerModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackageManagerModule.swift; sourceTree = "<group>"; };
@@ -381,13 +384,6 @@
 			path = Scanning;
 			sourceTree = "<group>";
 		};
-		3EB96CA7336A1F7583BB5BA3 /* StorageVisualizer */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = StorageVisualizer;
-			sourceTree = "<group>";
-		};
 		465700F5D2BC232CC42331C8 /* DevTools */ = {
 			isa = PBXGroup;
 			children = (
@@ -482,12 +478,10 @@
 				E00954D0906AF077CDACC675 /* Onboarding */,
 				D8B3B857C7949CAE8C3B8E15 /* Optimization */,
 				2B4334BDE208CCD3208B7F89 /* Privacy */,
-				8FC4A4894C859040A6B3CBD6 /* Settings */,
 				33CE0DD96FB89126E5A80514 /* Shared */,
 				94F5A92C0C156DBE0DE142F9 /* Shredder */,
 				D39AEBC3DF1405EE53B5B9C0 /* SimilarPhotos */,
 				B2751FA6814759F73C5CDD2F /* SpaceLens */,
-				3EB96CA7336A1F7583BB5BA3 /* StorageVisualizer */,
 				46BF68EA0BC8C0E45623DD4E /* SystemCleanup */,
 				72423655552D6B953B3DDD16 /* TrashBins */,
 			);
@@ -510,19 +504,20 @@
 			path = Storage;
 			sourceTree = "<group>";
 		};
+		834335CDDC5C5EFBC296B207 /* Logging */ = {
+			isa = PBXGroup;
+			children = (
+				558F1012F64AA10119DC2DC8 /* Log.swift */,
+			);
+			path = Logging;
+			sourceTree = "<group>";
+		};
 		86E6CACABA261731D6B887B1 /* Services */ = {
 			isa = PBXGroup;
 			children = (
 				8E8DE9353BD1DB279C2A620B /* AIAnalysisService.swift */,
 			);
 			path = Services;
-			sourceTree = "<group>";
-		};
-		8FC4A4894C859040A6B3CBD6 /* Settings */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Settings;
 			sourceTree = "<group>";
 		};
 		94F5A92C0C156DBE0DE142F9 /* Shredder */ = {
@@ -629,6 +624,7 @@
 				50B4F1E94D24EFFC4BA6AB37 /* MacSweepVersion.swift */,
 				F658491FA23DE9D7EE150D7B /* Assistant */,
 				DB7133D959F7BA98483A3581 /* Headless */,
+				834335CDDC5C5EFBC296B207 /* Logging */,
 				C94137B3D082C9F79957A57B /* Maintenance */,
 				F387362CD6F36BFEDC2B3E86 /* Monitoring */,
 				2825F4B38CC3B696AED89106 /* Permissions */,
@@ -942,6 +938,7 @@
 				54F621CD8270CF9D615954B5 /* LargeFilesView.swift in Sources */,
 				E5226AEFBC381C00EE70AE5B /* LastScanStore.swift in Sources */,
 				A09AFE6A720E44CD080AE0BB /* LiquidGlass.swift in Sources */,
+				3C2E200477C334195D1F4C3A /* Log.swift in Sources */,
 				A26F029E0D3F7B0E4E92F5E6 /* LoginItemController.swift in Sources */,
 				8F6C89A8A13C4F69B4390079 /* LoginItemEnumerator.swift in Sources */,
 				FA004C7F848DBE807C384C6B /* LoginItemsModels.swift in Sources */,
@@ -1017,6 +1014,7 @@
 				6AD5416C84A5C3A9E4252B0C /* HomebrewModels.swift in Sources */,
 				22E6F7F08EAFDCC98AFFB468 /* HomebrewService.swift in Sources */,
 				03EBD31E04C348BF40969755 /* LargeFilesModule.swift in Sources */,
+				711C81E489279D05AAB419BD /* Log.swift in Sources */,
 				3B1885214EE053FFB0A7EE34 /* LoginItemController.swift in Sources */,
 				0CD882757E6990237CF2FED9 /* LoginItemEnumerator.swift in Sources */,
 				46DB8791C9DCD3C123E0DB68 /* MacSweepVersion.swift in Sources */,
