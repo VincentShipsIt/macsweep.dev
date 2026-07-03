@@ -486,6 +486,7 @@ public actor MacSweepHeadlessService {
         let findings = result.findings.map { finding in
             HeadlessCacheFinding(
                 path: finding.path,
+                sizeBytes: finding.sizeBytes,
                 sizeText: finding.sizeText,
                 category: finding.category.rawValue,
                 regeneratesAutomatically: finding.regeneratesAutomatically,
@@ -750,12 +751,14 @@ private func runMalwareScanOnMain(useAI: Bool) async -> HeadlessMalwareScanRepor
     let result = service.scanResult
     let findings = (result?.findings ?? []).map { finding in
         HeadlessThreatFinding(
+            id: finding.id.uuidString,
             path: finding.path,
             category: finding.category.rawValue,
             threatLevel: finding.threatLevel.rawValue,
             description: finding.description,
             aiExplanation: finding.aiExplanation,
-            remediation: finding.remediation
+            remediation: finding.remediation,
+            isKnownSignature: finding.isKnownSignature
         )
     }
     return HeadlessMalwareScanReport(

@@ -22,6 +22,9 @@ struct CacheAnalyzer {
 
     struct Finding {
         let path: String
+        /// Exact on-disk size when the finding comes from the deterministic fast
+        /// scan; `nil` for AI findings, whose sizes are free-text estimates.
+        let sizeBytes: Int64?
         let sizeText: String
         let category: Category
         let regeneratesAutomatically: Bool
@@ -104,7 +107,7 @@ struct CacheAnalyzer {
           -o -path "*/.claude/shell-snapshots" \
           -o -path "*/.codex/log" \
           -o -path "*/.codex/archived_sessions" \
-        \) -type d -prune -print0 2>/dev/null | xargs -0 du -sh 2>/dev/null | sort -rh
+        \) -type d -prune -print0 2>/dev/null | xargs -0 du -sk 2>/dev/null | sort -rn
         """#
         return await Task.detached(priority: .userInitiated) {
             let result = Self.shell(script)
@@ -112,7 +115,7 @@ struct CacheAnalyzer {
         }.value
     }
 
-    /// Pure transform of `du -sh` tab-separated output into findings.
+    /// Pure transform of `du -sk` tab-separated output (KiB + path) into findings.
     /// `internal` (not `private`) so the deterministic parse/categorize logic is
     /// reachable from `@testable import` unit tests.
     static func parseFastScanOutput(_ output: String) -> [Finding] {
@@ -121,10 +124,12 @@ struct CacheAnalyzer {
             guard parts.count == 2 else { return nil }
             let size = parts[0].trimmingCharacters(in: .whitespaces)
             let path = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !path.isEmpty else { return nil }
+            guard !path.isEmpty, let kibibytes = Int64(size) else { return nil }
+            let bytes = kibibytes * 1024
             return Finding(
                 path: path,
-                sizeText: size,
+                sizeBytes: bytes,
+                sizeText: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file),
                 category: categorize(path: path),
                 regeneratesAutomatically: true,
                 source: "Fast Scan",
@@ -299,6 +304,7 @@ struct CacheAnalyzer {
             let reason = item["reason"] as? String
             return Finding(
                 path: path,
+                sizeBytes: nil,
                 sizeText: size,
                 category: Category(rawValue: cat) ?? .other,
                 regeneratesAutomatically: regen,
