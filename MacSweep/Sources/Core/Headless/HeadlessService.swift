@@ -427,6 +427,10 @@ public actor MacSweepHeadlessService {
                 throw HeadlessServiceError.uninstallFailed(
                     "Administrator privileges required to remove \(name) from /Applications."
                 )
+            case .blockedBySafety(let name):
+                throw HeadlessServiceError.uninstallFailed(
+                    "Refusing to uninstall \(name): the app bundle failed a safety check (unexpected location or symlink)."
+                )
             }
         }
     }

@@ -69,6 +69,45 @@ struct SafetyChecker: Sendable {
         validateBlocklist(url, action: .trash)
     }
 
+    /// Validate an application bundle the user explicitly chose to uninstall.
+    ///
+    /// The `.app` itself legitimately lives under `/Applications` or
+    /// `~/Applications` — both inside `neverDelete` — so the generic blocklist
+    /// (`validateForTrash`/`validateForCleanup`) would wrongly refuse every real
+    /// uninstall. This dedicated gate instead confirms the target genuinely is a
+    /// `.app` sitting *directly* in one of those known install roots and is not a
+    /// symlink — nor reached through a symlinked parent — that could redirect the
+    /// removal to an unintended target (issue #81). Removal is to Trash, so it
+    /// stays recoverable; this only stops a relocated/symlinked path from nuking
+    /// something other than the app the user picked.
+    func validateForAppBundleRemoval(_ url: URL) -> ValidationResult {
+        let standardized = url.standardized
+
+        // Refuse a symlinked bundle: trashing through a link could move an
+        // unintended target rather than the app the user selected.
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: standardized.path)) != nil {
+            return .symlink(reason: "Symlink — would affect the link target, not the app")
+        }
+
+        guard standardized.pathExtension == "app" else {
+            return .unknown(reason: "Not an application bundle")
+        }
+
+        // Resolve parent symlinks, then require the bundle to sit DIRECTLY in a
+        // known Applications root (not merely somewhere beneath it).
+        let path = Self.realParentPath(url)
+        let parent = (path as NSString).deletingLastPathComponent
+        let appRoots = [
+            "/Applications",
+            FileManager.default.homeDirectoryForCurrentUser
+                .appending(path: "Applications").standardized.path,
+        ]
+        for root in appRoots where Self.caseNormalized(parent) == Self.caseNormalized(root) {
+            return .safe
+        }
+        return .protected(reason: "App bundle outside the standard Applications folders")
+    }
+
     private enum BlocklistAction {
         case shred, trash
         var verb: String { self == .shred ? "shred" : "move to Trash" }
