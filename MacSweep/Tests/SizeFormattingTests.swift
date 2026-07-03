@@ -100,4 +100,11 @@ struct SizeFormattingTests {
 
         #expect(body.contains(fileStyle(1_500_000_000)))
     }
+
+    @Test func notificationTitleAndCategoryAreStable() {
+        // The category id is registered with UNUserNotificationCenter; changing
+        // it silently orphans the tap-handling registration.
+        #expect(ScanNotificationContent.title == "MacSweep Weekly Scan")
+        #expect(ScanNotificationContent.categoryIdentifier == "SCAN_COMPLETE")
+    }
 }

@@ -5,25 +5,15 @@ import Foundation
 final class SystemCacheModuleTests {
 
     let module = SystemCacheModule()
+    private let temp: TempTestDirectory
     let testDirectory: URL
 
-    // swift-testing creates a fresh instance per @Test: init() is the per-test
-    // setUp, deinit is the per-test tearDown. Each instance gets a UUID-scoped
+    // swift-testing creates a fresh instance per @Test: TempTestDirectory's
+    // lifetime is the per-test setUp/tearDown. Each instance gets a UUID-scoped
     // temp dir so parallel test execution can't collide.
     init() throws {
-        testDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacSweepTests-\(UUID().uuidString)")
-
-        try FileManager.default.createDirectory(
-            at: testDirectory,
-            withIntermediateDirectories: true
-        )
-    }
-
-    deinit {
-        if FileManager.default.fileExists(atPath: testDirectory.path) {
-            try? FileManager.default.removeItem(at: testDirectory)
-        }
+        temp = try TempTestDirectory()
+        testDirectory = temp.url
     }
 
     // MARK: - Module Properties Tests

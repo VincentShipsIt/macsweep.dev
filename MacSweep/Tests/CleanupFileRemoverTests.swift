@@ -7,20 +7,16 @@ import Foundation
 // happy path and the missing-item path; trashItem works headlessly on macOS, but
 // the assertions only require the source to be gone, not where it landed.
 //
-// final class: init()/deinit give per-test setUp/tearDown of a UUID-scoped temp
-// dir so parallel @Test instances can't collide.
+// final class: TempTestDirectory's lifetime gives per-test setUp/tearDown of a
+// UUID-scoped temp dir so parallel @Test instances can't collide.
 final class CleanupFileRemoverTests {
 
+    private let temp: TempTestDirectory
     let testDirectory: URL
 
     init() throws {
-        testDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacSweepRemoverTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: testDirectory, withIntermediateDirectories: true)
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: testDirectory)
+        temp = try TempTestDirectory(prefix: "MacSweepRemoverTests")
+        testDirectory = temp.url
     }
 
     // MARK: - permanent

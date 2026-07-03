@@ -23,10 +23,12 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func sendScanComplete(bytesFound: Int64) {
         let content = UNMutableNotificationContent()
-        content.title = "MacSweep Weekly Scan"
+        // Wording lives in MacSweepCore (ScanNotificationContent) so it is
+        // covered by swift test; this class only does UN plumbing.
+        content.title = ScanNotificationContent.title
         content.body = ScanNotificationContent.formattedBody(for: bytesFound)
         content.sound = .default
-        content.categoryIdentifier = "SCAN_COMPLETE"
+        content.categoryIdentifier = ScanNotificationContent.categoryIdentifier
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(

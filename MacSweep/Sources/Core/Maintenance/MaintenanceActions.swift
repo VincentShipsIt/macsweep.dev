@@ -65,22 +65,26 @@ actor MaintenanceActions {
             let pageSize = Int64(sysconf(Int32(_SC_PAGESIZE)))
             let resolvedPageSize = pageSize > 0 ? pageSize : 4096
 
-            // Parse free pages
-            let lines = output.split(separator: "\n")
-            for line in lines {
-                if line.contains("Pages free") {
-                    let parts = line.split(separator: ":")
-                    if let valueStr = parts.last?.trimmingCharacters(in: CharacterSet(charactersIn: " .")) {
-                        if let pages = Int64(valueStr) {
-                            return pages * resolvedPageSize
-                        }
-                    }
-                }
-            }
+            return parseVMStatFreeBytes(output, pageSize: resolvedPageSize)
         } catch {
             // Ignore
         }
 
+        return 0
+    }
+
+    /// Free bytes from `vm_stat` output ("Pages free: 12345.") for the given
+    /// page size; 0 when the marker line is absent or malformed. Split from
+    /// `getAvailableMemory` so the parsing is deterministic and testable
+    /// without spawning vm_stat.
+    static func parseVMStatFreeBytes(_ output: String, pageSize: Int64) -> Int64 {
+        for line in output.split(separator: "\n") where line.contains("Pages free") {
+            let parts = line.split(separator: ":")
+            if let valueStr = parts.last?.trimmingCharacters(in: CharacterSet(charactersIn: " .")),
+               let pages = Int64(valueStr) {
+                return pages * pageSize
+            }
+        }
         return 0
     }
 

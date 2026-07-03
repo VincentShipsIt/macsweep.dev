@@ -10,24 +10,19 @@ import Foundation
 /// searched directories (ambiguous), a successful `Disabled`-key toggle, and a
 /// recoverable trash-based removal.
 final class LoginItemControllerTests {
+    private let temp: TempTestDirectory
     private let userDir: URL
     private let systemDir: URL
     private let daemonDir: URL
 
     init() throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacSweepLoginItemTests-\(UUID().uuidString)")
-        userDir = base.appendingPathComponent("user")
-        systemDir = base.appendingPathComponent("system")
-        daemonDir = base.appendingPathComponent("daemons")
+        temp = try TempTestDirectory(prefix: "MacSweepLoginItemTests")
+        userDir = temp.appendingPathComponent("user")
+        systemDir = temp.appendingPathComponent("system")
+        daemonDir = temp.appendingPathComponent("daemons")
         for dir in [userDir, systemDir, daemonDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
-    }
-
-    deinit {
-        let base = userDir.deletingLastPathComponent()
-        try? FileManager.default.removeItem(at: base)
     }
 
     private func controller() -> LoginItemController {

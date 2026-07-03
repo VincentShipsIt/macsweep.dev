@@ -141,6 +141,19 @@ swift build -c release --product macsweep
 To build the SwiftUI app, open `MacSweep.xcodeproj` in Xcode 26 or later and build
 the app target.
 
+### Testing & QA
+
+```bash
+zsh scripts/test.sh        # unit suite (swift-testing; works on CLT-only hosts)
+zsh scripts/e2e.sh         # CLI e2e safety smoke suite (non-destructive, self-contained fixtures)
+zsh scripts/coverage.sh    # unit suite with coverage + safety-critical coverage floors
+zsh scripts/render-screenshots.sh   # render every GUI state to scripts/screenshots/ for visual QA
+```
+
+CI runs the unit suite with coverage floors and the e2e smoke suite on every
+push/PR, renders GUI snapshots as a PR artifact, and repeats e2e + coverage on
+a daily schedule (`.github/workflows/nightly.yml`).
+
 ## Safety
 
 MacSweep is designed with safety in mind:

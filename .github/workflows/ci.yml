@@ -38,11 +38,45 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build
 
-      # scripts/test.sh auto-detects the toolchain: on this full-Xcode runner the
-      # xctest host is present so it runs plain `swift test`; on a CLT-only host it
-      # falls back to the standalone swift-testing runner. One canonical command.
-      - name: Test (swift-testing)
-        run: ./scripts/test.sh
+      # scripts/coverage.sh wraps scripts/test.sh (which auto-detects the
+      # toolchain: plain `swift test` on this full-Xcode runner, standalone
+      # swift-testing runner on a CLT-only host) with --enable-code-coverage,
+      # publishes the safety-critical coverage table to the job summary, and
+      # fails the job if an enforced file drops below its floor.
+      - name: Test (swift-testing) + coverage
+        run: ./scripts/coverage.sh
+
+  # Deterministic CLI e2e safety smoke suite: exit codes, fixture scan,
+  # dry-run/apply-gate non-destructiveness, protected-path (shred) refusal.
+  # All fixtures are self-created under $TMPDIR; no user directory is modified.
+  e2e-smoke:
+    name: E2E Smoke
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run e2e smoke suite
+        run: zsh ./scripts/e2e.sh
+
+  # Visual QA: render every GUI state via scripts/render-screenshots.sh and
+  # publish the PNGs as a build artifact for human review. PR-only — the
+  # renders are review aids, not a gate, and the compile is expensive.
+  visual-snapshots:
+    name: Visual Snapshots
+    runs-on: macos-26
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render GUI snapshots
+        run: zsh ./scripts/render-screenshots.sh
+
+      - name: Upload snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-snapshots
+          path: scripts/screenshots/
+          retention-days: 14
 
   # NOTE: the Homebrew formula and cask live in VincentShipsIt/homebrew-tap
   # (Formula/macsweep.rb and Casks/macsweep.rb). Tap-side install/audit gates run
