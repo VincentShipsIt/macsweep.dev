@@ -89,7 +89,14 @@ public actor MacSweepHeadlessService {
     }
 
     public func executeCleanup(_ plan: HeadlessPreparedCleanupPlan) async throws -> HeadlessApplyResult {
-        let result = try await engine.clean(items: plan.selectedItems, dryRun: false)
+        // The CLI reaches executeCleanup only after its own confirmation gate
+        // (`--yes` or an interactive prompt in CLIExecutor), so the large-deletion
+        // confirmation is already satisfied here.
+        let result = try await engine.clean(
+            items: plan.selectedItems,
+            dryRun: false,
+            confirmedLargeDeletion: true
+        )
         return HeadlessApplyResult(
             scan: plan.scan,
             cleanup: serializeCleanupResult(result, dryRun: false)
@@ -427,6 +434,10 @@ public actor MacSweepHeadlessService {
                 throw HeadlessServiceError.uninstallFailed(
                     "Administrator privileges required to remove \(name) from /Applications."
                 )
+            case .blockedBySafety(let name):
+                throw HeadlessServiceError.uninstallFailed(
+                    "Refusing to uninstall \(name): the app bundle failed a safety check (unexpected location or symlink)."
+                )
             }
         }
     }
@@ -486,6 +497,7 @@ public actor MacSweepHeadlessService {
         let findings = result.findings.map { finding in
             HeadlessCacheFinding(
                 path: finding.path,
+                sizeBytes: finding.sizeBytes,
                 sizeText: finding.sizeText,
                 category: finding.category.rawValue,
                 regeneratesAutomatically: finding.regeneratesAutomatically,
@@ -750,12 +762,14 @@ private func runMalwareScanOnMain(useAI: Bool) async -> HeadlessMalwareScanRepor
     let result = service.scanResult
     let findings = (result?.findings ?? []).map { finding in
         HeadlessThreatFinding(
+            id: finding.id.uuidString,
             path: finding.path,
             category: finding.category.rawValue,
             threatLevel: finding.threatLevel.rawValue,
             description: finding.description,
             aiExplanation: finding.aiExplanation,
-            remediation: finding.remediation
+            remediation: finding.remediation,
+            isKnownSignature: finding.isKnownSignature
         )
     }
     return HeadlessMalwareScanReport(

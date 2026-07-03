@@ -344,7 +344,9 @@ struct ShredderView: View {
         var errors: [ShredError] = []
 
         let fileCount = droppedFiles.count
-        let safety = SafetyChecker()
+        // Use the shared instance AppState already holds rather than building a
+        // second one — one SafetyChecker, one place, no dead injection point.
+        let safety = appState.safetyChecker
 
         for (index, url) in droppedFiles.enumerated() {
             await MainActor.run {

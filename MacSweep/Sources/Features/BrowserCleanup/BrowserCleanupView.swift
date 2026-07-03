@@ -23,7 +23,9 @@ struct BrowserCleanupView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
             header
 
@@ -42,23 +44,6 @@ struct BrowserCleanupView: View {
                 footer
             }
         }
-    }
-
-    // MARK: - Error Banner
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -266,7 +251,7 @@ struct BrowserCleanupView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            _ = try await engine.clean(items: itemsToClean, dryRun: false)
+            _ = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             cleanupError = "Couldn't clean browser data: \(error.localizedDescription)"
         }
@@ -294,10 +279,7 @@ struct BrowserCleanupView: View {
     }
 
     private var selectedSize: String {
-        let total = allItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        allItems.formattedTotalSize(selected: selectedItems)
     }
 }
 
@@ -311,11 +293,11 @@ struct BrowserScanResult: Identifiable {
     let items: [CleanupItem]
 
     var totalSize: Int64 {
-        items.reduce(0) { $0 + $1.size }
+        items.totalSize()
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        items.formattedTotalSize()
     }
 }
 
@@ -447,8 +429,7 @@ struct ServiceWorkerSection: View {
     @State private var isExpanded = false
 
     var totalSize: String {
-        let total = items.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        items.formattedTotalSize()
     }
 
     var body: some View {

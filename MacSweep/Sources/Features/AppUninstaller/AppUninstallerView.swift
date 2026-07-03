@@ -53,7 +53,9 @@ struct AppUninstallerView: View {
         ) {
             VStack(spacing: 0) {
                 if let errorMessage {
-                    errorBanner(errorMessage)
+                    MacSweepErrorBanner(message: errorMessage) {
+                        self.errorMessage = nil
+                    }
                 }
 
                 HSplitView {
@@ -67,21 +69,6 @@ struct AppUninstallerView: View {
                 }
             }
         }
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - App List Pane
@@ -293,7 +280,7 @@ struct AppUninstallerView: View {
         }
 
         do {
-            _ = try await ScanEngine().clean(items: items, dryRun: false)
+            _ = try await ScanEngine().clean(items: items, dryRun: false, confirmedLargeDeletion: true)
             errorMessage = nil
             orphanedLeftovers = []
             // Re-scan so anything the safety pipeline refused stays visible.

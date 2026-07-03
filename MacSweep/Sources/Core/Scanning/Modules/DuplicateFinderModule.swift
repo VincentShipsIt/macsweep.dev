@@ -210,47 +210,13 @@ struct DuplicateFinderModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        var processedCount = 0
-        var bytesFreed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items {
-            guard item.module == id else { continue }
-
-            if dryRun {
-                processedCount += 1
-                bytesFreed += item.size
-            } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    // Move to trash instead of permanent delete
-                    try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
-                    processedCount += 1
-                    bytesFreed += item.size
-                } catch {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Failed to remove duplicate",
-                        underlyingError: error
-                    ))
-                }
-            }
+        await cleanItems(
+            items,
+            dryRun: dryRun,
+            errorMessage: { _ in "Failed to remove duplicate" }
+        ) { item, _ in
+            try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
-
-        return CleanupResult(
-            itemsProcessed: processedCount,
-            bytesFreed: bytesFreed,
-            errors: errors
-        )
     }
 }
 

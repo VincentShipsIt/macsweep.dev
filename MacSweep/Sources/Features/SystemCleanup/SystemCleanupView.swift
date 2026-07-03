@@ -47,17 +47,7 @@ struct SystemCleanupView: View {
                 footer
             }
         }
-        .alert(
-            "Cleanup Failed",
-            isPresented: Binding(
-                get: { appState.lastDeletionError != nil },
-                set: { if !$0 { appState.lastDeletionError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(appState.lastDeletionError ?? "")
-        }
+        .errorAlert("Cleanup Failed", message: $appState.lastDeletionError)
     }
 
     // MARK: - Results List
@@ -137,7 +127,8 @@ struct SystemCleanupView: View {
         ) {
             Button("Delete", role: .destructive) {
                 Task {
-                    _ = try? await appState.deleteSelected()
+                    // Behind this confirmation dialog → confirm the large-deletion gate.
+                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
                 }
             }
             Button("Cancel", role: .cancel) {}

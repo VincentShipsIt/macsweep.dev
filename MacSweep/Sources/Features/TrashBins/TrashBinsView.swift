@@ -49,7 +49,9 @@ struct TrashBinsView: View {
         ) {
             VStack(spacing: 0) {
                 if let errorMessage {
-                    errorBanner(errorMessage)
+                    MacSweepErrorBanner(message: errorMessage) {
+                        self.errorMessage = nil
+                    }
                 }
 
                 if trashItems.isEmpty {
@@ -187,26 +189,6 @@ struct TrashBinsView: View {
         .padding(40)
     }
 
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-            Text(message)
-                .font(.caption)
-            Spacer()
-            Button {
-                errorMessage = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
-    }
-
     // MARK: - Actions
 
     private func loadTrashSummary() async {
@@ -250,7 +232,7 @@ struct TrashBinsView: View {
         // module's own delete. A blocked delete throws and is caught here.
         let engine = ScanEngine()
         do {
-            let result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            let result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 deletionError = "\(count) item\(count == 1 ? "" : "s") couldn't be deleted and were kept."
@@ -291,15 +273,11 @@ struct TrashBinsView: View {
     // MARK: - Helpers
 
     private var selectedSize: String {
-        let total = trashItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        trashItems.formattedTotalSize(selected: selectedItems)
     }
 
     private func formattedSize(for items: [CleanupItem]) -> String {
-        let total = items.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        items.formattedTotalSize()
     }
 }
 

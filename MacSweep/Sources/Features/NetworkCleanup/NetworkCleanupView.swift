@@ -57,7 +57,9 @@ struct WiFiNetworksView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
             header
             Divider()
@@ -78,23 +80,6 @@ struct WiFiNetworksView: View {
         .task {
             await loadNetworks()
         }
-    }
-
-    // MARK: - Error Banner
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -371,7 +356,9 @@ struct SSHHostsView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
             header
             Divider()
@@ -392,23 +379,6 @@ struct SSHHostsView: View {
         .task {
             await loadHosts()
         }
-    }
-
-    // MARK: - Error Banner
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Header
@@ -645,14 +615,10 @@ struct SSHHostRow: View {
 
 struct DNSCacheView: View {
     @State private var isFlushingDNS = false
-    @State private var flushResult: FlushResult?
+    @State private var didFlushDNS = false
+    @State private var flushErrorMessage: String?
     @State private var cacheItems: [CleanupItem] = []
     @State private var isScanning = false
-
-    enum FlushResult {
-        case success
-        case failure(String)
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -671,6 +637,7 @@ struct DNSCacheView: View {
         .task {
             await scanCaches()
         }
+        .errorAlert("DNS Flush Failed", message: $flushErrorMessage)
     }
 
     // MARK: - Header
@@ -740,25 +707,14 @@ struct DNSCacheView: View {
                 .disabled(isFlushingDNS)
             }
 
-            // Result indicator
-            if let result = flushResult {
-                switch result {
-                case .success:
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("DNS cache flushed successfully")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                case .failure(let message):
-                    HStack(spacing: 6) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+            // Result indicator (failures surface in the shared error alert)
+            if didFlushDNS {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("DNS cache flushed successfully")
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 }
             }
 
@@ -837,15 +793,16 @@ struct DNSCacheView: View {
 
     private func flushDNS() async {
         isFlushingDNS = true
-        flushResult = nil
+        didFlushDNS = false
+        flushErrorMessage = nil
 
         defer { isFlushingDNS = false }
 
         do {
             try await DNSCacheManager.flush()
-            flushResult = .success
+            didFlushDNS = true
         } catch {
-            flushResult = .failure(error.localizedDescription)
+            flushErrorMessage = error.localizedDescription
         }
     }
 
@@ -858,8 +815,7 @@ struct DNSCacheView: View {
     }
 
     private var totalCacheSize: String {
-        let total = cacheItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize()
     }
 }
 

@@ -28,7 +28,9 @@ struct DuplicateFinderView: View {
             scrolls: duplicateItems.isEmpty
         ) {
             if let errorMessage {
-                errorBanner(errorMessage)
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
             }
 
             if duplicateItems.isEmpty {
@@ -53,21 +55,6 @@ struct DuplicateFinderView: View {
                 footer
             }
         }
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     private var filterBar: some View {
@@ -179,21 +166,19 @@ struct DuplicateFinderView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             errorMessage = "Couldn't move duplicates to Trash: \(error.localizedDescription)"
             return
         }
 
-        // Per-item safety failures are returned in result.errors (not thrown), so
-        // only drop the items that actually left disk — keep blocked ones visible
-        // and tell the user, rather than silently removing them from the list.
-        let blockedPaths = Set(result.errors.map(\.path))
-        duplicateItems.removeAll { selectedItems.contains($0.id) && !blockedPaths.contains($0.path) }
+        // Per-item failures are returned in result.errors (not thrown), so only
+        // drop the items that actually left disk — keep failed ones visible and
+        // tell the user, rather than silently removing them from the list.
+        let failedPaths = Set(result.errors.map(\.path))
+        duplicateItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in duplicateItems.contains(where: { $0.id == id }) }
-        errorMessage = blockedPaths.isEmpty
-            ? nil
-            : "\(blockedPaths.count) item(s) couldn't be removed (blocked by safety checks)."
+        errorMessage = result.failureSummaryMessage
     }
 
     private var sortedItems: [CleanupItem] {
@@ -214,15 +199,11 @@ struct DuplicateFinderView: View {
     }
 
     private var totalSize: String {
-        let total = sortedItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        sortedItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = sortedItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        sortedItems.formattedTotalSize(selected: selectedItems)
     }
 }
 
