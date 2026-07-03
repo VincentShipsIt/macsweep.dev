@@ -72,13 +72,17 @@ final class AppState: ObservableObject {
         )
     }
 
-    func deleteSelected(dryRun: Bool = false) async throws -> CleanupResult {
+    func deleteSelected(dryRun: Bool = false, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
         if !dryRun { lastDeletionError = nil }
         let itemsToDelete = scanResults.filter { selectedItems.contains($0.id) }
 
         let result: CleanupResult
         do {
-            result = try await scanEngine.clean(items: itemsToDelete, dryRun: dryRun)
+            result = try await scanEngine.clean(
+                items: itemsToDelete,
+                dryRun: dryRun,
+                confirmedLargeDeletion: confirmedLargeDeletion
+            )
         } catch {
             // Surface the failure (e.g. the DeletionGuard cap) so callers using
             // `try?` still give the user feedback instead of swallowing it.
@@ -139,9 +143,7 @@ final class AppState: ObservableObject {
     }
 
     var selectedSize: Int64 {
-        scanResults
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
+        scanResults.totalSize(selected: selectedItems)
     }
 
     func feature(for moduleID: String) -> Feature? {

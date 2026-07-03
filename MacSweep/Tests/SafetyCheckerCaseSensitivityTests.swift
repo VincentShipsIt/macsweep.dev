@@ -19,58 +19,67 @@ import Foundation
 ///     case-variant of a protected root passes the blocklist and would be
 ///     shredded/trashed — fails OPEN. That is the defect.
 ///
-/// The shred/trash expectations use `withKnownIssue` so the suite stays green
-/// while the bug is open. When the fix lands (case-fold both sides, or resolve
-/// to a canonical inode before comparing), `withKnownIssue` will start failing
-/// with "known issue was not recorded" — the signal to delete these wrappers.
+/// FIXED in the same PR that removed the `withKnownIssue` wrappers these once
+/// carried: `SafetyChecker` now normalizes case per the boot volume's regime, so
+/// on a case-INSENSITIVE volume a case-variant of a protected root matches it.
 ///
-/// These checks are filesystem-independent: `SafetyChecker` decides via string
-/// comparison, so the result does not depend on `~/.ssh` or `~/documents`
-/// actually existing on the test host.
+/// The blocklist assertions below only make sense on a case-INSENSITIVE volume:
+/// there `~/.SSH` and `~/.ssh` are the same directory, so shredding one must be
+/// refused. On a genuinely case-SENSITIVE volume they are distinct paths and the
+/// shredder is *correct* to allow the variant — so those three assertions are
+/// gated on the host volume (a no-op on the rare case-sensitive host). The macOS
+/// default boot volume, and the CI runners, are case-insensitive APFS, so the
+/// real assertions run there.
 ///
 /// Tracked in issue #122.
 struct SafetyCheckerCaseSensitivityTests {
     private let checker = SafetyChecker()
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
-    // MARK: - Cleanup mode: case-variant fails safe (default-deny). Passes today.
+    /// True when the volume backing `~` folds case (the macOS default). Mirrors
+    /// `SafetyChecker`'s own volume probe; the blocklist scenarios only apply here.
+    private var homeVolumeIsCaseInsensitive: Bool {
+        let values = try? home.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+        return !(values?.volumeSupportsCaseSensitiveNames ?? true)
+    }
+
+    // MARK: - Cleanup mode: case-variant fails safe (default-deny). Host-independent.
 
     @Test func cleanupCaseVariantOfUserRootIsNotSafe() {
         // ~/documents (lowercase) under the large-files module: default-deny means
-        // an unrecognized case-variant is refused for automated cleanup.
+        // an unrecognized case-variant is refused for automated cleanup. This holds
+        // on any host — a case-sensitive volume denies it as unknown, a
+        // case-insensitive volume now denies it as a protected ~/Documents match.
         let variant = home.appendingPathComponent("documents")
         let result = checker.validateForCleanup(variant, moduleID: "large-files", itemType: .directory)
         #expect(!result.isSafe, "Automated cleanup must not treat a case-variant of ~/Documents as safe")
     }
 
-    // MARK: - Shred/Trash blocklist: case-variant currently fails OPEN. Known bug.
+    // MARK: - Shred/Trash blocklist: case-variant of a protected root is refused.
 
     @Test func shredCaseVariantOfWholeUserFolderIsRefused() {
         // ~/documents == ~/Documents on a case-insensitive volume; shredding the
-        // whole user folder must be refused. Currently allowed → known issue.
+        // whole user folder must be refused.
+        guard homeVolumeIsCaseInsensitive else { return }
         let variant = home.appendingPathComponent("documents")
-        withKnownIssue("SafetyChecker case-sensitive compare bypasses whole-user-folder guard on case-insensitive APFS (issue #122)") {
-            let result = checker.validateForShred(variant)
-            #expect(!result.isSafe, "Shredding a case-variant of an entire user folder must be refused")
-        }
+        let result = checker.validateForShred(variant)
+        #expect(!result.isSafe, "Shredding a case-variant of an entire user folder must be refused")
     }
 
     @Test func shredCaseVariantOfCredentialRootIsRefused() {
         // ~/.SSH == ~/.ssh on a case-insensitive volume; shredding the SSH key
-        // directory must be refused. Currently allowed → known issue.
+        // directory must be refused.
+        guard homeVolumeIsCaseInsensitive else { return }
         let variant = home.appendingPathComponent(".SSH")
-        withKnownIssue("SafetyChecker case-sensitive compare bypasses neverDelete credential root on case-insensitive APFS (issue #122)") {
-            let result = checker.validateForShred(variant)
-            #expect(!result.isSafe, "Shredding a case-variant of ~/.ssh must be refused")
-        }
+        let result = checker.validateForShred(variant)
+        #expect(!result.isSafe, "Shredding a case-variant of ~/.ssh must be refused")
     }
 
     @Test func trashCaseVariantOfCredentialRootIsRefused() {
         // Same gap via the explicit move-to-Trash blocklist (Space Lens).
+        guard homeVolumeIsCaseInsensitive else { return }
         let variant = home.appendingPathComponent(".AWS")
-        withKnownIssue("SafetyChecker case-sensitive compare bypasses neverDelete credential root for explicit Trash (issue #122)") {
-            let result = checker.validateForTrash(variant)
-            #expect(!result.isSafe, "Trashing a case-variant of ~/.aws must be refused")
-        }
+        let result = checker.validateForTrash(variant)
+        #expect(!result.isSafe, "Trashing a case-variant of ~/.aws must be refused")
     }
 }

@@ -51,7 +51,9 @@ struct PrivacyView: View {
                     ScrollView {
                         VStack(spacing: 24) {
                             if let errorMessage {
-                                errorBanner(errorMessage)
+                                MacSweepErrorBanner(message: errorMessage) {
+                                    self.errorMessage = nil
+                                }
                             }
 
                             if privacyItems.isEmpty {
@@ -70,23 +72,6 @@ struct PrivacyView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Error Banner
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-            Text(message).font(.caption)
-            Spacer()
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark").font(.caption)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
     }
 
     // MARK: - Quick Actions
@@ -245,7 +230,7 @@ struct PrivacyView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleared and were kept."
@@ -303,15 +288,13 @@ struct PrivacyView: View {
     // MARK: - Computed
 
     private var totalSize: String {
-        let total = privacyItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        privacyItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = privacyItems
+        privacyItems
             .filter { selectedCategories.contains($0.moduleName) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+            .formattedTotalSize()
     }
 }
 

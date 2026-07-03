@@ -81,13 +81,7 @@ struct SystemCacheModule: ScanModule {
                         .contentModificationDateKey
                     ])
 
-                    let size: Int64
-                    if resourceValues.isDirectory == true {
-                        size = try await DiskAnalyzer.directorySize(at: url)
-                    } else {
-                        let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                        size = sizeValues.diskSize
-                    }
+                    let size = try await DiskAnalyzer.size(of: url)
 
                     // Skip tiny items (less than 1KB)
                     guard size > 1024 else { continue }
@@ -150,14 +144,7 @@ struct SystemCacheModule: ScanModule {
 
                     do {
                         let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
-                        let size: Int64
-
-                        if resourceValues.isDirectory == true {
-                            size = try await DiskAnalyzer.directorySize(at: url)
-                        } else {
-                            let sizeValues = try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-                            size = sizeValues.diskSize
-                        }
+                        let size = try await DiskAnalyzer.size(of: url)
 
                         // Skip tiny items
                         guard size > 10240 else { continue }  // 10KB threshold for system temp
@@ -214,65 +201,71 @@ struct SystemCacheModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        var processedCount = 0
-        var bytesFreed: Int64 = 0
-        var errors: [CleanupError] = []
-        let checker = SafetyChecker()
-
-        for item in items {
-            guard item.module == id else { continue }
-
-            if dryRun {
-                processedCount += 1
-                bytesFreed += item.size
+        await cleanItems(
+            items,
+            dryRun: dryRun,
+            errorMessage: { "Failed to delete: \($0.localizedDescription)" }
+        ) { item, checker in
+            if item.type == .directory {
+                // Remove the directory's CONTENTS but keep the directory itself.
+                // Each child is removed via a recursive, per-node validated walk
+                // (see removeValidatedNode) rather than trusting
+                // CleanupFileRemover.permanent to recurse blindly — a protected
+                // subdir or symlink deep in the tree must not be swept away, and
+                // the module's own protected-name list is enforced at delete
+                // time, not just at scan.
+                let contents = try FileManager.default.contentsOfDirectory(
+                    at: item.path,
+                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+                )
+                for content in contents {
+                    removeValidatedNode(content, checker: checker)
+                }
             } else {
-                // Defense-in-depth: re-validate every item before deleting,
-                // even though scan() already filtered to safe paths.
-                guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Blocked by safety checks"
-                    ))
-                    continue
-                }
-                do {
-                    if item.type == .directory {
-                        // Remove contents but keep the directory. Re-validate EACH
-                        // child: between scan and clean an app may have written new
-                        // files into its cache dir, and only item.path itself was
-                        // gated above. Permanent deletion is intentional here — this
-                        // module's role is removing regenerable cache (trashing it
-                        // would just hold junk in the Trash until emptied).
-                        let contents = try FileManager.default.contentsOfDirectory(
-                            at: item.path,
-                            includingPropertiesForKeys: nil
-                        )
-                        for content in contents {
-                            guard checker.validateForCleanup(content, moduleID: id, itemType: .file).isSafe else {
-                                continue
-                            }
-                            try CleanupFileRemover.permanent(content)
-                        }
-                    } else {
-                        try CleanupFileRemover.permanent(item.path)
-                    }
-                    processedCount += 1
-                    bytesFreed += item.size
-                } catch {
-                    errors.append(CleanupError(
-                        path: item.path,
-                        message: "Failed to delete: \(error.localizedDescription)",
-                        underlyingError: error
-                    ))
-                }
+                try CleanupFileRemover.permanent(item.path)
             }
         }
+    }
 
-        return CleanupResult(
-            itemsProcessed: processedCount,
-            bytesFreed: bytesFreed,
-            errors: errors
-        )
+    /// Recursively remove a validated subtree, returning whether `url` was fully
+    /// removed.
+    ///
+    /// Every node is re-checked at delete time — with its real on-disk type —
+    /// against BOTH the module's own protected-name list (`isProtected`) and the
+    /// shared `SafetyChecker`. Protected or unsafe nodes are left in place, and
+    /// any ancestor directory still holding a survivor is preserved rather than
+    /// force-deleted. This closes the gap where only immediate children were
+    /// validated before a blind recursive `permanent()` on the subtree.
+    @discardableResult
+    private func removeValidatedNode(_ url: URL, checker: SafetyChecker) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        let isSymlink = values?.isSymbolicLink == true
+        let isDirectory = values?.isDirectory == true && !isSymlink
+        let nodeType: CleanupItem.ItemType = isSymlink ? .symbolicLink : (isDirectory ? .directory : .file)
+
+        guard !isProtected(url) else { return false }
+        guard checker.validateForCleanup(url, moduleID: id, itemType: nodeType).isSafe else { return false }
+
+        if isDirectory {
+            let children = (try? FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            )) ?? []
+            var allChildrenRemoved = true
+            for child in children where !removeValidatedNode(child, checker: checker) {
+                allChildrenRemoved = false
+            }
+            // Only remove the directory once every child is gone; a surviving
+            // protected descendant keeps its ancestors alive.
+            guard allChildrenRemoved else { return false }
+        }
+
+        do {
+            try CleanupFileRemover.permanent(url)
+            return true
+        } catch {
+            return false
+        }
     }
 }
 

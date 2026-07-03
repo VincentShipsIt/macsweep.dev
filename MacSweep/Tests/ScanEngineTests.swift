@@ -209,6 +209,72 @@ struct ScanEngineTests {
         #expect(calls.isEmpty)
     }
 
+    // MARK: - Confirmation threshold (#78)
+
+    /// An item sized between the 1GB confirmation threshold and the 10GB hard cap.
+    private func largeSystemCacheItem() -> CleanupItem {
+        CleanupItem(
+            id: UUID(),
+            path: FileManager.default.temporaryDirectory.appendingPathComponent("large.cache"),
+            size: 2_000_000_000,  // > 1GB threshold, < 10GB hard cap
+            type: .file,
+            module: "system-cache",
+            moduleName: "System Cache"
+        )
+    }
+
+    @Test func cleanRequiresConfirmationOverThresholdWhenNotConfirmed() async {
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ])
+
+        do {
+            _ = try await engine.clean(items: [largeSystemCacheItem()], dryRun: false)
+            Issue.record("Expected .confirmationRequired to be thrown")
+        } catch let error as ScanEngineError {
+            guard case .confirmationRequired(let size) = error else {
+                Issue.record("Expected .confirmationRequired, got \(error)")
+                return
+            }
+            #expect(size == 2_000_000_000)
+        } catch {
+            Issue.record("Expected ScanEngineError, got \(error)")
+        }
+
+        // The delete must not have been dispatched.
+        let calls = await recorder.items(for: "system-cache")
+        #expect(calls.isEmpty)
+    }
+
+    @Test func cleanProceedsOverThresholdWhenConfirmed() async throws {
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ])
+
+        let result = try await engine.clean(
+            items: [largeSystemCacheItem()],
+            dryRun: false,
+            confirmedLargeDeletion: true
+        )
+
+        #expect(result.itemsProcessed == 1)
+        let calls = await recorder.items(for: "system-cache")
+        #expect(calls.count == 1)
+    }
+
+    @Test func dryRunOverThresholdNeverRequiresConfirmation() async throws {
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ])
+
+        // A preview touches nothing, so it is never gated regardless of size.
+        let result = try await engine.clean(items: [largeSystemCacheItem()], dryRun: true)
+        #expect(result.itemsProcessed == 1)
+    }
+
     // MARK: - Partial-scan diagnostics
 
     struct ScanFailure: Error {}

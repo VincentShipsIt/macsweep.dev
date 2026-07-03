@@ -31,6 +31,52 @@ extension ScanModule {
         guard size > 0 else { return nil }
         return CleanupItem(id: UUID(), path: url, size: size, type: type, module: id, moduleName: displayName)
     }
+
+    /// Shared implementation for modules that clean `CleanupItem`s one by one.
+    /// Keeps dry-run accounting, module filtering, and cleanup-time safety checks
+    /// consistent while each module supplies its own removal strategy.
+    func cleanItems(
+        _ items: [CleanupItem],
+        dryRun: Bool,
+        blockedMessage: String = "Blocked by safety checks",
+        errorMessage: @escaping (Error) -> String = { $0.localizedDescription },
+        remove: (CleanupItem, SafetyChecker) async throws -> Void
+    ) async -> CleanupResult {
+        var processed = 0
+        var freed: Int64 = 0
+        var errors: [CleanupError] = []
+        let checker = SafetyChecker()
+
+        for item in items where item.module == id {
+            if dryRun {
+                processed += 1
+                freed += item.size
+                continue
+            }
+
+            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: blockedMessage
+                ))
+                continue
+            }
+
+            do {
+                try await remove(item, checker)
+                processed += 1
+                freed += item.size
+            } catch {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: errorMessage(error),
+                    underlyingError: error
+                ))
+            }
+        }
+
+        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+    }
 }
 
 // MARK: - Cleanup Item

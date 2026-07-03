@@ -200,7 +200,7 @@ struct MailAttachmentsView: View {
         let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false)
+            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
             // The whole operation failed (e.g. deletion cap) — surface it and keep
             // every item, since nothing was removed.
@@ -241,15 +241,11 @@ struct MailAttachmentsView: View {
     }
 
     private var filteredSize: String {
-        let total = filteredAttachments.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredAttachments.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = filteredAttachments
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredAttachments.formattedTotalSize(selected: selectedItems)
     }
 }
 

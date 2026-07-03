@@ -346,7 +346,7 @@ struct PackageManagersView: View {
         let engine = ScanEngine()
         var cleanupError: String?
         do {
-            let result = try await engine.clean(items: itemsToClean, dryRun: false)
+            let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
             cleanupError = result.failureSummaryMessage
         } catch {
             // Total failure (e.g. DeletionGuard cap): nothing was deleted.
@@ -367,15 +367,11 @@ struct PackageManagersView: View {
     }
 
     private var totalSize: String {
-        let total = cacheItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = cacheItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize(selected: selectedItems)
     }
 }
 
