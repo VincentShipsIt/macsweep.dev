@@ -118,7 +118,7 @@ struct MenuBarView: View {
 
                     Spacer()
 
-                    Text(ByteCountFormatter.string(fromByteCount: appState.scanResults.reduce(0) { $0 + $1.size }, countStyle: .file))
+                    Text(appState.scanResults.formattedTotalSize())
                         .font(.caption)
                         .fontWeight(.medium)
                 }

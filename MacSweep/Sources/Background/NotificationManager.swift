@@ -24,16 +24,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     func sendScanComplete(bytesFound: Int64) {
         let content = UNMutableNotificationContent()
         content.title = "MacSweep Weekly Scan"
-
-        let gb = Double(bytesFound) / 1_000_000_000
-        let mb = Double(bytesFound) / 1_000_000
-
-        if gb >= 1 {
-            content.body = String(format: "Found %.1f GB of dev junk ready to clean. Tap to review.", gb)
-        } else {
-            content.body = String(format: "Found %.0f MB of dev junk ready to clean. Tap to review.", mb)
-        }
-
+        content.body = ScanNotificationContent.formattedBody(for: bytesFound)
         content.sound = .default
         content.categoryIdentifier = "SCAN_COMPLETE"
 

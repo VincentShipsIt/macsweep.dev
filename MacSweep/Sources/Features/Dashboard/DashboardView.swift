@@ -335,10 +335,7 @@ struct DashboardView: View {
     }
 
     private var selectedCleanupSizeText: String {
-        ByteCountFormatter.string(
-            fromByteCount: selectedCleanupItems.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        selectedCleanupItems.formattedTotalSize()
     }
 
     private var cleanupReviewGroups: [CleanupReviewGroup] {
@@ -625,10 +622,7 @@ struct DashboardView: View {
     // MARK: - Helpers
 
     private var scanResultsSizeText: String {
-        ByteCountFormatter.string(
-            fromByteCount: appState.scanResults.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        appState.scanResults.formattedTotalSize()
     }
 
     private var systemVersion: String {

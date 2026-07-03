@@ -356,15 +356,11 @@ struct PackageManagersView: View {
     }
 
     private var totalSize: String {
-        let total = cacheItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = cacheItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

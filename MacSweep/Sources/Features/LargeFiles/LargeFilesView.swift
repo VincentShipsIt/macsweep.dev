@@ -329,15 +329,11 @@ struct LargeFilesView: View {
     }
 
     private var totalSize: String {
-        let total = filteredItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = filteredItems
-            .filter { selectedItems.contains($0.id) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        filteredItems.formattedTotalSize(selected: selectedItems)
     }
 }
 

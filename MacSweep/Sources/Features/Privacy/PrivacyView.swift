@@ -288,15 +288,13 @@ struct PrivacyView: View {
     // MARK: - Computed
 
     private var totalSize: String {
-        let total = privacyItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        privacyItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        let total = privacyItems
+        privacyItems
             .filter { selectedCategories.contains($0.moduleName) }
-            .reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+            .formattedTotalSize()
     }
 }
 

@@ -227,14 +227,11 @@ struct CloudCleanupView: View {
     }
 
     private var totalSize: String {
-        ByteCountFormatter.string(fromByteCount: filteredItems.reduce(0) { $0 + $1.size }, countStyle: .file)
+        filteredItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: filteredItems.filter { selectedItems.contains($0.id) }.reduce(0) { $0 + $1.size },
-            countStyle: .file
-        )
+        filteredItems.formattedTotalSize(selected: selectedItems)
     }
 
     private func providerName(for moduleName: String) -> String {

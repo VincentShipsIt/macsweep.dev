@@ -828,8 +828,7 @@ struct DNSCacheView: View {
     }
 
     private var totalCacheSize: String {
-        let total = cacheItems.reduce(0) { $0 + $1.size }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        cacheItems.formattedTotalSize()
     }
 }
 
