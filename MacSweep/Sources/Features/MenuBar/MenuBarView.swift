@@ -282,6 +282,7 @@ struct MenuBarView: View {
         expandedWidget = widget
         MenuBarDetailPanel.shared.present(
             anchor: window,
+            preferredHeight: MenuBarDetailContent.preferredHeight(for: widget, monitor: monitor),
             content: AnyView(
                 MenuBarDetailContent(widget: widget, monitor: monitor, appState: appState) { feature in
                     appState.selectedFeature = feature
