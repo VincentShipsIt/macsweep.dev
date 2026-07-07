@@ -29,10 +29,11 @@ struct SpaceLensView: View {
             subtitle: "Visualize what's using your disk space.",
             trailing: currentNode == nil ? nil : AnyView(
                 Button { Task { await scanDisk() } } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
+                Label("Rescan", systemImage: "arrow.clockwise")
+            }
                 .glassButton().controlSize(.small).disabled(isScanning)
             ),
+            hidesChrome: isScanning || currentNode == nil,
             scrolls: isScanning || currentNode == nil
         ) {
             VStack(spacing: 0) {

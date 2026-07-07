@@ -51,23 +51,26 @@ struct AppUninstallerView: View {
             title: "Uninstaller",
             subtitle: "Remove apps and their leftover files completely."
         ) {
-            VStack(spacing: 0) {
+            VStack(spacing: 18) {
                 if let errorMessage {
                     MacSweepErrorBanner(message: errorMessage) {
                         self.errorMessage = nil
                     }
                 }
 
-                HSplitView {
-                    // App list
+                HStack(alignment: .top, spacing: 18) {
                     appListPane
-                        .frame(minWidth: 300)
+                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 400)
 
-                    // Detail pane
                     detailPane
-                        .frame(minWidth: 350)
+                        .frame(minWidth: 420, maxWidth: .infinity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal)
+            .padding(.top)
+            .padding(.bottom, 18)
         }
     }
 
@@ -108,6 +111,7 @@ struct AppUninstallerView: View {
             .padding()
 
             Divider()
+                .overlay(MacSweepTheme.divider)
 
             // App list
             if isLoading {
@@ -126,9 +130,12 @@ struct AppUninstallerView: View {
             // Orphaned leftovers section
             if !orphanedLeftovers.isEmpty {
                 Divider()
+                    .overlay(MacSweepTheme.divider)
                 orphanedSection
             }
         }
+        .frame(maxHeight: .infinity)
+        .macSweepPanel(radius: 12)
         .task {
             if !disableAutoLoad { await loadApps() }
         }
@@ -165,6 +172,8 @@ struct AppUninstallerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .macSweepPanel(radius: 12)
     }
 
     // MARK: - Orphaned Section

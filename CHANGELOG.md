@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-07-07
+
 ### Added
 
 - The dashboard's Mac-overview row now opens a System detail popover (chip,
@@ -131,7 +133,8 @@ Initial public release — a CLI-first native macOS system cleaner.
 - **Homebrew distribution** — build-from-source formula, no Apple Developer account
   or code signing required.
 
-[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.7...v1.0.8
 [1.0.6]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.4...v1.0.5
 [1.0.2]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.1...v1.0.2

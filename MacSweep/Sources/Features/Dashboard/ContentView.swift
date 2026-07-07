@@ -5,6 +5,16 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @State private var displayedFeature: Feature?
+    @State private var exitingFeature: Feature?
+    @State private var slidePhase = false
+    @State private var slideToken = UUID()
+
+    private let detailSlideDuration: TimeInterval = 0.58
+
+    private var detailSlideAnimation: Animation {
+        .timingCurve(0.75, 0.25, 0, 1.0, duration: detailSlideDuration)
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -15,13 +25,15 @@ struct ContentView: View {
                 MacSweepDetailBackground()
                     .ignoresSafeArea()
 
-                detailView
+                detailDeck
             }
-            // Page switches are an instant swap — no slide/cross-fade chrome motion.
-            // The onboarding hero still animates itself in via `ScanLandingView`'s
-            // own `onAppear` rise (a local animation), so onboarding screens keep
-            // their entrance while content/table pages stay still.
-            .navigationTitle(appState.selectedFeature.rawValue)
+            .clipped()
+            .onAppear {
+                displayedFeature = appState.selectedFeature
+            }
+            .onChange(of: appState.selectedFeature) { _, newFeature in
+                showFeature(newFeature)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         // No full-window gradient: it would bleed across the sidebar and leave the
@@ -59,72 +71,186 @@ struct ContentView: View {
         // selection chip.
     }
 
+    // MARK: - Detail Deck
+
+    private var activeFeature: Feature {
+        displayedFeature ?? appState.selectedFeature
+    }
+
+    private var detailDeck: some View {
+        GeometryReader { proxy in
+            let height = max(proxy.size.height, 1)
+
+            ZStack {
+                if let exitingFeature {
+                    detailView(for: exitingFeature)
+                        .id("exiting-\(exitingFeature.rawValue)-\(slideToken.uuidString)")
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .offset(y: slidePhase ? -height : 0)
+                        .zIndex(1)
+                }
+
+                detailView(for: activeFeature)
+                    .id("active-\(activeFeature.rawValue)-\(slideToken.uuidString)")
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .offset(y: exitingFeature == nil ? 0 : (slidePhase ? 0 : height))
+                    .zIndex(0)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+    }
+
+    private func showFeature(_ newFeature: Feature) {
+        let oldFeature = activeFeature
+        guard oldFeature != newFeature else { return }
+
+        let shouldSlide = usesCenteredLandingTransition(oldFeature)
+            && usesCenteredLandingTransition(newFeature)
+
+        slideToken = UUID()
+
+        guard shouldSlide else {
+            exitingFeature = nil
+            slidePhase = false
+            displayedFeature = newFeature
+            return
+        }
+
+        exitingFeature = oldFeature
+        displayedFeature = newFeature
+        slidePhase = false
+
+        let token = slideToken
+        DispatchQueue.main.async {
+            guard slideToken == token else { return }
+            withAnimation(detailSlideAnimation) {
+                slidePhase = true
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + detailSlideDuration + 0.04) {
+            guard slideToken == token else { return }
+            exitingFeature = nil
+            slidePhase = false
+        }
+    }
+
+    private func usesCenteredLandingTransition(_ feature: Feature) -> Bool {
+        if feature == .systemJunk, !appState.scanResults.isEmpty {
+            return false
+        }
+        return feature.usesCenteredLandingTransition
+    }
+
     // MARK: - Detail View
 
     @ViewBuilder
-    private var detailView: some View {
-        switch appState.selectedFeature {
+    private func detailView(for feature: Feature) -> some View {
+        switch feature {
         // Main
         case .smartScan:
-            DashboardView()
+            staticDetail(DashboardView())
         case .assistant:
-            AssistantView()
+            staticDetail(AssistantView())
         case .share:
-            ShareView()
+            staticDetail(ShareView())
 
         // Cleanup
         case .systemJunk:
-            SystemCleanupView()
+            landingDetail(SystemCleanupView(), enabled: appState.scanResults.isEmpty)
         case .mailAttachments:
-            MailAttachmentsView()
+            landingDetail(MailAttachmentsView())
         case .trashBins:
-            TrashBinsView()
+            landingDetail(TrashBinsView())
         case .devTools:
-            DevToolsView()
+            landingDetail(DevToolsView())
         case .aiAnalysis:
-            AIAnalysisView()
+            landingDetail(AIAnalysisView())
         case .networkCleanup:
-            NetworkCleanupView()
+            staticDetail(NetworkCleanupView())
         case .cloudCleanup:
-            CloudCleanupView()
+            landingDetail(CloudCleanupView())
 
         // Protection
         case .malwareRemoval:
-            MalwareScannerView()
+            landingDetail(MalwareScannerView())
         case .privacy:
-            PrivacyView()
+            landingDetail(PrivacyView())
         case .loginItems:
-            LoginItemsView()
+            staticDetail(LoginItemsView())
 
         // Speed
         case .optimization:
-            OptimizationView()
+            staticDetail(OptimizationView())
         case .batteryMonitor:
-            BatteryMonitorView()
+            staticDetail(BatteryMonitorView())
         case .maintenance:
-            MaintenanceView()
+            staticDetail(MaintenanceView())
 
         // Applications
         case .uninstaller:
-            AppUninstallerView()
+            staticDetail(AppUninstallerView())
         case .homebrewUpdater:
-            HomebrewUpdaterView()
+            staticDetail(HomebrewUpdaterView())
         case .updater:
-            PlaceholderFeatureView(feature: .updater)
+            staticDetail(PlaceholderFeatureView(feature: .updater))
         case .extensions:
-            PlaceholderFeatureView(feature: .extensions)
+            staticDetail(PlaceholderFeatureView(feature: .extensions))
 
         // Files
         case .spaceLens:
-            SpaceLensView()
+            landingDetail(SpaceLensView())
         case .largeOldFiles:
-            LargeFilesView()
+            landingDetail(LargeFilesView())
         case .duplicateFiles:
-            DuplicateFinderView()
+            landingDetail(DuplicateFinderView())
         case .similarPhotos:
-            SimilarPhotosView()
+            landingDetail(SimilarPhotosView())
         case .shredder:
-            ShredderView()
+            staticDetail(ShredderView())
+        }
+    }
+
+    private func landingDetail<Content: View>(_ content: Content, enabled _: Bool = true) -> some View {
+        content
+    }
+
+    private func staticDetail<Content: View>(_ content: Content) -> some View {
+        content
+    }
+}
+
+private extension Feature {
+    var usesCenteredLandingTransition: Bool {
+        switch self {
+        case .systemJunk,
+             .mailAttachments,
+             .trashBins,
+             .devTools,
+             .aiAnalysis,
+             .cloudCleanup,
+             .malwareRemoval,
+             .privacy,
+             .spaceLens,
+             .largeOldFiles,
+             .duplicateFiles,
+             .similarPhotos:
+            return true
+        case .smartScan,
+             .assistant,
+             .share,
+             .networkCleanup,
+             .loginItems,
+             .optimization,
+             .batteryMonitor,
+             .maintenance,
+             .uninstaller,
+             .homebrewUpdater,
+             .updater,
+             .extensions,
+             .shredder:
+            return false
         }
     }
 }

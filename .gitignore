@@ -57,6 +57,7 @@ Package.resolved
 logs/
 
 # Build artifacts
+dist/
 *.app
 *.ipa
 *.dSYM.zip

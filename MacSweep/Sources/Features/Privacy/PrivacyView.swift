@@ -29,6 +29,7 @@ struct PrivacyView: View {
                 .controlSize(.small)
                 .disabled(isScanning)
             ) : nil,
+            hidesChrome: isScanning || !hasScanned,
             scrolls: isScanning || !hasScanned
         ) {
             Group {

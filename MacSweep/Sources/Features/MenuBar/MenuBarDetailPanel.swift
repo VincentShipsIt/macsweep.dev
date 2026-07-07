@@ -101,7 +101,7 @@ struct MenuBarDetailContent: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(MacSweepCompanionSurface(radius: 14))
         .padding(8)
     }
 

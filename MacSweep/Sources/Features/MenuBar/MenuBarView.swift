@@ -23,7 +23,12 @@ struct MenuBarView: View {
         // window, which is what dragged the main panel around before.
         mainColumn
             .frame(width: 320)
-            .background(WindowAccessor { menuWindow = $0 })
+            .background(MacSweepCompanionSurface(radius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(WindowAccessor { window in
+                menuWindow = window
+                configureMenuWindow(window)
+            })
             .onDisappear {
                 // Menu-bar dropdown was dismissed → tear down the detail panel too.
                 MenuBarDetailPanel.shared.dismiss()
@@ -307,6 +312,13 @@ struct MenuBarView: View {
         }
     }
 
+    private func configureMenuWindow(_ window: NSWindow?) {
+        guard let window else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+    }
+
     // Colors routed through the shared MetricThresholds so the menu bar can't
     // flip a metric to warning/critical at a different boundary than the
     // dashboard or the detail popovers (issue #102).
@@ -403,7 +415,11 @@ struct SystemStatCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: MenuBarStatCardLayout.height, maxHeight: MenuBarStatCardLayout.height, alignment: .topLeading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .background(MacSweepTheme.panelStrong, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(MacSweepTheme.divider, lineWidth: 1)
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             onTap?()

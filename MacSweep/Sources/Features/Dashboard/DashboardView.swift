@@ -93,11 +93,8 @@ struct DashboardView: View {
         .navigationTitle("Smart Care")
         .navigationSubtitle("Review recommendations and current Mac health.")
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 rescanButton
-            }
-
-            ToolbarItem(placement: .primaryAction) {
                 cleanRecommendedButton
             }
         }

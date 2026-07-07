@@ -25,6 +25,7 @@ struct DuplicateFinderView: View {
                 Button { Task { await scanDuplicates() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
             ),
+            hidesChrome: duplicateItems.isEmpty,
             scrolls: duplicateItems.isEmpty
         ) {
             if let errorMessage {

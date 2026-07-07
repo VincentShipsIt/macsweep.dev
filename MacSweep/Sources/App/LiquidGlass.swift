@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // Centralized Liquid Glass (macOS 26 "Tahoe") helpers.
 //
@@ -88,10 +89,29 @@ extension View {
 
 // MARK: - App Surface Theme
 
+enum MacSweepWindowChrome {
+    private static let red: CGFloat = 0.080
+    private static let green: CGFloat = 0.086
+    private static let blue: CGFloat = 0.084
+
+    static let color = Color(
+        red: Double(red),
+        green: Double(green),
+        blue: Double(blue)
+    )
+
+    static let backgroundColor = NSColor(
+        calibratedRed: red,
+        green: green,
+        blue: blue,
+        alpha: 1
+    )
+}
+
 enum MacSweepTheme {
-    static let backgroundTop = Color(red: 0.080, green: 0.086, blue: 0.084)
-    static let backgroundMid = Color(red: 0.052, green: 0.058, blue: 0.056)
-    static let backgroundBottom = Color(red: 0.034, green: 0.038, blue: 0.038)
+    static let backgroundTop = MacSweepWindowChrome.color
+    static let backgroundMid = MacSweepWindowChrome.color
+    static let backgroundBottom = MacSweepWindowChrome.color
     static let panel = Color.white.opacity(0.050)
     static let panelStrong = Color.white.opacity(0.078)
     static let divider = Color.white.opacity(0.095)
@@ -131,6 +151,35 @@ struct MacSweepDetailBackground: View {
                 Spacer()
             }
         }
+    }
+}
+
+struct MacSweepCompanionSurface: View {
+    var radius: CGFloat = 16
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(MacSweepWindowChrome.color.opacity(0.74))
+            }
+            .overlay(alignment: .topLeading) {
+                LinearGradient(
+                    colors: [
+                        MacSweepTheme.accentBlue.opacity(0.22),
+                        MacSweepTheme.accent.opacity(0.08),
+                        .clear,
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(MacSweepTheme.divider, lineWidth: 1)
+            }
     }
 }
 

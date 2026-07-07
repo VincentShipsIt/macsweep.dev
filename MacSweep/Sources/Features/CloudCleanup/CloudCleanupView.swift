@@ -37,6 +37,7 @@ struct CloudCleanupView: View {
                 .controlSize(.small)
                 .disabled(isScanning)
             ),
+            hidesChrome: cloudItems.isEmpty,
             scrolls: cloudItems.isEmpty
         ) {
             VStack(spacing: 0) {

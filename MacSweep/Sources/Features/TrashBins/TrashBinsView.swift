@@ -45,6 +45,7 @@ struct TrashBinsView: View {
                     }
                 }
             ),
+            hidesChrome: trashItems.isEmpty && !(hasScanned && !isScanning && errorMessage == nil),
             scrolls: trashItems.isEmpty
         ) {
             VStack(spacing: 0) {
