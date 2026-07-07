@@ -24,6 +24,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Last Cleanup
     @Published var lastCleanup: CleanupResult?
+    @Published var cleanupPerformanceHistory: [CleanupPerformanceEntry] = []
 
     // MARK: - UI State
     @Published var selectedFeature: Feature = .smartScan
@@ -44,11 +45,14 @@ final class AppState: ObservableObject {
     let scanEngine = ScanEngine()
     let safetyChecker = SafetyChecker()
     let assistant = AssistantCoordinator()
+    private let cleanupPerformanceStore = CleanupPerformanceStore.shared
     private var activeScanTask: Task<Void, Never>?
     private var activeScanID: UUID?
 
     // MARK: - Initialization
     init() {
+        cleanupPerformanceHistory = cleanupPerformanceStore.history
+
         Task {
             await refreshDiskUsage()
         }
@@ -92,6 +96,7 @@ final class AppState: ObservableObject {
 
         if !dryRun {
             lastCleanup = result
+            recordCleanupPerformance(result)
             // Per-item failures are returned in result.errors (not thrown). Only
             // remove items that actually left disk; keep failed ones in the list
             // rather than silently dropping them.
@@ -124,6 +129,11 @@ final class AppState: ObservableObject {
 
     func deselectAll() {
         selectedItems.removeAll()
+    }
+
+    func recordCleanupPerformance(_ result: CleanupResult) {
+        cleanupPerformanceStore.record(result)
+        cleanupPerformanceHistory = cleanupPerformanceStore.history
     }
 
     func selectItems(withIDs ids: Set<CleanupItem.ID>) {
@@ -294,7 +304,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
     var features: [Feature] {
         switch self {
         case .main:
-            return [.smartScan, .assistant]
+            return [.smartScan, .assistant, .share]
         case .cleanup:
             return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
         case .protection:
@@ -313,6 +323,7 @@ enum Feature: String, CaseIterable, Identifiable {
     // Main
     case smartScan = "Smart Care"
     case assistant = "Assistant"
+    case share = "Share"
 
     // Cleanup
     case systemJunk = "System Junk"
@@ -353,6 +364,7 @@ enum Feature: String, CaseIterable, Identifiable {
         // Main
         case .smartScan: return "sparkles.rectangle.stack"
         case .assistant: return "bubble.left"
+        case .share: return "square.and.arrow.up"
 
         // Cleanup
         case .systemJunk: return "gearshape.2"
@@ -390,7 +402,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     var section: FeatureSection {
         switch self {
-        case .smartScan, .assistant: return .main
+        case .smartScan, .assistant, .share: return .main
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .batteryMonitor, .maintenance: return .speed

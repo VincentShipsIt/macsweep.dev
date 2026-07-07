@@ -69,6 +69,8 @@ struct ContentView: View {
             DashboardView()
         case .assistant:
             AssistantView()
+        case .share:
+            ShareView()
 
         // Cleanup
         case .systemJunk:
