@@ -51,6 +51,7 @@ struct LargeFilesView: View {
                 Button { Task { await scanLargeFiles() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
             ),
+            hidesChrome: largeItems.isEmpty,
             scrolls: largeItems.isEmpty
         ) {
             VStack(spacing: 0) {

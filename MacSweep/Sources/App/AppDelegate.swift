@@ -129,7 +129,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .none
         window.isOpaque = false
-        window.backgroundColor = .clear
+        window.backgroundColor = MacSweepWindowChrome.backgroundColor
         window.isRestorable = false
         window.contentViewController = NSHostingController(
             rootView: ContentView()

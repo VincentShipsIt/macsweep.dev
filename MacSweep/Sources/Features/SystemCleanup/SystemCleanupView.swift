@@ -20,6 +20,7 @@ struct SystemCleanupView: View {
                 .controlSize(.small)
                 .disabled(appState.isScanning)
             ),
+            hidesChrome: appState.scanResults.isEmpty,
             scrolls: appState.scanResults.isEmpty
         ) {
             if appState.scanResults.isEmpty {

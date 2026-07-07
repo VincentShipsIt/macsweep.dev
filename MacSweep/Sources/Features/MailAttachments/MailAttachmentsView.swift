@@ -21,6 +21,7 @@ struct MailAttachmentsView: View {
                 Button { Task { await scanAttachments() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
             ),
+            hidesChrome: attachments.isEmpty,
             scrolls: attachments.isEmpty
         ) {
             if attachments.isEmpty {

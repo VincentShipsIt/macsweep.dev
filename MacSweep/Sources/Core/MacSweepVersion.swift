@@ -4,5 +4,5 @@ import Foundation
 /// (`macsweep version`) and any caller that needs to report the running build.
 /// Keep this in sync with `MARKETING_VERSION` in `project.yml`.
 public enum MacSweepVersion {
-    public static let current = "1.0.7"
+    public static let current = "1.0.8"
 }

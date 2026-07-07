@@ -25,6 +25,7 @@ struct SimilarPhotosView: View {
                 Button { Task { await scanPhotos() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
                     .glassButton().controlSize(.small).disabled(isScanning)
             ),
+            hidesChrome: photoItems.isEmpty,
             scrolls: photoItems.isEmpty
         ) {
             if let errorMessage {

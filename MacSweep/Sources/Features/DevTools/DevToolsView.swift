@@ -20,6 +20,7 @@ struct DevToolsView: View {
         FeaturePageShell(
             title: "Developer Tools",
             subtitle: "Clean build artifacts, caches, and stale Git branches.",
+            hidesChrome: selectedTab == .artifacts && !showsTabPicker,
             scrolls: selectedTab == .artifacts && !showsTabPicker
         ) {
             VStack(spacing: 0) {

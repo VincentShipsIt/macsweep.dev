@@ -8,6 +8,7 @@ struct FeaturePageShell<Content: View>: View {
     let title: String
     let subtitle: String?
     var trailing: AnyView? = nil
+    var hidesChrome: Bool = false
     /// Wrap `content` in a real `ScrollView` (an `NSScrollView`). REQUIRED whenever
     /// the content is a sparse, pure-SwiftUI layout with no scroll/table of its own
     /// — e.g. a `ScanLandingView` hero. Without an `NSScrollView` in the detail, the
@@ -24,11 +25,13 @@ struct FeaturePageShell<Content: View>: View {
     init(title: String,
          subtitle: String? = nil,
          trailing: AnyView? = nil,
+         hidesChrome: Bool = false,
          scrolls: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.trailing = trailing
+        self.hidesChrome = hidesChrome
         self.scrolls = scrolls
         self.content = content
     }
@@ -37,16 +40,20 @@ struct FeaturePageShell<Content: View>: View {
         contentContainer
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
-        .navigationTitle(hidesTitlebarChrome ? "" : title)
-        .navigationSubtitle(hidesTitlebarChrome ? "" : (subtitle ?? ""))
+        .navigationTitle(shouldHideChrome ? "" : title)
+        .navigationSubtitle(shouldHideChrome ? "" : (subtitle ?? ""))
         .toolbar {
-            if !hidesTitlebarChrome, let trailing {
+            if !shouldHideChrome, let trailing {
                 ToolbarItem(placement: .primaryAction) {
                     trailing
                 }
             }
         }
         .onPreferenceChange(FeaturePageChromeHiddenPreferenceKey.self) { hidesTitlebarChrome = $0 }
+    }
+
+    private var shouldHideChrome: Bool {
+        hidesChrome || hidesTitlebarChrome
     }
 
     @ViewBuilder
@@ -56,7 +63,7 @@ struct FeaturePageShell<Content: View>: View {
             // vertically centered, and lets it scroll if the window is shorter
             // than the content.
             GeometryReader { proxy in
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     content()
                         .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
@@ -108,13 +115,6 @@ struct ScanLandingView: View {
     var scanningMessage: String? = nil
     var hidesPageChrome: Bool = true
     let action: () -> Void
-
-    /// Drives the hero's own slide-up + fade entrance. Page switches themselves are
-    /// an instant swap (see `ContentView`), so this local animation is what gives the
-    /// onboarding screen its signature CleanMyMac-style rise — and it fires only when
-    /// the hero actually appears (navigation *or* clearing back to empty), never for
-    /// a results table or any content page.
-    @State private var hasEntered = false
 
     var body: some View {
         Group {
@@ -169,13 +169,6 @@ struct ScanLandingView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
-                // Self-contained entrance: rise + fade in whenever the hero appears.
-                .offset(y: hasEntered ? 0 : 28)
-                .opacity(hasEntered ? 1 : 0)
-                .onAppear {
-                    hasEntered = false
-                    withAnimation(.easeOut(duration: 0.4)) { hasEntered = true }
-                }
             }
         }
         .preference(key: FeaturePageChromeHiddenPreferenceKey.self, value: hidesPageChrome)
