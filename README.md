@@ -61,7 +61,7 @@ Then install the stable MacSweep app and CLI:
 
 brew tap vincentshipsit/tap
 brew trust --formula vincentshipsit/tap/macsweep
-brew install --cask macsweep
+brew install --cask vincentshipsit/tap/macsweep
 macsweep version
 
 Do not run any cleanup, delete, apply, shred, uninstall, or maintenance commands.
@@ -79,7 +79,7 @@ pulls in the `macsweep` CLI formula as a dependency:
 ```bash
 brew tap vincentshipsit/tap
 brew trust --formula vincentshipsit/tap/macsweep   # required for the CLI formula
-brew install --cask macsweep                        # installs GUI + CLI
+brew install --cask vincentshipsit/tap/macsweep     # installs GUI + CLI
 ```
 
 Verify both entry points:
@@ -92,21 +92,21 @@ macsweep version
 Want only the headless CLI?
 
 ```bash
-brew install macsweep
+brew install --formula vincentshipsit/tap/macsweep
 ```
 
 Prefer the bleeding edge from `master`:
 
 ```bash
-brew install --HEAD macsweep  # CLI only
+brew install --formula --HEAD vincentshipsit/tap/macsweep  # CLI only
 ```
 
 Keep the full desktop install current:
 
 ```bash
 brew update
-brew upgrade --cask macsweep
-brew upgrade macsweep
+brew upgrade --cask vincentshipsit/tap/macsweep
+brew upgrade --formula vincentshipsit/tap/macsweep
 ```
 
 The CLI formula still supports self-update helpers:
