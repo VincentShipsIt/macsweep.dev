@@ -275,7 +275,7 @@ struct DetailBox: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 

@@ -304,7 +304,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
     var features: [Feature] {
         switch self {
         case .main:
-            return [.smartScan, .assistant, .share]
+            return [.smartScan, .assistant]
         case .cleanup:
             return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
         case .protection:

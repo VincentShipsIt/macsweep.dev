@@ -45,7 +45,7 @@ struct SpaceLensView: View {
 
                 if !isScanning, let node = currentNode {
                     contentToolbar
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
 
                     HSplitView {
                         visualizationPane(node: node)
@@ -200,7 +200,7 @@ struct SpaceLensView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial)
+        .macSweepCard(radius: 0)
         .confirmationDialog(
             "Move to Trash?",
             isPresented: $showingTrashConfirmation,

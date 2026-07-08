@@ -7,9 +7,7 @@ import AppKit
 /// headless snapshot renderer — that supplies its own `@main`.
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
     private static let sharedAppState = AppState()
-    private static var fallbackMainWindow: NSWindow?
 
     private var windowObserver: Any?
 
@@ -30,9 +28,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            _ = AppDelegate.openMainWindowIfNeeded()
-        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -43,13 +38,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleWindowClose(_ notification: Notification) {
         guard let closedWindow = notification.object as? NSWindow else { return }
-        if closedWindow == Self.fallbackMainWindow {
-            Self.fallbackMainWindow = nil
-        }
 
-        // Check if this is a main window (not menu bar panel)
+        // Check if this is the main app window (not menu bar panel/settings).
         guard closedWindow.level == .normal,
-              closedWindow.styleMask.contains(.titled) else { return }
+              closedWindow.styleMask.contains(.titled),
+              closedWindow.title == "MacSweep" else { return }
 
         // After a brief delay, check if any main windows remain. Use a MainActor
         // Task (not a bare DispatchQueue closure) so the AppKit reads and the
@@ -59,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let hasMainWindow = NSApplication.shared.windows.contains { window in
                 window.level == .normal &&
                 window.styleMask.contains(.titled) &&
+                window.title == "MacSweep" &&
                 window.isVisible
             }
 
@@ -72,7 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Dock re-open should recover minimized or hidden windows instead of
         // leaving the app active with no visible surface.
-        _ = AppDelegate.openMainWindowIfNeeded()
+        _ = AppDelegate.focusMainWindow()
         return true
     }
 
@@ -92,7 +86,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static func focusMainWindow() -> Bool {
         showDockIcon()
 
-        guard let window = NSApplication.shared.windows.first(where: isMainAppWindow) else {
+        guard let window = NSApplication.shared.windows.first(where: { window in
+            window.level == .normal &&
+            window.styleMask.contains(.titled) &&
+            window.title == "MacSweep"
+        }) else {
             return false
         }
 
@@ -103,55 +101,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
-        // The show request is dispatched to the window server asynchronously, so
-        // `window.isVisible` is still false here. Returning it would make
-        // openMainWindowIfNeeded() think focusing failed and spawn a SECOND
-        // fallback window on top of the one we just ordered front. We found a real
-        // main window and asked it to show — report success.
         return true
-    }
-
-    @discardableResult
-    static func openMainWindowIfNeeded() -> Bool {
-        if focusMainWindow() {
-            return true
-        }
-
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: mainWindowLaunchSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "MacSweep"
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified
-        window.titlebarSeparatorStyle = .none
-        window.isOpaque = false
-        window.backgroundColor = MacSweepWindowChrome.backgroundColor
-        window.isRestorable = false
-        window.contentViewController = NSHostingController(
-            rootView: ContentView()
-                .environmentObject(sharedAppState)
-        )
-        window.setContentSize(mainWindowLaunchSize)
-        window.center()
-
-        fallbackMainWindow = window
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        return true
-    }
-
-    private static func isMainAppWindow(_ window: NSWindow) -> Bool {
-        guard window.level == .normal else { return false }
-        guard window.styleMask.contains(.titled) else { return false }
-        guard window.canBecomeKey || window.canBecomeMain else { return false }
-
-        // MenuBarExtra uses its own transient window. It can look window-like to
-        // AppKit, so keep focus recovery aimed at the real app surface.
-        return window.frame.width >= 500 && window.frame.height >= 350
     }
 }

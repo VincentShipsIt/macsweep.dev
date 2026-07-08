@@ -43,7 +43,6 @@ struct SystemCleanupView: View {
                 resultsList
 
                 Divider()
-                    .overlay(MacSweepTheme.divider)
 
                 footer
             }

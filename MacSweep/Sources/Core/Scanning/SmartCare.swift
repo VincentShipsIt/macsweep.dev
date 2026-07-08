@@ -44,7 +44,6 @@ enum SmartCareDefaults {
         "mail-attachments",
         "dev-tools",
         "cloud-cleanup",
-        AssistantWatchlistModule.moduleID,
     ]
 }
 

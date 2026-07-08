@@ -375,7 +375,7 @@ struct BrowserResultCard: View {
                 }
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 
@@ -486,7 +486,7 @@ struct ServiceWorkerSection: View {
                 }
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 

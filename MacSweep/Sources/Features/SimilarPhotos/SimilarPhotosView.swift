@@ -50,9 +50,9 @@ struct SimilarPhotosView: View {
                 )
             } else {
                 filterBar
-                Divider().overlay(MacSweepTheme.divider)
+                Divider()
                 itemsList
-                Divider().overlay(MacSweepTheme.divider)
+                Divider()
                 footer
             }
         }

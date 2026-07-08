@@ -109,7 +109,7 @@ struct ConnectedDeviceRow: View {
             }
         }
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 

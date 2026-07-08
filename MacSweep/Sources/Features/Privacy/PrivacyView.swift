@@ -64,7 +64,6 @@ struct PrivacyView: View {
                             }
 
                             Divider()
-                                .overlay(MacSweepTheme.divider)
 
                             quickActionsSection
                         }
@@ -330,7 +329,7 @@ struct QuickActionCard: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .macSweepCard(radius: 12)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)

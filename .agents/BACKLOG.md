@@ -1,8 +1,8 @@
 # MacSweep Backlog — Consolidated Implementation Brief
 
-Status date: 2026-07-03
-Source: full review of 3 open PRs (#73, #74, #75) and 60 open issues (#10–#123).
-Audience: implementing agent (Opus 4.8). Work top-to-bottom by workstream; each workstream lists its issues, dependencies, and verification bar.
+Status date: 2026-07-08
+Source: historical backlog retained for issue context. The open-PR merge instructions below are superseded: PRs #73, #74, and #75 have already merged, master is at `83bf12f`, and the current UI/chrome contract lives in `.agents/UI-FIX-BRIEF-2026-07-08.md`.
+Audience: implementing agents needing historical issue context. Verify every item against current master before acting.
 
 ## How to use this document
 
@@ -11,17 +11,9 @@ Audience: implementing agent (Opus 4.8). Work top-to-bottom by workstream; each 
 - Verification per PR: `swift build` + `zsh scripts/test.sh` locally (focused), full CI on the PR. Deletion-adjacent changes require new/updated tests before the behavior change.
 - Close issues via PR body keywords (`Fixes #NN`). Update the tracking issue #121 checklist as items land.
 
-## Step 0 — land the open PRs (blocking everything else)
+## Step 0 — current status
 
-Merge order: **#75 → #74 → #73**.
-
-1. **PR #75** (`docs: repo-wide DRY/slop audit report`) — docs-only, CI green, merge state CLEAN. Merge as-is.
-2. **PR #74** (`docs(audit): repo map — audit 00`) — CI green. Note the title undersells the content: it also adds `docs/audits/01-deletion-safety.md` and `MacSweep/Tests/SafetyCheckerCaseSensitivityTests.swift` (the xfail test that issue #122 depends on). Merge as-is; the test must land before #122 work starts.
-3. **PR #73** (`[codex] share cleanup and error banner components`) — **do not merge yet.** Two unresolved CodeRabbit *Major* findings arrived after the last push and are real correctness bugs in the new shared code:
-   - `BrowserModule.swift:69` — the running-browser guard executes before `cleanItems` filters by module id, so a running browser can block *unrelated* cleanup on mixed/empty selections. Move the guard after the module filter (or filter first).
-   - `SystemCacheModule.swift:233` — directory children are validated as `.file` (line 230) before **permanent** deletion; subdirectory-specific protections are skipped. Validate each child with its real type.
-
-   Fix both on the PR branch, re-run CI, then merge. Once merged, #73 substantially implements #91 (shared `cleanItems`) and the banner half of #100 — see the dedupe notes below before touching either issue.
+No PR merge is required before implementation. The old Step 0 instructions for PRs #75, #74, and #73 are complete. For the July 8 UI pass, start from master `83bf12f`, park any local hand-rolled chrome WIP, and follow `.agents/UI-FIX-BRIEF-2026-07-08.md`.
 
 ### Post-merge link fix (one-time)
 

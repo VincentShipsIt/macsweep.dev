@@ -198,7 +198,7 @@ struct DualLineGraph: View {
         )
         .frame(height: 100)
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
 
         DualLineGraph(
             downloadData: [1024, 2048, 1536, 4096, 3072, 2560],
@@ -206,7 +206,7 @@ struct DualLineGraph: View {
         )
         .frame(height: 80)
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
     .padding()
 }

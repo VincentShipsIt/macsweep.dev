@@ -33,7 +33,7 @@ struct BatteryMonitorView: View {
 
                     BatteryDetailView(monitor: monitor)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .macSweepPanel()
+                        .macSweepCard()
 
                     connectedDevicesSection
 
@@ -56,7 +56,7 @@ struct BatteryMonitorView: View {
             ConnectedDevicesDetailView(monitor: monitor, showsHeader: false)
                 .padding(18)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+                .macSweepCard(radius: 20)
         }
     }
 
@@ -114,7 +114,7 @@ struct BatteryMonitorView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .macSweepPanel()
+        .macSweepCard()
     }
 
     private var quickActionsCard: some View {
@@ -157,7 +157,7 @@ struct BatteryMonitorView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .macSweepPanel()
+        .macSweepCard()
     }
 
     private var insightsSection: some View {
@@ -187,7 +187,7 @@ struct BatteryMonitorView: View {
                 )
             }
             .padding(18)
-            .macSweepPanel()
+            .macSweepCard()
         }
     }
 

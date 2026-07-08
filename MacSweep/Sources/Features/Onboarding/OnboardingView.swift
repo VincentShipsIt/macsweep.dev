@@ -211,7 +211,7 @@ struct FDAPermissionPageView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 
     private var actionButtons: some View {
@@ -359,7 +359,7 @@ struct OnboardingPageView: View {
                 }
             }
             .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .macSweepCard(radius: 12)
 
             Spacer()
         }

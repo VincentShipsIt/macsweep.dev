@@ -142,7 +142,7 @@ struct MemoryDetailView: View {
                 color: alertLevel.color
             )
             .frame(height: 60)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .macSweepCard(radius: 8)
         }
     }
 

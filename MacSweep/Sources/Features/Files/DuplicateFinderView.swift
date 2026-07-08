@@ -50,9 +50,9 @@ struct DuplicateFinderView: View {
                 )
             } else {
                 filterBar
-                Divider().overlay(MacSweepTheme.divider)
+                Divider()
                 duplicatesList
-                Divider().overlay(MacSweepTheme.divider)
+                Divider()
                 footer
             }
         }

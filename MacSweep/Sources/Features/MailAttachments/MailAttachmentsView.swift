@@ -41,11 +41,11 @@ struct MailAttachmentsView: View {
                 )
             } else {
                 filterBar
-                Divider().overlay(MacSweepTheme.divider)
+                Divider()
                 attachmentsList
 
                 if !filteredAttachments.isEmpty {
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
                     footer
                 }
             }

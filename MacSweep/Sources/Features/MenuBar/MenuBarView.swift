@@ -282,7 +282,6 @@ struct MenuBarView: View {
         expandedWidget = widget
         MenuBarDetailPanel.shared.present(
             anchor: window,
-            preferredHeight: MenuBarDetailContent.preferredHeight(for: widget, monitor: monitor),
             content: AnyView(
                 MenuBarDetailContent(widget: widget, monitor: monitor, appState: appState) { feature in
                     appState.selectedFeature = feature
@@ -416,11 +415,7 @@ struct SystemStatCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: MenuBarStatCardLayout.height, maxHeight: MenuBarStatCardLayout.height, alignment: .topLeading)
-        .background(MacSweepTheme.panelStrong, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(MacSweepTheme.divider, lineWidth: 1)
-        }
+        .macSweepCard(radius: 10)
         .contentShape(Rectangle())
         .onTapGesture {
             onTap?()

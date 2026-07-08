@@ -150,7 +150,7 @@ struct ShredderView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .macSweepCard(radius: 8)
             }
         }
     }
@@ -268,7 +268,7 @@ struct ShredderView: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 
     // MARK: - Result Sheet

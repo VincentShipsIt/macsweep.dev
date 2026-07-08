@@ -121,7 +121,7 @@ struct NetworkDetailView: View {
                 uploadData: monitor.networkUploadHistory
             )
             .frame(height: 80)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .macSweepCard(radius: 8)
         }
     }
 
@@ -147,7 +147,7 @@ struct NetworkDetailView: View {
                 )
             }
             .padding()
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .macSweepCard(radius: 12)
         }
     }
 
@@ -208,7 +208,7 @@ struct SpeedMeter: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 
