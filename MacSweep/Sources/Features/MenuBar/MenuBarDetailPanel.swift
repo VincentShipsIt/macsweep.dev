@@ -26,26 +26,35 @@ final class MenuBarDetailPanel {
     /// Show `content` as a panel immediately to the left of `anchor`, aligned by
     /// the visible top edge. Detail views keep their own height instead of being
     /// stretched to the overview panel's height.
-    func present(anchor: NSWindow, preferredHeight: CGFloat, content: AnyView) {
+    func present(anchor: NSWindow, content: AnyView) {
         let width = MenuBarCompanionPanelLayout.detailWidth
         let p = ensurePanel()
         p.level = anchor.level
         let a = anchor.frame
         let visibleFrame = anchor.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? a
+        let hostingView = NSHostingView(
+            rootView: AnyView(content
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true))
+        )
+        hostingView.setFrameSize(NSSize(width: width, height: 10_000))
+        hostingView.layoutSubtreeIfNeeded()
         let maxHeight = max(
             MenuBarCompanionPanelLayout.minDetailHeight,
             visibleFrame.height - (MenuBarCompanionPanelLayout.screenPadding * 2)
         )
-        let height = min(max(preferredHeight, MenuBarCompanionPanelLayout.minDetailHeight), maxHeight)
+        let measuredHeight = hostingView.fittingSize.height
+        let height = min(max(measuredHeight, MenuBarCompanionPanelLayout.minDetailHeight), maxHeight)
         let topY = min(a.maxY, visibleFrame.maxY - MenuBarCompanionPanelLayout.screenPadding)
         let y = max(visibleFrame.minY + MenuBarCompanionPanelLayout.screenPadding, topY - height)
-
-        p.contentView = NSHostingView(
-            rootView: content
-                .frame(width: width, height: height)
-                .clipped()
+        let x = max(
+            visibleFrame.minX + MenuBarCompanionPanelLayout.screenPadding,
+            a.minX - width - MenuBarCompanionPanelLayout.panelGap
         )
-        p.setFrame(NSRect(x: a.minX - width, y: y, width: width, height: height), display: true)
+
+        hostingView.rootView = AnyView(content.frame(width: width, height: height))
+        p.contentView = hostingView
+        p.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         p.orderFront(nil)
     }
 
@@ -70,7 +79,8 @@ final class MenuBarDetailPanel {
 enum MenuBarCompanionPanelLayout {
     static let detailWidth: CGFloat = 320
     static let cornerRadius: CGFloat = 16
-    static let minDetailHeight: CGFloat = 240
+    static let minDetailHeight: CGFloat = 120
+    static let panelGap: CGFloat = 12
     static let screenPadding: CGFloat = 8
 }
 
@@ -98,7 +108,9 @@ struct MenuBarDetailContent: View {
                     .font(.caption)
                     .foregroundStyle(.blue)
             }
-            .padding(.bottom, 10)
+
+            Divider()
+                .padding(.bottom, 10)
 
             ScrollView(showsIndicators: false) {
                 detailBody
@@ -132,28 +144,6 @@ struct MenuBarDetailContent: View {
             SystemDetailView(monitor: monitor)
         }
     }
-
-    static func preferredHeight(for widget: WidgetType, monitor: SystemMonitor) -> CGFloat {
-        switch widget {
-        case .storage:
-            return 500
-        case .memory:
-            return 540
-        case .battery:
-            return 430
-        case .cpu:
-            return 500
-        case .network:
-            return 460
-        case .devices:
-            let deviceRows = max(monitor.connectedDevices.count, 1)
-            let measuredHeight = 110 + CGFloat(deviceRows * 62)
-            return min(max(measuredHeight, 240), 500)
-        case .system:
-            return 400
-        }
-    }
-
     private var title: String {
         switch widget {
         case .storage: return "Macintosh HD"

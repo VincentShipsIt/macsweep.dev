@@ -21,12 +21,7 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
-            ZStack {
-                MacSweepDetailBackground()
-                    .ignoresSafeArea()
-
-                detailDeck
-            }
+            detailDeck
             .clipped()
             .onAppear {
                 displayedFeature = appState.selectedFeature
@@ -38,8 +33,7 @@ struct ContentView: View {
         .navigationSplitViewStyle(.balanced)
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
-        // and native glass chrome carry the look. GradientBackground is reserved
-        // for subtle, content-only accents elsewhere.
+        // and native glass chrome carry the look.
     }
 
     // MARK: - Sidebar
@@ -268,201 +262,6 @@ struct SidebarRow: View {
     }
 }
 
-// MARK: - Gradient Background
-
-struct GradientBackground: View {
-    var body: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.35, green: 0.25, blue: 0.55),  // Purple
-                Color(red: 0.25, green: 0.20, blue: 0.45),  // Darker purple
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-    }
-}
-
-// MARK: - Smart Scan View (Welcome Screen)
-
-struct SmartScanView: View {
-    @EnvironmentObject var appState: AppState
-    @StateObject private var monitor = SystemMonitor()
-    @State private var isHovering = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Assistant button (top right)
-            HStack {
-                Spacer()
-                Button {
-                    // Open assistant/help
-                } label: {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(.green)
-                            .frame(width: 8, height: 8)
-                        Text("Assistant")
-                    }
-                }
-                // Floating chrome control → native Liquid Glass capsule (the .glass
-                // style supplies the capsule shape, padding and material itself).
-                .glassButton()
-            }
-            .padding()
-
-            Spacer()
-
-            // Center content
-            VStack(spacing: 32) {
-                // App icon / illustration
-                AppIllustration()
-                    .frame(width: 280, height: 280)
-
-                // Welcome text
-                VStack(spacing: 8) {
-                    Text("Welcome to MacSweep")
-                        .font(.system(size: 36, weight: .bold))
-
-                    Text("Start with a nice and thorough scan of your Mac.")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Scan button
-            ScanButton(isScanning: appState.isScanning, progress: appState.scanProgress) {
-                Task {
-                    await appState.scan()
-                }
-            }
-            .padding(.bottom, 60)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// MARK: - App Illustration
-
-struct AppIllustration: View {
-    var body: some View {
-        ZStack {
-            // Monitor shape
-            RoundedRectangle(cornerRadius: 24)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.95, green: 0.6, blue: 0.7),
-                            Color(red: 0.85, green: 0.5, blue: 0.65)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 200, height: 160)
-                .offset(y: -20)
-
-            // Stand
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.gray.opacity(0.5))
-                .frame(width: 80, height: 20)
-                .offset(y: 80)
-
-            // Smart Care icon
-            Image(systemName: "sparkles.rectangle.stack")
-                .font(.system(size: 60))
-                .foregroundStyle(.white.opacity(0.9))
-                .rotationEffect(.degrees(-45))
-                .offset(x: 20, y: -20)
-        }
-    }
-}
-
-// MARK: - Scan Button (Circular)
-
-struct ScanButton: View {
-    let isScanning: Bool
-    let progress: Double
-    let action: () -> Void
-
-    @State private var isHovering = false
-    @State private var pulseAnimation = false
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                // Outer glow ring
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [.cyan.opacity(0.5), .blue.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 3
-                    )
-                    .frame(width: 140, height: 140)
-                    .scaleEffect(pulseAnimation ? 1.1 : 1.0)
-                    .opacity(pulseAnimation ? 0 : 1)
-
-                // Background circle — Liquid Glass orb (interactive: it's the tap
-                // target of the primary scan action).
-                Circle()
-                    .fill(.clear)
-                    .frame(width: 120, height: 120)
-                    .glassControl(in: Circle(), interactive: true)
-
-                // Progress ring (when scanning)
-                if isScanning {
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(
-                            LinearGradient(
-                                colors: [.cyan, .blue],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                        )
-                        .frame(width: 120, height: 120)
-                        .rotationEffect(.degrees(-90))
-                }
-
-                // Inner content
-                if isScanning {
-                    VStack(spacing: 4) {
-                        ProgressView()
-                            .controlSize(.regular)
-                        Text("\(Int(progress * 100))%")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("Scan")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                }
-            }
-            .scaleEffect(isHovering ? 1.05 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .disabled(isScanning)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isHovering = hovering
-            }
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: false)) {
-                pulseAnimation = true
-            }
-        }
-    }
-}
-
 // MARK: - Placeholder Feature View
 
 struct PlaceholderFeatureView: View {
@@ -619,7 +418,7 @@ struct MaintenanceTaskRow: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .macSweepCard(radius: 12)
     }
 }
 

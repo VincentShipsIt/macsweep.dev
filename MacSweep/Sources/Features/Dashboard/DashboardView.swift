@@ -90,8 +90,8 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
-        .navigationTitle("Smart Care")
-        .navigationSubtitle("Review recommendations and current Mac health.")
+        .navigationTitle("")
+        .navigationSubtitle("")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 rescanButton
@@ -132,7 +132,7 @@ struct DashboardView: View {
             Image(systemName: appState.isScanning ? "hourglass" : "arrow.clockwise")
         }
         .disabled(appState.isScanning)
-        .help(appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan")
+        .help(scanButtonTitle)
     }
 
     private var cleanRecommendedButton: some View {
@@ -212,7 +212,7 @@ struct DashboardView: View {
                             await appState.quickScan()
                         }
                     } label: {
-                        Label(appState.isScanning ? "Scanning" : (appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan"), systemImage: "arrow.clockwise")
+                        Label(appState.isScanning ? "Scanning" : scanButtonTitle, systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
@@ -258,6 +258,10 @@ struct DashboardView: View {
         if score >= 85 { return .green }
         if score >= 65 { return .orange }
         return .red
+    }
+
+    private var scanButtonTitle: String {
+        appState.smartCareSummary == nil ? "Run Smart Care" : "Rescan"
     }
 
     private var smartCareHeadline: String {
@@ -382,68 +386,75 @@ struct DashboardView: View {
             }
         }
 
-        RecommendationRow(
-            icon: "xmark.app",
-            title: "Uninstall Apps",
-            detail: "Remove applications you do not use anymore.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .uninstaller
+        if hasSmartCareFinding(for: "large-files") {
+            RecommendationRow(
+                icon: "doc.badge.clock",
+                title: "Large & Old Files",
+                detail: "Find files taking up space.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .largeOldFiles
+            }
         }
 
-        RecommendationRow(
-            icon: "doc.badge.clock",
-            title: "Large & Old Files",
-            detail: "Find files taking up space.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .largeOldFiles
+        if hasSmartCareFinding(for: "dev-tools") {
+            RecommendationRow(
+                icon: "hammer",
+                title: "Developer Tools",
+                detail: "Clean node_modules, DerivedData, package caches, and stale build artifacts.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .devTools
+            }
         }
 
-        RecommendationRow(
-            icon: "hammer",
-            title: "Developer Tools",
-            detail: "Clean node_modules, DerivedData, package caches, and stale build artifacts.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .devTools
+        if hasSmartCareFinding(for: "duplicates") {
+            RecommendationRow(
+                icon: "doc.on.doc",
+                title: "Duplicate Files",
+                detail: "Find redundant copies and recover wasted storage.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .duplicateFiles
+            }
         }
 
-        RecommendationRow(
-            icon: "doc.on.doc",
-            title: "Duplicate Files",
-            detail: "Find redundant copies and recover wasted storage.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .duplicateFiles
+        if monitor.batteryInfo.hasBattery {
+            RecommendationRow(
+                icon: monitor.batteryInfo.icon,
+                title: "Battery Monitor",
+                detail: "Track health, cycle count, and charge behavior.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .batteryMonitor
+            }
         }
 
-        RecommendationRow(
-            icon: monitor.batteryInfo.icon,
-            title: "Battery Monitor",
-            detail: monitor.batteryInfo.hasBattery ? "Track health, cycle count, and charge behavior." : "This Mac is on desktop power.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .batteryMonitor
+        if hasSmartCareFinding(for: "similar-photos") {
+            RecommendationRow(
+                icon: "photo.stack",
+                title: "Similar Photos",
+                detail: "Review visually similar images and keep the best shots.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .similarPhotos
+            }
         }
 
-        RecommendationRow(
-            icon: "photo.stack",
-            title: "Similar Photos",
-            detail: "Review visually similar images and keep the best shots.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .similarPhotos
+        if hasSmartCareFinding(for: "cloud-cleanup") {
+            RecommendationRow(
+                icon: "icloud",
+                title: "Cloud Cleanup",
+                detail: "Reclaim local storage from stale cloud copies and caches.",
+                buttonTitle: "Open"
+            ) {
+                appState.selectedFeature = .cloudCleanup
+            }
         }
+    }
 
-        RecommendationRow(
-            icon: "icloud",
-            title: "Cloud Cleanup",
-            detail: "Reclaim local storage from stale cloud copies and caches.",
-            buttonTitle: "Open"
-        ) {
-            appState.selectedFeature = .cloudCleanup
-        }
+    private func hasSmartCareFinding(for moduleID: String) -> Bool {
+        appState.smartCareSummary?.findings.contains { $0.moduleID == moduleID } ?? false
     }
 
     // MARK: - Mac Overview
@@ -602,6 +613,27 @@ struct DashboardView: View {
                 title: "Last Cleanup",
                 detail: "Freed \(cleanup.formattedBytesFreed) \(relativeTimeText(for: cleanup.timestamp))"
             )
+
+            HStack(spacing: 12) {
+                DashboardRowIcon(systemName: "square.and.arrow.up", tint: .purple)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Share your results")
+                        .font(.headline)
+                    Text("Create a social cleanup card from your cleanup history.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Share") {
+                    appState.selectedFeature = .share
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.vertical, 4)
         }
 
         if !appState.scanResults.isEmpty {
@@ -740,6 +772,7 @@ private extension View {
             self
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .scrollIndicators(.hidden)
         .frame(width: DashboardPopoverLayout.width)
         .frame(maxHeight: maxHeight)
     }

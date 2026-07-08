@@ -58,7 +58,6 @@ struct AIAnalysisView: View {
                 resultsList
 
                 Divider()
-                    .overlay(MacSweepTheme.divider)
 
                 bottomBar
             }
@@ -328,7 +327,7 @@ struct CategoryHeader: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background(MacSweepTheme.backgroundMid.opacity(0.96))
+        .background(.bar)
     }
 }
 

@@ -90,7 +90,7 @@ struct CPUDetailView: View {
                 color: .orange
             )
             .frame(height: 80)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .macSweepCard(radius: 8)
         }
     }
 

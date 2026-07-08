@@ -89,32 +89,37 @@ extension View {
 
 // MARK: - App Surface Theme
 
-enum MacSweepWindowChrome {
-    private static let red: CGFloat = 0.080
-    private static let green: CGFloat = 0.086
-    private static let blue: CGFloat = 0.084
-
-    static let color = Color(
-        red: Double(red),
-        green: Double(green),
-        blue: Double(blue)
-    )
-
-    static let backgroundColor = NSColor(
-        calibratedRed: red,
-        green: green,
-        blue: blue,
-        alpha: 1
-    )
-}
-
 enum MacSweepTheme {
-    static let backgroundTop = MacSweepWindowChrome.color
-    static let backgroundMid = MacSweepWindowChrome.color
-    static let backgroundBottom = MacSweepWindowChrome.color
-    static let panel = Color.white.opacity(0.050)
-    static let panelStrong = Color.white.opacity(0.078)
-    static let divider = Color.white.opacity(0.095)
+    static let panel = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.035),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.045),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.07),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.09)
+    )
+    static let panelStrong = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.055),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.075),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.10),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.14)
+    )
+    static let glassCardTint = Color.adaptive(
+        light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.18),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.055),
+        lightHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.28),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.12)
+    )
+    static let glassCardStroke = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.12),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.15),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.24),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.28)
+    )
+    static let companionTint = Color.adaptive(
+        light: NSColor(srgbRed: 0.50, green: 0.66, blue: 0.72, alpha: 0.16),
+        dark: NSColor(srgbRed: 0.08, green: 0.20, blue: 0.24, alpha: 0.18),
+        lightHighContrast: NSColor(srgbRed: 0.50, green: 0.66, blue: 0.72, alpha: 0.20),
+        darkHighContrast: NSColor(srgbRed: 0.08, green: 0.20, blue: 0.24, alpha: 0.20)
+    )
     static let accent = Color(red: 0.22, green: 0.86, blue: 0.58)
     static let accentBlue = Color(red: 0.22, green: 0.52, blue: 0.84)
     static let warningPanel = Color.orange.opacity(0.12)
@@ -123,86 +128,106 @@ enum MacSweepTheme {
     static let mediumRadius: CGFloat = 10
 }
 
-struct MacSweepDetailBackground: View {
-    var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    MacSweepTheme.backgroundTop,
-                    MacSweepTheme.backgroundMid,
-                    MacSweepTheme.backgroundBottom,
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [
-                        MacSweepTheme.accent.opacity(0.13),
-                        MacSweepTheme.accentBlue.opacity(0.04),
-                        .clear,
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(height: 1)
-
-                Spacer()
-            }
-        }
-    }
-}
-
 struct MacSweepCompanionSurface: View {
     var radius: CGFloat = 16
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(MacSweepWindowChrome.color.opacity(0.74))
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+
+        shape
+            .fill(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            .background {
+                if !reduceTransparency {
+                    shape.fill(.ultraThinMaterial)
+                }
             }
-            .overlay(alignment: .topLeading) {
+            .overlay {
+                if !reduceTransparency {
+                    shape.fill(MacSweepTheme.companionTint)
+                }
+            }
+            .overlay {
                 LinearGradient(
                     colors: [
-                        MacSweepTheme.accentBlue.opacity(0.22),
+                        MacSweepTheme.accentBlue.opacity(reduceTransparency ? 0.06 : 0.14),
                         MacSweepTheme.accent.opacity(0.08),
                         .clear,
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .clipShape(shape)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(MacSweepTheme.divider, lineWidth: 1)
+                shape.stroke(MacSweepTheme.glassCardStroke, lineWidth: 1)
             }
     }
 }
 
-private struct MacSweepPanelModifier: ViewModifier {
+private struct MacSweepCardModifier: ViewModifier {
     let radius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+
         content
-            .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: radius))
+            .background {
+                shape.fill(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            }
+            .background {
+                if !reduceTransparency {
+                    shape.fill(.ultraThinMaterial)
+                }
+            }
             .overlay {
-                RoundedRectangle(cornerRadius: radius)
-                    .stroke(MacSweepTheme.divider, lineWidth: 1)
+                if !reduceTransparency {
+                    shape.fill(MacSweepTheme.glassCardTint)
+                }
+            }
+            .overlay {
+                shape.stroke(MacSweepTheme.glassCardStroke, lineWidth: 0.6)
             }
     }
 }
 
 extension View {
-    func macSweepPanel(radius: CGFloat = MacSweepTheme.mediumRadius) -> some View {
-        modifier(MacSweepPanelModifier(radius: radius))
+    func macSweepCard(radius: CGFloat = MacSweepTheme.mediumRadius) -> some View {
+        modifier(MacSweepCardModifier(radius: radius))
     }
 
     func macSweepListSurface() -> some View {
         scrollContentBackground(.hidden)
             .background(Color.clear)
+    }
+}
+
+extension Color {
+    static func adaptive(
+        light: NSColor,
+        dark: NSColor,
+        lightHighContrast: NSColor? = nil,
+        darkHighContrast: NSColor? = nil
+    ) -> Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                switch appearance.bestMatch(from: [
+                    .aqua,
+                    .darkAqua,
+                    .accessibilityHighContrastAqua,
+                    .accessibilityHighContrastDarkAqua,
+                ]) {
+                case .darkAqua:
+                    return dark
+                case .accessibilityHighContrastAqua:
+                    return lightHighContrast ?? light
+                case .accessibilityHighContrastDarkAqua:
+                    return darkHighContrast ?? dark
+                default:
+                    return light
+                }
+            }
+        )
     }
 }

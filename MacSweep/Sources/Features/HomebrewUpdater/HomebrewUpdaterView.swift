@@ -37,12 +37,12 @@ struct HomebrewUpdaterView: View {
                 }
 
                 if !service.packages.isEmpty && !service.isLoading {
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
                     bottomBar
                 }
 
                 if service.isUpgrading || showLog && !service.upgradeLog.isEmpty {
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
                     upgradeLogView
                 }
             }
@@ -206,7 +206,7 @@ struct HomebrewUpdaterView: View {
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
-        .background(.ultraThinMaterial)
+        .macSweepCard(radius: 12)
     }
 }
 

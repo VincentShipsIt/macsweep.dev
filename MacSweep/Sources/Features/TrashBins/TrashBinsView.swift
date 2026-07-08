@@ -76,7 +76,7 @@ struct TrashBinsView: View {
                     }
                 } else {
                     trashList
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
                     footer
                 }
             }

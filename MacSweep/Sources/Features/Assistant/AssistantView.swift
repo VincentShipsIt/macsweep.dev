@@ -35,22 +35,17 @@ struct AssistantView: View {
     var body: some View {
         FeaturePageShell(
             title: "Assistant",
-            subtitle: "Plan scans, inspect folders, and maintain watchlists.",
-            trailing: AnyView(headerActions)
+            trailing: AnyView(assistantActions)
         ) {
             conversationColumn
         }
     }
 
-    private var headerActions: some View {
+    private var assistantActions: some View {
         HStack(spacing: 8) {
             SettingsLink {
-                Label("Assistant Settings", systemImage: "slider.horizontal.3")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "slider.horizontal.3")
             }
-            .buttonStyle(.plain)
-            .controlSize(.small)
             .help("Assistant Settings")
 
             Button {
@@ -58,14 +53,11 @@ struct AssistantView: View {
                     await appState.runAssistantPlan(watchlistPlan)
                 }
             } label: {
-                Label("Scan Watchlists", systemImage: "scope")
-                    .font(.caption)
+                Image(systemName: "scope")
                     .foregroundStyle(
                         assistant.enabledTargets.isEmpty || appState.isScanning ? .secondary : MacSweepTheme.accent
                     )
             }
-            .buttonStyle(.plain)
-            .controlSize(.small)
             .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
             .help("Scan Watchlists")
         }
@@ -124,7 +116,6 @@ struct AssistantView: View {
             }
 
             Divider()
-                .overlay(MacSweepTheme.divider)
 
             composer
                 .frame(maxWidth: 920)
@@ -174,11 +165,7 @@ struct AssistantView: View {
                 .help(assistant.isSubmitting ? "Thinking..." : "Send")
             }
             .padding(12)
-            .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(MacSweepTheme.divider, lineWidth: 1)
-            )
+            .macSweepCard(radius: 12)
         }
     }
 
@@ -282,7 +269,7 @@ private struct AssistantPromptSuggestionCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 88, alignment: .topLeading)
-        .macSweepPanel(radius: MacSweepTheme.smallRadius)
+        .macSweepCard(radius: MacSweepTheme.smallRadius)
     }
 }
 
@@ -316,7 +303,6 @@ private struct AssistantMessageBubble: View {
 
             if let plan = message.plan {
                 Divider()
-                    .overlay(MacSweepTheme.divider)
 
                 if let provider = plan.provider {
                     Label(provider.displayName, systemImage: "cpu")
@@ -367,7 +353,7 @@ private struct AssistantMessageBubble: View {
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(MacSweepTheme.divider.opacity(message.role == .user ? 0.35 : 0.8), lineWidth: 1)
+                .stroke(MacSweepTheme.glassCardStroke.opacity(message.role == .user ? 0.45 : 0.8), lineWidth: 1)
         }
     }
 
@@ -389,7 +375,7 @@ private struct AssistantMessageBubble: View {
         case .user:
             return Color.accentColor.opacity(0.16)
         case .assistant:
-            return MacSweepTheme.panelStrong
+            return MacSweepTheme.glassCardTint
         }
     }
 }
@@ -406,7 +392,7 @@ private struct AssistantThinkingBubble: View {
                     .foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(MacSweepTheme.panelStrong, in: RoundedRectangle(cornerRadius: 14))
+            .macSweepCard(radius: 14)
 
             Spacer(minLength: 64)
         }

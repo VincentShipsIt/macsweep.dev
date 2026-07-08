@@ -77,12 +77,12 @@ struct LargeFilesView: View {
                     )
                 } else {
                     filterBar
-                    Divider().overlay(MacSweepTheme.divider)
+                    Divider()
 
                     itemsList
 
                     if !filteredItems.isEmpty {
-                        Divider().overlay(MacSweepTheme.divider)
+                        Divider()
                         footer
                     }
                 }

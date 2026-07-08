@@ -97,7 +97,7 @@ struct AppUninstallerView: View {
                     .disabled(isLoading)
                 }
                 .padding(8)
-                .macSweepPanel(radius: MacSweepTheme.smallRadius)
+                .macSweepCard(radius: MacSweepTheme.smallRadius)
 
                 // Sort
                 Picker("Sort by", selection: $sortOrder) {
@@ -111,7 +111,6 @@ struct AppUninstallerView: View {
             .padding()
 
             Divider()
-                .overlay(MacSweepTheme.divider)
 
             // App list
             if isLoading {
@@ -130,12 +129,11 @@ struct AppUninstallerView: View {
             // Orphaned leftovers section
             if !orphanedLeftovers.isEmpty {
                 Divider()
-                    .overlay(MacSweepTheme.divider)
                 orphanedSection
             }
         }
         .frame(maxHeight: .infinity)
-        .macSweepPanel(radius: 12)
+        .macSweepCard(radius: 12)
         .task {
             if !disableAutoLoad { await loadApps() }
         }
@@ -173,7 +171,7 @@ struct AppUninstallerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .macSweepPanel(radius: 12)
+        .macSweepCard(radius: 12)
     }
 
     // MARK: - Orphaned Section
@@ -216,7 +214,7 @@ struct AppUninstallerView: View {
             .disabled(isCleaningOrphans || orphanedLeftovers.isEmpty)
             .padding()
         }
-        .background(.ultraThinMaterial)
+        .macSweepCard(radius: 0)
         .confirmationDialog(
             "Move \(orphanedLeftovers.count) orphaned items to Trash?",
             isPresented: $showingCleanOrphansConfirmation,
@@ -418,7 +416,7 @@ struct AppDetailView: View {
                     SizeRow(label: "Total", size: app.totalSize, isTotal: true)
                 }
                 .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .macSweepCard(radius: 12)
                 .padding(.horizontal)
 
                 // Leftovers list

@@ -105,7 +105,7 @@ struct ShareView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
-        .macSweepPanel()
+        .macSweepCard()
     }
 
     private var tweetText: String {

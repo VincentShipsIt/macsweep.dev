@@ -207,7 +207,7 @@ struct PackageManagersView: View {
             }
         }
         .padding()
-        .macSweepPanel()
+        .macSweepCard()
     }
 
     // MARK: - Empty State
@@ -479,7 +479,7 @@ struct PackageManagerCard: View {
             }
         }
         .padding()
-        .macSweepPanel()
+        .macSweepCard()
     }
 
     private func toggleAll() {
@@ -526,7 +526,7 @@ struct DockerStatCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .macSweepPanel(radius: MacSweepTheme.smallRadius)
+        .macSweepCard(radius: MacSweepTheme.smallRadius)
     }
 }
 
@@ -574,7 +574,7 @@ struct DockerActionButton: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .macSweepPanel(radius: MacSweepTheme.smallRadius)
+            .macSweepCard(radius: MacSweepTheme.smallRadius)
         }
         .buttonStyle(.plain)
         .foregroundStyle(isDestructive ? .red : .primary)

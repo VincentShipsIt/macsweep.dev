@@ -34,7 +34,6 @@ struct DevToolsView: View {
                     .padding(12)
 
                     Divider()
-                        .overlay(MacSweepTheme.divider)
                 }
 
                 switch selectedTab {
@@ -118,12 +117,10 @@ struct BuildArtifactsView: View {
                 VStack(spacing: 0) {
                     toolbar
                     Divider()
-                        .overlay(MacSweepTheme.divider)
 
                     contentView
 
                     Divider()
-                        .overlay(MacSweepTheme.divider)
                     footer
                 }
             }
