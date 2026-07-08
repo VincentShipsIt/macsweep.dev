@@ -108,8 +108,7 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA256}"
 
-            url "https://github.com/VincentShipsIt/macsweep/releases/download/v#{version}/macsweep-v#{version}-macos.zip",
-                verified: "github.com/VincentShipsIt/macsweep/"
+            url "https://github.com/VincentShipsIt/macsweep/releases/download/v#{version}/macsweep-v#{version}-macos.zip"
             name "MacSweep"
             desc "Native macOS system cleaner"
             homepage "https://github.com/VincentShipsIt/macsweep"
@@ -118,11 +117,12 @@ jobs:
             depends_on macos: :tahoe
 
             app "MacSweep.app"
+            binary "#{HOMEBREW_PREFIX}/opt/macsweep/bin/macsweep", target: "macsweep"
           end
           RUBY
 
           echo "----- updated cask (url + sha256 + dependency) -----"
-          grep -E '^\s*(version|sha256|url|depends_on|app) ' "$C"
+          grep -E '^\s*(version|sha256|url|depends_on|app|binary) ' "$C"
 
           # Fail loudly if the generated cask does not install the GUI and depend on
           # the formula that provides the CLI.
