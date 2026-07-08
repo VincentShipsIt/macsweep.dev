@@ -306,11 +306,11 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .networkCleanup, .cloudCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .cloudCleanup]
         case .protection:
             return [.malwareRemoval, .privacy]
         case .speed:
-            return [.optimization, .batteryMonitor]
+            return [.optimization, .networkCleanup, .batteryMonitor]
         case .applications:
             return [.uninstaller]  // updater, extensions, homebrewUpdater hidden from sidebar
         case .files:
@@ -403,9 +403,9 @@ enum Feature: String, CaseIterable, Identifiable {
     var section: FeatureSection {
         switch self {
         case .smartScan, .assistant, .share: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .networkCleanup, .cloudCleanup: return .cleanup
+        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
-        case .optimization, .batteryMonitor, .maintenance: return .speed
+        case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .homebrewUpdater, .updater, .extensions: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }

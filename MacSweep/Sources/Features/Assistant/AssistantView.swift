@@ -35,22 +35,17 @@ struct AssistantView: View {
     var body: some View {
         FeaturePageShell(
             title: "Assistant",
-            subtitle: "Plan scans, inspect folders, and maintain watchlists.",
-            trailing: AnyView(headerActions)
+            trailing: AnyView(assistantActions)
         ) {
             conversationColumn
         }
     }
 
-    private var headerActions: some View {
+    private var assistantActions: some View {
         HStack(spacing: 8) {
             SettingsLink {
-                Label("Assistant Settings", systemImage: "slider.horizontal.3")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "slider.horizontal.3")
             }
-            .buttonStyle(.plain)
-            .controlSize(.small)
             .help("Assistant Settings")
 
             Button {
@@ -58,14 +53,11 @@ struct AssistantView: View {
                     await appState.runAssistantPlan(watchlistPlan)
                 }
             } label: {
-                Label("Scan Watchlists", systemImage: "scope")
-                    .font(.caption)
+                Image(systemName: "scope")
                     .foregroundStyle(
                         assistant.enabledTargets.isEmpty || appState.isScanning ? .secondary : MacSweepTheme.accent
                     )
             }
-            .buttonStyle(.plain)
-            .controlSize(.small)
             .disabled(assistant.enabledTargets.isEmpty || appState.isScanning)
             .help("Scan Watchlists")
         }

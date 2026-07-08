@@ -395,6 +395,7 @@ extension Feature {
         switch self {
         case .smartScan: return "smart-care"
         case .assistant: return "assistant"
+        case .share: return "share"
         case .systemJunk: return "system-junk"
         case .mailAttachments: return "mail-attachments"
         case .trashBins: return "trash-bins"

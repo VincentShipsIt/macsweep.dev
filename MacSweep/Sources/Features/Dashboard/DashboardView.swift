@@ -90,8 +90,8 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
-        .navigationTitle("Smart Care")
-        .navigationSubtitle("Review recommendations and current Mac health.")
+        .navigationTitle("")
+        .navigationSubtitle("")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 rescanButton

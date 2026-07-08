@@ -40,8 +40,8 @@ struct FeaturePageShell<Content: View>: View {
         contentContainer
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
-        .navigationTitle(shouldHideChrome ? "" : title)
-        .navigationSubtitle(shouldHideChrome ? "" : (subtitle ?? ""))
+        .navigationTitle("")
+        .navigationSubtitle("")
         .toolbar {
             if !shouldHideChrome, let trailing {
                 ToolbarItem(placement: .primaryAction) {
