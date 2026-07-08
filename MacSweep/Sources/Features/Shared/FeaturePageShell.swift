@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// One shared shell for every feature page so they stop drifting. Content pages
-/// put title, subtitle, and one optional trailing action in the native titlebar;
-/// pre-scan landing views opt out because their hero already carries the page
-/// title and call to action.
+/// One shared shell for every feature page so they stop drifting. The visible
+/// page title lives in the sidebar or page content; this shell keeps title and
+/// subtitle as accessibility metadata and owns one optional native toolbar
+/// action cluster. Pre-scan landing views opt out because their hero already
+/// carries the page title and call to action.
 struct FeaturePageShell<Content: View>: View {
     let title: String
     let subtitle: String?
@@ -42,6 +43,8 @@ struct FeaturePageShell<Content: View>: View {
         .background(Color.clear)
         .navigationTitle("")
         .navigationSubtitle("")
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle ?? "")
         .toolbar {
             if !shouldHideChrome, let trailing {
                 ToolbarItem(placement: .primaryAction) {
