@@ -7,6 +7,7 @@ import AppKit
 /// headless snapshot renderer — that supplies its own `@main`.
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static let mainWindowIdentifier = NSUserInterfaceItemIdentifier("com.vincentshipsit.macsweep.main-window")
     private static let sharedAppState = AppState()
 
     private var windowObserver: Any?
@@ -40,9 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let closedWindow = notification.object as? NSWindow else { return }
 
         // Check if this is the main app window (not menu bar panel/settings).
-        guard closedWindow.level == .normal,
-              closedWindow.styleMask.contains(.titled),
-              closedWindow.title == "MacSweep" else { return }
+        guard Self.isMainWindow(closedWindow) else { return }
 
         // After a brief delay, check if any main windows remain. Use a MainActor
         // Task (not a bare DispatchQueue closure) so the AppKit reads and the
@@ -50,10 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 100_000_000)
             let hasMainWindow = NSApplication.shared.windows.contains { window in
-                window.level == .normal &&
-                window.styleMask.contains(.titled) &&
-                window.title == "MacSweep" &&
-                window.isVisible
+                Self.isMainWindow(window) && window.isVisible
             }
 
             if !hasMainWindow {
@@ -87,9 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showDockIcon()
 
         guard let window = NSApplication.shared.windows.first(where: { window in
-            window.level == .normal &&
-            window.styleMask.contains(.titled) &&
-            window.title == "MacSweep"
+            isMainWindow(window)
         }) else {
             return false
         }
@@ -102,5 +96,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
         return true
+    }
+
+    static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.level == .normal &&
+        window.styleMask.contains(.titled) &&
+        window.identifier == mainWindowIdentifier
     }
 }

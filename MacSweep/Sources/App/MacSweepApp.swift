@@ -41,6 +41,7 @@ struct MacSweepApp: App {
     private var mainWindowContent: some View {
         ContentView()
             .environmentObject(appDelegate.appState)
+            .background(MainWindowIdentifierAccessor())
             // Open compact and centered every launch (CleanMyMac-style), instead of
             // restoring whatever — often full-height — frame the window was last
             // dragged to.
@@ -80,5 +81,21 @@ struct MacSweepApp: App {
 private struct MacSweepMenuBarLabel: View {
     var body: some View {
         Label("MacSweep", image: "MenuBarIcon")
+    }
+}
+
+private struct MainWindowIdentifierAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { tagWindow(for: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { tagWindow(for: nsView) }
+    }
+
+    private func tagWindow(for view: NSView) {
+        view.window?.identifier = AppDelegate.mainWindowIdentifier
     }
 }

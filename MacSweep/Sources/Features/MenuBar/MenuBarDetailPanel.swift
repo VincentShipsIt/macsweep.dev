@@ -32,18 +32,18 @@ final class MenuBarDetailPanel {
         p.level = anchor.level
         let a = anchor.frame
         let visibleFrame = anchor.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? a
-        let measuringView = NSHostingView(
-            rootView: content
+        let hostingView = NSHostingView(
+            rootView: AnyView(content
                 .frame(width: width)
-                .fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: true))
         )
-        measuringView.setFrameSize(NSSize(width: width, height: 10_000))
-        measuringView.layoutSubtreeIfNeeded()
+        hostingView.setFrameSize(NSSize(width: width, height: 10_000))
+        hostingView.layoutSubtreeIfNeeded()
         let maxHeight = max(
             MenuBarCompanionPanelLayout.minDetailHeight,
             visibleFrame.height - (MenuBarCompanionPanelLayout.screenPadding * 2)
         )
-        let measuredHeight = measuringView.fittingSize.height
+        let measuredHeight = hostingView.fittingSize.height
         let height = min(max(measuredHeight, MenuBarCompanionPanelLayout.minDetailHeight), maxHeight)
         let topY = min(a.maxY, visibleFrame.maxY - MenuBarCompanionPanelLayout.screenPadding)
         let y = max(visibleFrame.minY + MenuBarCompanionPanelLayout.screenPadding, topY - height)
@@ -52,10 +52,8 @@ final class MenuBarDetailPanel {
             a.minX - width - MenuBarCompanionPanelLayout.panelGap
         )
 
-        p.contentView = NSHostingView(
-            rootView: content
-                .frame(width: width, height: height)
-        )
+        hostingView.rootView = AnyView(content.frame(width: width, height: height))
+        p.contentView = hostingView
         p.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         p.orderFront(nil)
     }
