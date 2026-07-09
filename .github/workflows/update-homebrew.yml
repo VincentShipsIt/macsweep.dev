@@ -133,17 +133,19 @@ jobs:
             depends_on macos: :tahoe
 
             app "MacSweep.app"
+            binary "#{HOMEBREW_PREFIX}/opt/macsweep/bin/macsweep", target: "macsweep"
           end
           RUBY
 
           echo "----- updated cask (url + sha256 + dependency) -----"
-          grep -E '^\s*(version|sha256|url|depends_on|app) ' "$C"
+          grep -E '^\s*(version|sha256|url|depends_on|app|binary) ' "$C"
 
           # Fail loudly if the generated cask does not install the GUI and depend on
           # the formula that provides the CLI.
           grep -q "version \"${VERSION}\"" "$C" || { echo "::error::cask version was not updated"; exit 1; }
           grep -q "sha256 \"${SHA256}\"" "$C" || { echo "::error::cask sha256 was not updated"; exit 1; }
           grep -q 'macsweep-v#{version}-macos.zip' "$C" || { echo "::error::cask url does not reference the app zip"; exit 1; }
+          grep -q 'verified: "github.com/VincentShipsIt/macsweep/"' "$C" || { echo "::error::cask url verification host is missing"; exit 1; }
           grep -q 'depends_on formula: "vincentshipsit/tap/macsweep"' "$C" || { echo "::error::cask does not depend on the CLI formula"; exit 1; }
           grep -q 'app "MacSweep.app"' "$C" || { echo "::error::cask does not install MacSweep.app"; exit 1; }
 

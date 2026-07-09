@@ -7,8 +7,8 @@ name: Release
 # MacSweep's formula is build-from-source: its `url` is GitHub's auto-generated source
 # tarball for the tag (archive/refs/tags/<tag>.tar.gz) and `sha256` is that tarball's
 # digest. The cask is prebuilt: it downloads the Developer ID-signed, notarized,
-# and stapled MacSweep.app zip and depends on the formula so
-# `brew install --cask macsweep` installs both GUI + CLI.
+# and stapled MacSweep.app zip. It depends on the formula, so
+# `brew install --cask vincentshipsit/tap/macsweep` installs both GUI + CLI.
 
 on:
   push:

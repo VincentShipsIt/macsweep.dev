@@ -119,7 +119,7 @@ struct ShareView: View {
         return """
         MacSweep cleanup receipt: \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.
         Cleanups: \(summary.cleanupCount). Items cleaned: \(cleaned). Success rate: \(success).
-        Install: brew tap vincentshipsit/tap && brew install --cask macsweep
+        Install: brew install --cask vincentshipsit/tap/macsweep
         """
     }
 
@@ -351,7 +351,7 @@ private struct CleanupPerformanceShareCard: View {
     private var footer: some View {
         HStack(spacing: 12) {
             CleanupShareFooterPill(icon: "chevron.left.forwardslash.chevron.right", text: "github.com/VincentShipsIt/macsweep")
-            CleanupShareFooterPill(icon: "terminal", text: "brew tap vincentshipsit/tap && brew install --cask macsweep")
+            CleanupShareFooterPill(icon: "terminal", text: "brew install --cask vincentshipsit/tap/macsweep")
         }
     }
 
