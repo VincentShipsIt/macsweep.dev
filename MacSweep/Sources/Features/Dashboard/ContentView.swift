@@ -810,7 +810,14 @@ struct AboutView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Link("View on GitHub", destination: URL(string: "https://github.com/VincentShipsIt/macsweep")!)
+            HStack(spacing: 12) {
+                Link("macsweep.dev", destination: URL(string: "https://macsweep.dev")!)
+
+                Divider()
+                    .frame(height: 12)
+
+                Link("View on GitHub", destination: URL(string: "https://github.com/VincentShipsIt/macsweep")!)
+            }
                 .font(.caption)
         }
         .padding()

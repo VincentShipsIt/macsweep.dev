@@ -18,11 +18,12 @@
 # the source tarball checksum, the app zip, and the app zip checksum, then bumps
 # both tap files. `release.sh sha` remains a read-only formula checksum helper.
 #
-# No code signing / notarization yet: distribution is brew build-from-source.
-# This script therefore performs NO outward-facing actions — it never creates a
-# git tag, never pushes, never edits the tap's formula/cask (that needs a tag that
-# already exists on GitHub). It verifies, bumps local sources, and prints the
-# remaining manual steps. Safe to run in CI or a pre-commit hook.
+# Developer ID signing and notarization happen in the tag-triggered Release
+# workflow, using credentials stored in GitHub's protected `release`
+# environment. This script performs NO outward-facing actions — it never
+# creates a git tag, never pushes, and never edits the tap's formula/cask (that
+# needs a tag that already exists on GitHub). It verifies, bumps local sources,
+# and prints the remaining manual steps. Safe to run in CI or a pre-commit hook.
 #
 # Usage:
 #   scripts/release.sh check          Verify all version sources agree (read-only).

@@ -10,10 +10,8 @@ settings:
   base:
     MARKETING_VERSION: "1.0.8"
     CURRENT_PROJECT_VERSION: "1"
-    DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    CODE_SIGN_IDENTITY: "-"
 
 targets:
   MacSweep:
@@ -28,6 +26,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vincentshipsit.macsweep
+        INFOPLIST_FILE: Info.plist
         INFOPLIST_GENERATION_MODE: GeneratedFile
         INFOPLIST_KEY_CFBundleDisplayName: MacSweep
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
@@ -40,11 +39,13 @@ targets:
         ENABLE_APP_SANDBOX: NO
         # Hardened runtime required for notarization
         ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Release:
+          # Distribution builds must never carry the debugger-injection entitlement.
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
     entitlements:
       path: MacSweep.entitlements
       properties:
-        com.apple.security.app-sandbox: false
-        com.apple.security.files.user-selected.read-write: true
         com.apple.security.automation.apple-events: true
 
   MacSweepCore:

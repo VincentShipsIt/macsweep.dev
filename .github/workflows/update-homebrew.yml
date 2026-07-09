@@ -36,16 +36,25 @@ jobs:
     steps:
       - name: Resolve version
         id: version
+        env:
+          REQUESTED_TAG: ${{ inputs.version }}
         run: |
+          set -euo pipefail
           # inputs.version is populated for both workflow_call and workflow_dispatch.
-          TAG="${{ inputs.version }}"
+          TAG="$REQUESTED_TAG"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version must be an exact semantic-version tag (vX.Y.Z)"
+            exit 1
+          }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download + validate release checksums
         id: sha
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           curl -fsSL \
             --connect-timeout 15 --max-time 120 --retry 3 \
             "https://github.com/VincentShipsIt/macsweep/releases/download/${TAG}/macsweep-${TAG}.tar.gz.sha256" \
@@ -73,11 +82,14 @@ jobs:
           path: homebrew-tap
 
       - name: Bump formula url + sha256
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          SOURCE_SHA256: ${{ steps.sha.outputs.source_sha256 }}
         run: |
           set -euo pipefail
           cd homebrew-tap
-          TAG="${{ steps.version.outputs.tag }}"
-          SHA256="${{ steps.sha.outputs.source_sha256 }}"
+          TAG="$RELEASE_TAG"
+          SHA256="$SOURCE_SHA256"
           F="Formula/macsweep.rb"
 
           # Formula version is derived by Homebrew from the tag in the url, so only the
@@ -94,12 +106,15 @@ jobs:
           grep -q "sha256 \"${SHA256}\"" "$F" || { echo "::error::sha256 was not updated"; exit 1; }
 
       - name: Create or bump cask
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          APP_SHA256: ${{ steps.sha.outputs.app_sha256 }}
         run: |
           set -euo pipefail
           cd homebrew-tap
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="$RELEASE_TAG"
           VERSION="${TAG#v}"
-          SHA256="${{ steps.sha.outputs.app_sha256 }}"
+          SHA256="$APP_SHA256"
           C="Casks/macsweep.rb"
           mkdir -p "$(dirname "$C")"
 
@@ -111,8 +126,8 @@ jobs:
             url "https://github.com/VincentShipsIt/macsweep/releases/download/v#{version}/macsweep-v#{version}-macos.zip",
                 verified: "github.com/VincentShipsIt/macsweep/"
             name "MacSweep"
-            desc "Native macOS system cleaner"
-            homepage "https://github.com/VincentShipsIt/macsweep"
+            desc "Native system cleaner"
+            homepage "https://macsweep.dev/"
 
             depends_on formula: "vincentshipsit/tap/macsweep"
             depends_on macos: :tahoe
@@ -133,11 +148,13 @@ jobs:
           grep -q 'app "MacSweep.app"' "$C" || { echo "::error::cask does not install MacSweep.app"; exit 1; }
 
       - name: Commit + push
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
           cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/macsweep.rb Casks/macsweep.rb
-          git diff --staged --quiet || git commit -m "Update macsweep to ${{ steps.version.outputs.tag }}"
+          git diff --staged --quiet || git commit -m "Update macsweep to $RELEASE_TAG"
           git push
