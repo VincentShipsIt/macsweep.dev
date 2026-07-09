@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The canonical product website is now [macsweep.dev](https://macsweep.dev),
+  including the in-app About view and generated Homebrew cask metadata.
+
+### Security
+
+- Release builds now use Developer ID signing, secure timestamps, Apple
+  notarization, ticket stapling, and Gatekeeper verification before GitHub
+  assets are published. Distribution signing credentials remain isolated in a
+  protected GitHub environment.
+- Added the macOS privacy-purpose strings required for Apple Events, other app
+  data, app bundles, and explicitly requested system-administration actions.
+- Removed sandbox-only entitlements from the intentionally non-sandboxed app
+  and disabled debugger-entitlement injection in Release builds.
+
 ## [1.0.8] - 2026-07-08
 
 ### Added

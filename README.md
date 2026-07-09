@@ -12,6 +12,8 @@
 A native macOS system cleaner with a SwiftUI app and a Homebrew-installable CLI.
 Scan, clean, and optimize your Mac with safety-first defaults.
 
+**Website:** [macsweep.dev](https://macsweep.dev)
+
 ## Features
 
 - **Smart Scan** - One-click deep scan for junk files
