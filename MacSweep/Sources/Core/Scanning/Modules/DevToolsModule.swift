@@ -1365,8 +1365,17 @@ struct GitArtifactScanner: Sendable {
         process.waitUntilExit()
         drainQueue.sync {}   // ensure the stderr drain has completed
 
-        let output = String(data: outputData, encoding: .utf8) ?? ""
         let error = String(data: errorData, encoding: .utf8) ?? ""
+        // Git `-z` output can contain raw filename bytes. Never turn a decode
+        // failure into empty successful output: deletion guards rely on status.
+        guard let output = String(data: outputData, encoding: .utf8) else {
+            let decodeError = "Subprocess stdout was not valid UTF-8"
+            return ProcessResult(
+                status: process.terminationStatus == 0 ? -1 : process.terminationStatus,
+                output: "",
+                error: error.isEmpty ? decodeError : "\(error)\n\(decodeError)"
+            )
+        }
         return ProcessResult(status: process.terminationStatus, output: output, error: error)
     }
 
