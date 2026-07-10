@@ -204,6 +204,25 @@ final class AppUninstallerDisposalTests {
         #expect(betaNames == ["com.vendor.app.beta.plist"])
     }
 
+    @Test func findLeftoversHandlesPlistSuffixedBundleIDsByLocation() async throws {
+        let locations = try makeFixtureLibrary()
+        let itemName = "com.vendor.app.plist"
+        try Data(repeating: 0, count: 64).write(to: locations[0].0.appendingPathComponent(itemName))
+        try Data(repeating: 0, count: 64).write(to: locations[1].0.appendingPathComponent(itemName))
+
+        let stable = makeApp(named: "Vendor App", bundleID: "com.vendor.app")
+        let plistApp = makeApp(named: "Vendor App Plist", bundleID: "com.vendor.app.plist")
+        let scanner = LeftoverScanner(leftoverLocations: locations)
+
+        let stableLeftovers = await scanner.findLeftovers(for: stable, among: [stable, plistApp])
+        let plistLeftovers = await scanner.findLeftovers(for: plistApp, among: [stable, plistApp])
+
+        #expect(stableLeftovers.isEmpty)
+        #expect(plistLeftovers.count == 1)
+        #expect(plistLeftovers.first?.path.lastPathComponent == itemName)
+        #expect(plistLeftovers.first?.type == .applicationSupport)
+    }
+
     @Test func findOrphanedLeftoversSkipsInstalledApps() async throws {
         let locations = try makeFixtureLibrary()
         // > 1KB so the orphan-size floor doesn't drop the fixtures.

@@ -301,7 +301,8 @@ actor LeftoverScanner {
                 itemName: item.lastPathComponent,
                 bundleID: bundleID,
                 appName: appName,
-                installedApps: installedApps
+                installedApps: installedApps,
+                type: type
             ) else {
                 continue
             }
@@ -327,38 +328,84 @@ actor LeftoverScanner {
     /// container dirs `com.foo.App`). When several installed IDs match such a
     /// prefix, exactly one app with the longest ID owns the item. This preserves
     /// unambiguous helper data while refusing to attribute an installed
-    /// canary/beta app's data to its stable app. App-name matching is an exact
-    /// space- and case-folded fallback, and is refused when another installed
-    /// app has the same name.
+    /// canary/beta app's data to its stable app. A Preferences `.plist` name is
+    /// evaluated both as its raw name and as a filename with an extension; when
+    /// those candidates have different owners, no app claims it. Other roots
+    /// use the raw name because `.plist` can be part of an exact bundle ID.
+    /// App-name matching is an exact space- and case-folded fallback, and is
+    /// refused when another installed app has the same name.
     nonisolated static func leftoverMatches(
         itemName: String,
         bundleID: String,
         appName: String,
-        installedApps: [InstalledApp]
+        installedApps: [InstalledApp],
+        type: AppLeftover.LeftoverType = .applicationSupport
     ) -> Bool {
         let itemLower = itemName.lowercased()
-        let base = itemLower.hasSuffix(".plist") ? String(itemLower.dropLast(6)) : itemLower
-
         let bundleLower = bundleID.lowercased()
-        let matchingApps = installedApps.filter { installedApp in
-            let installedID = installedApp.id.lowercased()
-            return !installedID.isEmpty && (base == installedID || base.hasPrefix(installedID + "."))
+        let bundleCandidates: [String]
+        if type == .preferences, itemLower.hasSuffix(".plist") {
+            bundleCandidates = [itemLower, String(itemLower.dropLast(6))]
+        } else {
+            bundleCandidates = [itemLower]
         }
-        if !matchingApps.isEmpty {
-            guard let longestBundleIDLength = matchingApps.map({ $0.id.count }).max() else {
+
+        let bundleOwners = bundleCandidates.compactMap { candidate in
+            uniqueBundleOwner(for: candidate, installedApps: installedApps)
+        }
+        if !bundleOwners.isEmpty {
+            // Every interpretation must resolve and agree. A raw preference
+            // name can also be a valid installed bundle ID ending in `.plist`;
+            // selecting either app in that case could delete the other's data.
+            guard bundleOwners.count == bundleCandidates.count,
+                  Set(bundleOwners).count == 1
+            else {
                 return false
             }
-            let mostSpecificOwners = matchingApps.filter { $0.id.count == longestBundleIDLength }
-            return mostSpecificOwners.count == 1 && mostSpecificOwners[0].id.lowercased() == bundleLower
+            return bundleOwners[0] == bundleLower
         }
 
         let appCompact = appName.lowercased().replacingOccurrences(of: " ", with: "")
-        let matchingAppNames = installedApps.filter {
-            $0.name.lowercased().replacingOccurrences(of: " ", with: "") == appCompact
+        guard !appCompact.isEmpty else {
+            return false
         }
-        return !appCompact.isEmpty
-            && base.replacingOccurrences(of: " ", with: "") == appCompact
-            && matchingAppNames.count == 1
+
+        var appNameOwners: [String] = []
+        for candidate in bundleCandidates {
+            let matchingApps = installedApps.filter {
+                $0.name.lowercased().replacingOccurrences(of: " ", with: "")
+                    == candidate.replacingOccurrences(of: " ", with: "")
+            }
+            // A duplicate exact app name is as unsafe as a conflicting bundle
+            // match, even if the other candidate has no app-name match.
+            guard matchingApps.count <= 1 else {
+                return false
+            }
+            if let app = matchingApps.first {
+                appNameOwners.append(app.id.lowercased())
+            }
+        }
+        return Set(appNameOwners).count == 1 && appNameOwners[0] == bundleLower
+    }
+
+    /// Returns an owner only when one installed app has the unique longest
+    /// bundle-ID match for `candidate`; duplicate IDs remain unclaimed.
+    nonisolated private static func uniqueBundleOwner(
+        for candidate: String,
+        installedApps: [InstalledApp]
+    ) -> String? {
+        let matchingApps = installedApps.filter { installedApp in
+            let installedID = installedApp.id.lowercased()
+            return !installedID.isEmpty && (candidate == installedID || candidate.hasPrefix(installedID + "."))
+        }
+        guard let longestBundleIDLength = matchingApps.map({ $0.id.count }).max() else {
+            return nil
+        }
+        let mostSpecificOwners = matchingApps.filter { $0.id.count == longestBundleIDLength }
+        guard mostSpecificOwners.count == 1 else {
+            return nil
+        }
+        return mostSpecificOwners[0].id.lowercased()
     }
 
     private func looksLikeAppData(_ url: URL) -> Bool {

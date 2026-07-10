@@ -61,6 +61,8 @@ struct AppUninstallerModuleTests {
         let app = app(id: "com.foo.App")
         #expect(LeftoverScanner.leftoverMatches(
             itemName: "com.foo.App.plist", bundleID: app.id, appName: app.name, installedApps: [app]))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.foo.App.plist", bundleID: app.id, appName: app.name, installedApps: [app], type: .preferences))
     }
 
     @Test func matchesBundleIDDottedPrefix() {
@@ -77,6 +79,8 @@ struct AppUninstallerModuleTests {
         let app = app(id: "com.google.Chrome", name: "Google Chrome")
         #expect(LeftoverScanner.leftoverMatches(
             itemName: "Google Chrome", bundleID: app.id, appName: app.name, installedApps: [app]))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "Google Chrome.plist", bundleID: app.id, appName: app.name, installedApps: [app], type: .preferences))
     }
 
     @Test func rejectsDecoySubstringOfAppName() {
@@ -122,6 +126,27 @@ struct AppUninstallerModuleTests {
             itemName: "com.vendor.app.canary.plist", bundleID: canary.id, appName: canary.name, installedApps: installed))
         #expect(LeftoverScanner.leftoverMatches(
             itemName: "com.vendor.app.beta.savedState", bundleID: beta.id, appName: beta.name, installedApps: installed))
+    }
+
+    @Test func resolvesPlistSuffixedBundleIDsByLocationWithoutCrossAppClaims() {
+        let stable = app(id: "com.vendor.app", name: "Vendor App")
+        let plistApp = app(id: "com.vendor.app.plist", name: "Vendor App Plist")
+        let installed = [stable, plistApp]
+
+        // Outside Preferences, `.plist` is part of the raw name and the exact,
+        // longer installed ID owns it. The previous extension stripping let
+        // `stable` claim this same item instead.
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.plist", bundleID: stable.id, appName: stable.name, installedApps: installed, type: .applicationSupport))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.plist", bundleID: plistApp.id, appName: plistApp.name, installedApps: installed, type: .applicationSupport))
+
+        // In Preferences the raw bundle-ID and extension-stripped candidates
+        // disagree, so neither app may claim potentially destructive data.
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.plist", bundleID: stable.id, appName: stable.name, installedApps: installed, type: .preferences))
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.plist", bundleID: plistApp.id, appName: plistApp.name, installedApps: installed, type: .preferences))
     }
 
     @Test func matchesUnambiguousHelperData() {
