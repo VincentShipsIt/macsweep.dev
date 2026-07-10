@@ -12,7 +12,7 @@ struct MacSweepApp: App {
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
     var body: some Scene {
-        Window("MacSweep", id: "main") {
+        Window("macsweep.dev", id: "main") {
             mainWindowContent
         }
         .defaultSize(width: Self.mainWindowLaunchSize.width, height: Self.mainWindowLaunchSize.height)
@@ -80,7 +80,7 @@ struct MacSweepApp: App {
 
 private struct MacSweepMenuBarLabel: View {
     var body: some View {
-        Label("MacSweep", image: "MenuBarIcon")
+        Label("macsweep.dev", image: "MenuBarIcon")
     }
 }
 

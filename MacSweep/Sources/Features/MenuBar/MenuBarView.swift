@@ -68,7 +68,7 @@ struct MenuBarView: View {
                 .font(.title2)
                 .foregroundStyle(.purple)
 
-            Text("MacSweep")
+            Text("macsweep.dev")
                 .font(.headline)
 
             Spacer()

@@ -1,7 +1,7 @@
 # /release — cut a MacSweep release and auto-publish to Homebrew
 
 Tag the current `master` as `vX.Y.Z` so CI builds + smoke-tests the `macsweep` CLI,
-builds + packages `MacSweep.app`, publishes a GitHub Release, and bumps both the
+builds + packages `macsweep.dev.app`, publishes a GitHub Release, and bumps both the
 Homebrew **formula** and **cask** in `VincentShipsIt/homebrew-tap` — all from one
 tag push. Run this after the version-bumping PR has merged to `master`.
 
@@ -9,11 +9,11 @@ MacSweep ships two Homebrew entries:
 
 - `brew install macsweep` installs the build-from-source CLI formula.
 - `brew install --cask macsweep` installs the GUI app and depends on the formula,
-  so the GUI path installs both `MacSweep.app` and the `macsweep` CLI.
+  so the GUI path installs both `macsweep.dev.app` and the `macsweep` CLI.
 
 ## Preconditions (one-time)
 - The Apple Developer Program membership is active and the bundle identifier
-  remains `com.vincentshipsit.macsweep`.
+  remains `dev.macsweep.app`.
 - A protected GitHub environment named `release` exists with these values:
   - Secrets: `DEVELOPER_ID_P12_BASE64`,
     `DEVELOPER_ID_P12_PASSWORD`, and
@@ -59,7 +59,7 @@ gh variable list --repo VincentShipsIt/macsweep --env release
    - `git tag -a "$TAG" origin/master -m "MacSweep $TAG"`
    - `git push origin "$TAG"`
    - Fires `.github/workflows/release.yml`: build + smoke-test CLI → archive and
-     Developer ID-sign `MacSweep.app` → notarize → staple → Gatekeeper-check →
+     Developer ID-sign `macsweep.dev.app` → notarize → staple → Gatekeeper-check →
      package → publish GitHub Release (`macsweep-$TAG.tar.gz.sha256`,
      `macsweep-$TAG-macos.zip`, and `macsweep-$TAG-macos.zip.sha256` assets,
      auto-generated notes) → its `update-homebrew` job calls
@@ -73,12 +73,12 @@ gh variable list --repo VincentShipsIt/macsweep --env release
      — the `url` tag and `sha256` must match `$TAG` and the published `.sha256` asset.
    - Verify the cask bumped and still depends on the formula:
      `gh api repos/VincentShipsIt/homebrew-tap/contents/Casks/macsweep.rb -q .content | base64 -d | grep -E 'version|sha256|url|depends_on|app'`
-     — the version, app zip `sha256`, `depends_on formula`, and `app "MacSweep.app"`
+     — the version, app zip `sha256`, `depends_on formula`, and `app "macsweep.dev.app"`
      stanzas must be present.
    - Download the published app zip to a clean temporary directory and verify:
-     `codesign --verify --deep --strict --verbose=4 MacSweep.app`,
-     `xcrun stapler validate MacSweep.app`, and
-     `spctl --assess --type execute --verbose=4 MacSweep.app` must all pass.
+     `codesign --verify --deep --strict --verbose=4 macsweep.dev.app`,
+     `xcrun stapler validate macsweep.dev.app`, and
+     `spctl --assess --type execute --verbose=4 macsweep.dev.app` must all pass.
 
 6. **Report** the release URL and the consumer command:
    - GUI + CLI: `brew update && brew upgrade --cask macsweep && brew upgrade macsweep`

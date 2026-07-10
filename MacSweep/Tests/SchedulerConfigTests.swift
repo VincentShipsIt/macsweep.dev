@@ -5,7 +5,7 @@ import Foundation
 /// Coverage for `SchedulerConfig`, the shared interval/next-scan store that bridges
 /// the GUI scheduler and the `macsweep schedule` CLI. Each test runs against an
 /// isolated `UserDefaults` suite (unique name per test) so it never touches the real
-/// `com.vincentshipsit.macsweep` domain, and tears the suite down in `deinit`.
+/// `dev.macsweep` domain, and tears the suite down in `deinit`.
 final class SchedulerConfigTests {
     private let suiteName: String
     private let defaults: UserDefaults

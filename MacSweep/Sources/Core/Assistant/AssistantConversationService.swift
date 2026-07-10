@@ -490,7 +490,7 @@ final class AssistantCoordinator: ObservableObject {
     @Published private(set) var messages: [AssistantMessage] = [
         AssistantMessage(
             role: .system,
-            text: "Ask MacSweep to scan cache folders, inspect a path, or add persistent watchlists."
+            text: "Ask macsweep.dev to scan cache folders, inspect a path, or add persistent watchlists."
         )
     ]
     @Published private(set) var currentPlan: AssistantScanPlan?

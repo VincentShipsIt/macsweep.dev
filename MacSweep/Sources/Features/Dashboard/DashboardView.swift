@@ -158,7 +158,7 @@ struct DashboardView: View {
                 Text("Full Disk Access Required")
                     .font(.headline)
 
-                Text("MacSweep needs permission to scan protected folders. Some features may be limited.")
+                Text("macsweep.dev needs permission to scan protected folders. Some features may be limited.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -276,7 +276,7 @@ struct DashboardView: View {
 
     private var smartCareDescription: String {
         if appState.isScanning {
-            return appState.currentScanModule ?? "MacSweep is scanning in the background."
+            return appState.currentScanModule ?? "macsweep.dev is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
             return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."

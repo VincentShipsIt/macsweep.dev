@@ -1071,7 +1071,7 @@ public enum CLIExecutor {
                     lines.append(log)
                 }
             } else {
-                lines.append("MacSweep \(result.currentVersion)")
+                lines.append("macsweep.dev \(result.currentVersion)")
                 lines.append("To upgrade via Homebrew, run:")
                 lines.append("  \(result.upgradeCommand)")
                 lines.append("Or re-run with --yes to upgrade now.")

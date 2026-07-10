@@ -74,7 +74,7 @@ struct AIAnalysisView: View {
             Text("Anthropic API Key Fallback")
                 .font(.headline)
 
-            Text("MacSweep uses signed-in Claude or Codex CLIs first. A key is only needed as a fallback when local CLIs are unavailable.")
+            Text("macsweep.dev uses signed-in Claude or Codex CLIs first. A key is only needed as a fallback when local CLIs are unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)

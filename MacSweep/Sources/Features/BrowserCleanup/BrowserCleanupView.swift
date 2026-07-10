@@ -503,7 +503,7 @@ struct SafariFDAWarningBanner: View {
                 Text("Full Disk Access Required for Safari")
                     .font(.headline)
 
-                Text("MacSweep needs Full Disk Access to clean Safari data. Open System Settings > Privacy & Security > Full Disk Access and enable MacSweep.")
+                Text("macsweep.dev needs Full Disk Access to clean Safari data. Open System Settings > Privacy & Security > Full Disk Access and enable macsweep.dev.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
