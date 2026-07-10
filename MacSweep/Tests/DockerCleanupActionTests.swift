@@ -14,6 +14,8 @@ struct DockerCleanupActionTests {
 
         private var invocations: [Invocation] = []
         private var dockerDFOutputs: [String]
+        private let failingDFCalls: Set<Int>
+        private var dockerDFCallCount = 0
 
         private static let zeroUsage = [
             #"{"Reclaimable":"0B","Type":"Build Cache"}"#,
@@ -23,23 +25,27 @@ struct DockerCleanupActionTests {
         ].joined(separator: "\n")
 
         init() {
-            dockerDFOutputs = Array(
-                repeating: Self.zeroUsage,
-                count: DockerCleanupAction.allCases.count
-            )
+            dockerDFOutputs = [Self.zeroUsage]
+            failingDFCalls = []
         }
 
         init(dockerDFOutput: String) {
             dockerDFOutputs = [dockerDFOutput]
+            failingDFCalls = []
         }
 
-        init(dockerDFOutputs: [String]) {
+        init(dockerDFOutputs: [String], failingDFCalls: Set<Int> = []) {
             self.dockerDFOutputs = dockerDFOutputs
+            self.failingDFCalls = failingDFCalls
         }
 
         func run(executable: String, arguments: [String]) -> ProcessResult {
             invocations.append(Invocation(executable: executable, arguments: arguments))
             if arguments == ["system", "df", "--format", "{{json .}}"] {
+                dockerDFCallCount += 1
+                if failingDFCalls.contains(dockerDFCallCount) {
+                    return ProcessResult(status: 1, output: "", error: "Docker daemon unavailable")
+                }
                 let output = dockerDFOutputs.isEmpty ? "" : dockerDFOutputs.removeFirst()
                 return ProcessResult(status: 0, output: output, error: "")
             }
@@ -90,6 +96,9 @@ struct DockerCleanupActionTests {
         let preview = try await engine.clean(items: actions, dryRun: true)
         #expect(preview.itemsProcessed == 3)
         #expect(preview.bytesFreed == 1_788_000_000)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
     }
 
     @Test func everyTypedActionMapsToOneFixedAllowlistedCommand() async throws {
@@ -103,19 +112,17 @@ struct DockerCleanupActionTests {
         let invocations = await recorder.recordedInvocations()
 
         #expect(result.itemsProcessed == DockerCleanupAction.allCases.count)
+        #expect(result.bytesFreed == Int64(DockerCleanupAction.allCases.count))
         #expect(invocations.map(\.executable) == Array(
             repeating: "/test/bin/docker",
-            count: DockerCleanupAction.allCases.count * 2
+            count: DockerCleanupAction.allCases.count + 1
         ))
         #expect(invocations.map(\.arguments) == [
             ["system", "df", "--format", "{{json .}}"],
             ["builder", "prune", "-f"],
-            ["system", "df", "--format", "{{json .}}"],
             ["image", "prune", "-f"],
-            ["system", "df", "--format", "{{json .}}"],
-            ["container", "prune", "-f"],
-            ["system", "df", "--format", "{{json .}}"],
             ["volume", "prune", "-f"],
+            ["container", "prune", "-f"],
         ])
     }
 
@@ -247,19 +254,12 @@ struct DockerCleanupActionTests {
         ])
     }
 
-    @Test func laterActionIsReverifiedAfterEarlierPruneChangesDockerState() async throws {
-        let beforeContainerPrune = [
+    @Test func staleImpactInOneActionBlocksEntireDockerBatchBeforePrune() async throws {
+        let fresh = [
             #"{"Reclaimable":"1B","Type":"Containers"}"#,
-            #"{"Reclaimable":"1B","Type":"Local Volumes"}"#,
-        ].joined(separator: "\n")
-        let afterContainerPrune = [
-            #"{"Reclaimable":"0B","Type":"Containers"}"#,
             #"{"Reclaimable":"12TB","Type":"Local Volumes"}"#,
         ].joined(separator: "\n")
-        let recorder = CommandRecorder(dockerDFOutputs: [
-            beforeContainerPrune,
-            afterContainerPrune,
-        ])
+        let recorder = CommandRecorder(dockerDFOutput: fresh)
         let docker = module(recorder: recorder)
         let items = [
             CleanupItem(id: UUID(), action: .docker(.pruneContainers), size: 1),
@@ -268,12 +268,56 @@ struct DockerCleanupActionTests {
 
         let result = try await docker.clean(items: items, dryRun: false)
 
-        #expect(result.itemsProcessed == 1)
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
         #expect(result.errors.count == 1)
         #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
         #expect(await recorder.recordedInvocations().map(\.arguments) == [
             ["system", "df", "--format", "{{json .}}"],
-            ["container", "prune", "-f"],
+        ])
+    }
+
+    @Test func failedBatchVerificationBlocksEveryDockerPrune() async throws {
+        let fresh = [
+            #"{"Reclaimable":"1B","Type":"Build Cache"}"#,
+            #"{"Reclaimable":"1B","Type":"Images"}"#,
+        ].joined(separator: "\n")
+        let recorder = CommandRecorder(
+            dockerDFOutputs: [fresh],
+            failingDFCalls: [1]
+        )
+        let docker = module(recorder: recorder)
+        let items = [
+            CleanupItem(id: UUID(), action: .docker(.pruneBuildCache), size: 1),
+            CleanupItem(id: UUID(), action: .docker(.pruneImages), size: 1),
+        ]
+
+        let result = try await docker.clean(items: items, dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 2)
+        #expect(result.errors.allSatisfy { $0.message.localizedCaseInsensitiveContains("rescan") })
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func unknownFreshDockerCategoryBlocksPrune() async throws {
+        let fresh = [
+            #"{"Reclaimable":"1B","Type":"Images"}"#,
+            #"{"Reclaimable":"1B","Type":"Unknown"}"#,
+        ].joined(separator: "\n")
+        let recorder = CommandRecorder(dockerDFOutput: fresh)
+        let docker = module(recorder: recorder)
+        let item = CleanupItem(id: UUID(), action: .docker(.pruneImages), size: 1)
+
+        let result = try await docker.clean(items: [item], dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
             ["system", "df", "--format", "{{json .}}"],
         ])
     }
