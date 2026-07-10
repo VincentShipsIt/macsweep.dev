@@ -103,27 +103,62 @@ actor DiskAnalyzer {
                 return DiskNode(url: url, name: url.lastPathComponent, size: 0, isDirectory: true, children: [])
             }
 
-            // Process children in parallel batches
-            let childNodes = await withTaskGroup(of: DiskNode?.self, returning: [DiskNode].self) { group in
-                for childURL in contents {
+            // Split children up front. A plain file (or a symlink, which we treat
+            // as a leaf for the same reason `isDirectory` does above) is sized
+            // inline from its already-cached resource values — no recursion, no
+            // task. Only real subdirectories are worth a task. The old code
+            // spawned a task per child *including every file*, and recursively, so
+            // a wide tree fanned out into thousands of concurrent enumerations
+            // that thrashed IO. `contentsOfDirectory(includingPropertiesForKeys:)`
+            // pre-caches these keys, so the per-child fetch here is not a syscall.
+            var fileNodes: [DiskNode] = []
+            var subdirectories: [URL] = []
+            for childURL in contents {
+                let childValues = try? childURL.resourceValues(forKeys: resourceKeys)
+                let childIsDirectory = childValues?.isDirectory == true && childValues?.isSymbolicLink != true
+                if childIsDirectory {
+                    subdirectories.append(childURL)
+                } else {
+                    fileNodes.append(DiskNode(
+                        url: childURL,
+                        name: childURL.lastPathComponent,
+                        size: childValues?.diskSize ?? 0,
+                        isDirectory: false,
+                        children: [],
+                        lastModified: childValues?.contentModificationDate
+                    ))
+                }
+            }
+
+            // Recurse into subdirectories concurrently but BOUNDED: keep at most
+            // `width` builds in flight, refilling as each finishes, so a level with
+            // thousands of folders can't spawn thousands of parallel walks.
+            let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
+            var dirNodes: [DiskNode] = []
+            await withTaskGroup(of: DiskNode?.self) { group in
+                var next = 0
+                func enqueueNext() {
+                    guard next < subdirectories.count else { return }
+                    let childURL = subdirectories[next]
+                    next += 1
                     group.addTask {
                         try? await buildNode(at: childURL, depth: depth + 1, maxDepth: maxDepth)
                     }
                 }
-
-                var results: [DiskNode] = []
-                for await node in group {
-                    if let node = node {
-                        results.append(node)
-                    }
+                for _ in 0..<min(width, subdirectories.count) { enqueueNext() }
+                while let node = await group.next() {
+                    if let node { dirNodes.append(node) }
+                    enqueueNext()
                 }
-                return results
             }
 
-            children = childNodes.sorted { $0.size > $1.size }
+            children = (fileNodes + dirNodes).sorted { $0.size > $1.size }
             totalSize = children.reduce(0) { $0 + $1.size }
         } else {
-            // At max depth, just calculate size without children
+            // At max depth we render no children, so we only need this directory's
+            // total — a single deep walk. (This is the exact subtree size, not a
+            // partial sum: the leaf still contributes its true weight to the
+            // parent treemap.)
             totalSize = (try? await directorySize(at: url)) ?? 0
         }
 
