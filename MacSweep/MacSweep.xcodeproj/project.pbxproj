@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7DEB8E471965454E8ED55EF1 /* Int64+FormattedFileSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47847E7C1A04BD3BE922A21 /* Int64+FormattedFileSize.swift */; };
+		427A0B20EDF743E1ACEFC305 /* Int64+FormattedFileSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = C47847E7C1A04BD3BE922A21 /* Int64+FormattedFileSize.swift */; };
 		D68890670C804804AB31A9AB /* ScanResultComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CED12DCAD5E410BAFB60485 /* ScanResultComponents.swift */; };
 		0038F9B41DAC996AFBE4C743 /* LoginItemsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCD0CC4ACDF8972E6B76FCAC /* LoginItemsService.swift */; };
 		0127AF393968732AB08CE761 /* MalwareScannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8596547FDDFCC2EE1391ED19 /* MalwareScannerModels.swift */; };
@@ -185,6 +187,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C47847E7C1A04BD3BE922A21 /* Int64+FormattedFileSize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Int64+FormattedFileSize.swift"; sourceTree = "<group>"; };
 		0CED12DCAD5E410BAFB60485 /* ScanResultComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResultComponents.swift; sourceTree = "<group>"; };
 		003DF9FFDB5B4302F946766A /* ConnectedDevicesDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedDevicesDetailView.swift; sourceTree = "<group>"; };
 		031558E885A43C88426F8768 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
@@ -422,6 +425,7 @@
 		38818C8B22118EB689E53323 /* Scanning */ = {
 			isa = PBXGroup;
 			children = (
+				C47847E7C1A04BD3BE922A21 /* Int64+FormattedFileSize.swift */,
 				CFB52563A224B33DA951FC0F /* CleanupItemFormatting.swift */,
 				2052C6BF287BBAA51A7966A1 /* CleanupPerformance.swift */,
 				D044564FA58B970867F20BF7 /* ScanEngine.swift */,
@@ -951,6 +955,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				427A0B20EDF743E1ACEFC305 /* Int64+FormattedFileSize.swift in Sources */,
 				D68890670C804804AB31A9AB /* ScanResultComponents.swift in Sources */,
 				FBAEB1548D9A5FAE2CBDA6B0 /* AIAnalysisModels.swift in Sources */,
 				3E949DE17BC45A0CAC9CE86C /* AIAnalysisService.swift in Sources */,
@@ -1063,6 +1068,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7DEB8E471965454E8ED55EF1 /* Int64+FormattedFileSize.swift in Sources */,
 				525F2074EFEE05AB8E9AF5C8 /* AIKeychainService.swift in Sources */,
 				599463471E1FCBA535588951 /* AppUninstallerModule.swift in Sources */,
 				9D35DD6CC9D9D07EC2494CD5 /* AssistantConfigRepository.swift in Sources */,
