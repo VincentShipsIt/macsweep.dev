@@ -84,7 +84,7 @@ final class BrowserModuleTests {
 
     // MARK: - Symlink-safe cleanup
 
-    @Test func cleanUnlinksCacheRootSymlinkWithoutTouchingTarget() async throws {
+    @Test func cleanRejectsCacheRootSymlinkWithoutTouchingTargetOrClaimingBytes() async throws {
         let fm = FileManager.default
         let valuable = valuableDirectory.appendingPathComponent("root-target")
         let nested = valuable.appendingPathComponent("nested")
@@ -103,10 +103,13 @@ final class BrowserModuleTests {
             dryRun: false
         )
 
-        #expect(result.itemsProcessed == 1)
-        #expect(result.errors.isEmpty)
-        #expect((try? fm.destinationOfSymbolicLink(atPath: cacheLink.path)) == nil,
-                "The cache symlink node itself should be unlinked")
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0,
+                "A replacement symlink must not receive the stale scanned cache byte credit")
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.contains("symbolic link") == true)
+        #expect((try? fm.destinationOfSymbolicLink(atPath: cacheLink.path)) != nil,
+                "The explicit root policy is to reject and preserve the symlink node")
         #expect(fm.fileExists(atPath: valuable.path), "The target directory must survive")
         #expect(fm.fileExists(atPath: document.path), "Every target child must survive")
         #expect(fm.fileExists(atPath: photo.path), "Nested target children must survive")

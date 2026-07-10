@@ -109,8 +109,9 @@ extension BrowserModule {
 /// The walk is anchored to directory descriptors instead of path-based
 /// `FileManager` recursion. Every component leading to the cache root is opened
 /// with `O_NOFOLLOW`; encountering a symlink there rejects the whole item. A
-/// symlink that is itself the cache root, or appears below a real cache root, is
-/// unlinked as a node with `unlinkat` and its target is never opened.
+/// symlink that is itself the cache root is rejected as a stale replacement; a
+/// symlink below a real cache root is unlinked as a node with `unlinkat`, and no
+/// symlink target is ever opened.
 private enum BrowserCacheRemover {
     static func removeContents(at url: URL) throws {
         let path = url.standardized.path
@@ -159,9 +160,12 @@ private enum BrowserCacheRemover {
 
         let rootType = rootInfo.st_mode & mode_t(S_IFMT)
         if rootType == mode_t(S_IFLNK) {
-            // Explicit root policy: remove the link itself, never its target.
-            try unlinkEntry(named: rootName, at: parentFD, displayPath: path)
-            return
+            // Explicit root policy: reject and preserve the link. A cache that
+            // was a real directory when scanned may have been replaced by a
+            // symlink before cleanup; treating an unlink as full success would
+            // credit the stale directory size even though only the link node was
+            // affected. The caller records this as a zero-byte partial failure.
+            throw BrowserCacheRemovalError.symbolicLinkRoot(path)
         }
         guard rootType == mode_t(S_IFDIR) else {
             throw BrowserCacheRemovalError.notDirectory(path)
@@ -335,26 +339,11 @@ private enum BrowserCacheRemover {
         }
     }
 
-    private static func unlinkEntry(
-        named name: String,
-        at parentFD: Int32,
-        displayPath: String
-    ) throws {
-        let result = name.withCString { unlinkat(parentFD, $0, 0) }
-        guard result == 0 else {
-            let code = errno
-            if code == ENOENT { return }
-            throw BrowserCacheRemovalError.systemCall(
-                operation: "unlinkat",
-                path: displayPath,
-                code: code
-            )
-        }
-    }
 }
 
 private enum BrowserCacheRemovalError: LocalizedError {
     case invalidPath(String)
+    case symbolicLinkRoot(String)
     case symbolicLinkComponent(String)
     case notDirectory(String)
     case systemCall(operation: String, path: String, code: Int32)
@@ -363,6 +352,8 @@ private enum BrowserCacheRemovalError: LocalizedError {
         switch self {
         case .invalidPath(let path):
             return "Refused invalid browser cache path: \(path)"
+        case .symbolicLinkRoot(let path):
+            return "Refused browser cache root because it is a symbolic link: \(path)"
         case .symbolicLinkComponent(let path):
             return "Refused browser cache path with a symbolic-link component: \(path)"
         case .notDirectory(let path):
