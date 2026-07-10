@@ -35,7 +35,12 @@ actor DiskAnalyzer {
 
         var total: Int64 = 0
 
+        var iterations = 0
         while let fileURL = enumerator.nextObject() as? URL {
+            // Subtree sizing is called from long scans; keep it cancellable so
+            // an abandoned scan stops burning IO.
+            iterations += 1
+            if iterations % 512 == 0 { try Task.checkCancellation() }
             do {
                 let values = try fileURL.resourceValues(forKeys: resourceKeys)
 

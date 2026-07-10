@@ -65,12 +65,22 @@ struct FeaturePageShell<Content: View>: View {
             // GeometryReader + minHeight keeps short/sparse content (a hero)
             // vertically centered, and lets it scroll if the window is shorter
             // than the content.
+            //
+            // The hero surface runs full-bleed behind the titlebar
+            // (CleanMyMac-style): laying the scroll view inside the top safe
+            // area would end the page surface at the toolbar's bottom edge,
+            // where macOS draws a scroll-edge hairline that reads as a border
+            // around the hero. Hiding the toolbar background removes that
+            // hairline; the hero is vertically centered, so nothing lands
+            // under the traffic lights.
             GeometryReader { proxy in
                 ScrollView(showsIndicators: false) {
                     content()
                         .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
             }
+            .ignoresSafeArea(.container, edges: .top)
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         } else {
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

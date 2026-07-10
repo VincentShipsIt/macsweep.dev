@@ -51,26 +51,25 @@ struct AppUninstallerView: View {
             title: "Uninstaller",
             subtitle: "Remove apps and their leftover files completely."
         ) {
-            VStack(spacing: 18) {
+            // Edge-to-edge master–detail, matching the other feature pages.
+            // Floating card panes with their own gutters made this the one page
+            // with a different content margin convention.
+            VStack(spacing: 0) {
                 if let errorMessage {
                     MacSweepErrorBanner(message: errorMessage) {
                         self.errorMessage = nil
                     }
                 }
 
-                HStack(alignment: .top, spacing: 18) {
+                HSplitView {
                     appListPane
-                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 400)
+                        .frame(minWidth: 300, idealWidth: 340, maxWidth: 440)
 
                     detailPane
                         .frame(minWidth: 420, maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal)
-            .padding(.top)
-            .padding(.bottom, 18)
         }
     }
 
@@ -133,7 +132,6 @@ struct AppUninstallerView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .macSweepCard(radius: 12)
         .task {
             if !disableAutoLoad { await loadApps() }
         }
@@ -171,7 +169,6 @@ struct AppUninstallerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .macSweepCard(radius: 12)
     }
 
     // MARK: - Orphaned Section
@@ -214,7 +211,7 @@ struct AppUninstallerView: View {
             .disabled(isCleaningOrphans || orphanedLeftovers.isEmpty)
             .padding()
         }
-        .macSweepCard(radius: 0)
+        .background(MacSweepTheme.panel)
         .confirmationDialog(
             "Move \(orphanedLeftovers.count) orphaned items to Trash?",
             isPresented: $showingCleanOrphansConfirmation,

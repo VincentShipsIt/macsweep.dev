@@ -23,6 +23,35 @@ struct SafetyChecker: Sendable {
     private static let aiAnalysisModuleID = "ai-analysis"
     private static let packageManagerModuleIDs: Set<String> = ["package-managers", "dev-tools"]
 
+    // MARK: - Precomputed roots
+    //
+    // `validate` runs once per enumerated file — hundreds of thousands of calls
+    // on a whole-home scan. The protected-root sets are constants, so their
+    // tilde expansion and case normalization are hoisted here instead of being
+    // recomputed for every root on every call.
+
+    /// A protected-root set with tilde expansion and case normalization done once.
+    fileprivate struct NormalizedRoots: Sendable {
+        /// (specificity length for longest-prefix arbitration, exact normalized
+        /// path, normalized path with trailing "/" for boundary-safe prefix tests)
+        let entries: [(length: Int, exact: String, prefix: String)]
+
+        init(_ roots: Set<String>) {
+            entries = roots.map { entry in
+                let expanded = entry.expandingTilde
+                let normalized = SafetyChecker.caseNormalized(expanded)
+                return (expanded.count, normalized, normalized + "/")
+            }
+        }
+    }
+
+    private static let neverDeleteRoots = NormalizedRoots(ProtectedPaths.neverDelete)
+    private static let safeCacheRoots = NormalizedRoots(ProtectedPaths.safeCacheRoots)
+    private static let userManagedRoots = NormalizedRoots(ProtectedPaths.userManagedRoots)
+    private static let cloudRoots = NormalizedRoots(ProtectedPaths.cloudRoots)
+    private static let packageManagerCacheRoots = NormalizedRoots(ProtectedPaths.packageManagerCacheRoots)
+    private static let aiAnalysisCacheRoots = NormalizedRoots(ProtectedPaths.aiAnalysisCacheRoots)
+
     // MARK: - Validation
 
     func validate(_ url: URL) -> ValidationResult {
@@ -234,17 +263,16 @@ struct SafetyChecker: Sendable {
 
         // Carve out the user document roots so files *inside* them are allowed, but
         // refuse a request to act on a whole root folder (e.g. all of ~/Documents).
-        for root in ProtectedPaths.userManagedRoots
-        where normalizedPath == Self.caseNormalized(expandedPathValue(for: root)) {
+        for entry in Self.userManagedRoots.entries where normalizedPath == entry.exact {
             return .protected(reason: "Refusing to \(action.verb) an entire user folder")
         }
-        if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
+        if isUnder(normalizedPath, anyOf: Self.userManagedRoots) {
             return .safe
         }
 
         // Everything else in neverDelete (system dirs, app data, credential dirs,
         // cloud roots) is off-limits even for an explicit user action.
-        if isUnder(path, anyOf: ProtectedPaths.neverDelete) {
+        if isUnder(normalizedPath, anyOf: Self.neverDeleteRoots) {
             return .protected(reason: "System, application-data, or credential path")
         }
 
@@ -264,6 +292,7 @@ struct SafetyChecker: Sendable {
         // file. The final component is left unresolved (a final-component symlink is
         // handled at step 3 below).
         let path = Self.realParentPath(url)
+        let normalizedPath = Self.caseNormalized(path)
         let components = (path as NSString).pathComponents
         let profile = ModuleSafetyProfile(moduleID: context.moduleID)
 
@@ -286,7 +315,7 @@ struct SafetyChecker: Sendable {
         // 4. Module-scoped carve-outs for user-managed roots (~/Documents, ~/Pictures…)
         //    and cloud roots. Checked BEFORE neverDelete because these roots also
         //    appear in neverDelete; only an explicitly opted-in module may proceed.
-        if isUnder(path, anyOf: ProtectedPaths.userManagedRoots) {
+        if isUnder(normalizedPath, anyOf: Self.userManagedRoots) {
             switch context.mode {
             case .scan where profile.allowsUserManagedScan: return .safe
             case .cleanup where profile.allowsUserManagedCleanup: return .safe
@@ -294,7 +323,7 @@ struct SafetyChecker: Sendable {
             }
         }
 
-        if isUnder(path, anyOf: ProtectedPaths.cloudRoots) {
+        if isUnder(normalizedPath, anyOf: Self.cloudRoots) {
             switch context.mode {
             case .scan where profile.allowsCloudScan: return .safe
             case .cleanup where profile.allowsCloudCleanup: return .safe
@@ -305,8 +334,8 @@ struct SafetyChecker: Sendable {
         // 5. Longest-prefix arbitration: a path may sit under both a protected root
         //    and a safe-cache root (e.g. /private/var/folders is inside /private).
         //    The more-specific (longer) match wins. Protected wins ties.
-        let protectedLen = longestPrefixLength(path, in: ProtectedPaths.neverDelete)
-        let safeCacheLen = longestPrefixLength(path, in: ProtectedPaths.safeCacheRoots)
+        let protectedLen = longestPrefixLength(normalizedPath, in: Self.neverDeleteRoots)
+        let safeCacheLen = longestPrefixLength(normalizedPath, in: Self.safeCacheRoots)
         if safeCacheLen > protectedLen {
             return .safe
         }
@@ -321,7 +350,7 @@ struct SafetyChecker: Sendable {
         //     (~/.npm/_cacache, ~/Library/pnpm/store, ~/.m2/repository, …).
         if let moduleID = context.moduleID,
            Self.packageManagerModuleIDs.contains(moduleID),
-           isUnder(path, anyOf: ProtectedPaths.packageManagerCacheRoots) {
+           isUnder(normalizedPath, anyOf: Self.packageManagerCacheRoots) {
             return .safe
         }
 
@@ -343,8 +372,8 @@ struct SafetyChecker: Sendable {
         //     remove them, and only the exact roots CacheAnalyzer surfaces. None
         //     overlap a neverDelete root (already arbitrated at step 5).
         if context.moduleID == Self.aiAnalysisModuleID,
-           isUnder(path, anyOf: ProtectedPaths.aiAnalysisCacheRoots)
-               || isUnder(path, anyOf: ProtectedPaths.packageManagerCacheRoots) {
+           isUnder(normalizedPath, anyOf: Self.aiAnalysisCacheRoots)
+               || isUnder(normalizedPath, anyOf: Self.packageManagerCacheRoots) {
             return .safe
         }
 
@@ -368,10 +397,6 @@ struct SafetyChecker: Sendable {
     }
 
     // MARK: - Helpers
-
-    private func expandedPathValue(for protectedPath: String) -> String {
-        protectedPath.expandingTilde
-    }
 
     /// `url` with parent-directory symlinks resolved, so protection checks see the
     /// real target a destructive op would actually hit. The final path component is
@@ -403,23 +428,19 @@ struct SafetyChecker: Sendable {
     }
 
     /// Length (in characters) of the longest entry in `roots` that is a path-boundary
-    /// prefix of `path`, or -1 if none match. Boundary-safe: `/var` matches
-    /// `/var/folders` but not `/variable`.
-    private func longestPrefixLength(_ path: String, in roots: Set<String>) -> Int {
-        let normalizedPath = Self.caseNormalized(path)
+    /// prefix of the CASE-NORMALIZED `normalizedPath`, or -1 if none match.
+    /// Boundary-safe: `/var` matches `/var/folders` but not `/variable`.
+    private func longestPrefixLength(_ normalizedPath: String, in roots: NormalizedRoots) -> Int {
         var best = -1
-        for entry in roots {
-            let root = expandedPathValue(for: entry)
-            let normalizedRoot = Self.caseNormalized(root)
-            if normalizedPath == normalizedRoot || normalizedPath.hasPrefix(normalizedRoot + "/") {
-                if root.count > best { best = root.count }
-            }
+        for entry in roots.entries
+        where normalizedPath == entry.exact || normalizedPath.hasPrefix(entry.prefix) {
+            if entry.length > best { best = entry.length }
         }
         return best
     }
 
-    private func isUnder(_ path: String, anyOf roots: Set<String>) -> Bool {
-        longestPrefixLength(path, in: roots) >= 0
+    private func isUnder(_ normalizedPath: String, anyOf roots: NormalizedRoots) -> Bool {
+        longestPrefixLength(normalizedPath, in: roots) >= 0
     }
 
     /// Whether the volume backing the user's home directory distinguishes case.
@@ -449,13 +470,15 @@ struct SafetyChecker: Sendable {
         bootVolumeIsCaseSensitive ? path : path.lowercased()
     }
 
+    private static let sharedFileListRoot =
+        "~/Library/Application Support/com.apple.sharedfilelist".expandingTilde
+    private static let safariDownloadsPlist = "~/Library/Safari/Downloads.plist".expandingTilde
+
     private func isPrivacyArtifact(_ path: String) -> Bool {
-        let sharedFileList = expandedPathValue(for: "~/Library/Application Support/com.apple.sharedfilelist")
-        if path == sharedFileList || path.hasPrefix(sharedFileList + "/") {
+        if path == Self.sharedFileListRoot || path.hasPrefix(Self.sharedFileListRoot + "/") {
             return true
         }
-        let safariDownloads = expandedPathValue(for: "~/Library/Safari/Downloads.plist")
-        return path == safariDownloads
+        return path == Self.safariDownloadsPlist
     }
 
     private func matchesPattern(_ filename: String, pattern: String) -> Bool {

@@ -63,7 +63,13 @@ struct SimilarPhotosModule: ScanModule {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
+            var iterations = 0
             while let url = enumerator.nextObject() as? URL {
+                // Photo-library enumeration can run for minutes; without this
+                // check a cancelled scan keeps burning IO to completion.
+                iterations += 1
+                if iterations % 512 == 0 { try Task.checkCancellation() }
+
                 let values = try? url.resourceValues(forKeys: resourceKeys)
                 guard values?.isDirectory == false, values?.isSymbolicLink == false else { continue }
                 guard values?.contentType?.conforms(to: .image) == true else { continue }
