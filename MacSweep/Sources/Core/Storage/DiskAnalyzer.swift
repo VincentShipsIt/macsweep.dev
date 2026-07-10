@@ -190,7 +190,7 @@ struct DiskNode: Identifiable, Hashable {
     var lastModified: Date?
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        size.formattedFileSize
     }
 
     /// Percentage of parent's size (set externally)

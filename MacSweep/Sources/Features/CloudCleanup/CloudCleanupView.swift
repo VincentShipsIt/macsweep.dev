@@ -28,14 +28,7 @@ struct CloudCleanupView: View {
             title: "Cloud Cleanup",
             subtitle: "Evict stale cloud downloads and provider caches.",
             trailing: cloudItems.isEmpty ? nil : AnyView(
-                Button {
-                    Task { await scanCloudStorage() }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scanCloudStorage() } }
             ),
             hidesChrome: cloudItems.isEmpty,
             scrolls: cloudItems.isEmpty
@@ -128,41 +121,22 @@ struct CloudCleanupView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will reclaim \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(filteredItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Reclaim Space") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will reclaim \(selectedSize)",
+            onSelectAll: { selectedItems = Set(filteredItems.map(\.id)) },
+            actionTitle: "Reclaim Space",
+            actionTint: nil,
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Reclaim \(selectedItems.count) cloud items?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Reclaim Space",
+            message: "Local cloud copies will be evicted when possible, and cloud cache folders will be moved to Trash."
         ) {
-            Button("Reclaim Space", role: .destructive) {
-                Task { await cleanSelected() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Local cloud copies will be evicted when possible, and cloud cache folders will be moved to Trash.")
+            Task { await cleanSelected() }
         }
     }
 
@@ -243,14 +217,11 @@ private struct CloudCleanupRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             Image(systemName: item.moduleName.contains("Local Copy") ? "icloud.and.arrow.down" : "externaldrive.badge.icloud")
                 .foregroundStyle(item.moduleName.contains("Local Copy") ? .cyan : .blue)
                 .frame(width: 22)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -265,9 +236,7 @@ private struct CloudCleanupRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(item.formattedSize)
                     .font(.headline)
@@ -287,7 +256,6 @@ private struct CloudCleanupRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 

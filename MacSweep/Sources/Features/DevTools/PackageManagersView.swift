@@ -255,45 +255,22 @@ struct PackageManagersView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(cacheItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Clean Selected") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .background(MacSweepTheme.panelStrong)
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will free \(selectedSize)",
+            onSelectAll: { selectedItems = Set(cacheItems.map(\.id)) },
+            actionTitle: "Clean Selected",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true },
+            showsPanelBackground: true
+        )
+        .deleteConfirmation(
             "Clean \(selectedItems.count) Caches?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Clean",
+            message: "This will delete \(selectedSize) of package manager caches. Packages will be re-downloaded as needed."
         ) {
-            Button("Clean", role: .destructive) {
-                Task {
-                    await cleanSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will delete \(selectedSize) of package manager caches. Packages will be re-downloaded as needed.")
+            Task { await cleanSelected() }
         }
     }
 
@@ -437,7 +414,7 @@ struct PackageManagerCard: View {
             } label: {
                 HStack {
                     Image(systemName: allSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(allSelected ? .blue : .secondary)
+                        .foregroundStyle(allSelected ? MacSweepTheme.selection : .secondary)
 
                     Image(systemName: icon)
                         .foregroundStyle(color)
@@ -461,7 +438,7 @@ struct PackageManagerCard: View {
                 } label: {
                     HStack {
                         Image(systemName: selectedItems.contains(item.id) ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(selectedItems.contains(item.id) ? .blue : .secondary)
+                            .foregroundStyle(selectedItems.contains(item.id) ? MacSweepTheme.selection : .secondary)
                             .font(.caption)
 
                         Text(item.moduleName.replacingOccurrences(of: "\(name) ", with: ""))

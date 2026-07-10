@@ -18,8 +18,7 @@ struct MailAttachmentsView: View {
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
             trailing: attachments.isEmpty ? nil : AnyView(
-                Button { Task { await scanAttachments() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scanAttachments() } }
             ),
             hidesChrome: attachments.isEmpty,
             scrolls: attachments.isEmpty
@@ -135,44 +134,21 @@ struct MailAttachmentsView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(filteredAttachments.map(\.id))
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will free \(selectedSize)",
+            onSelectAll: { selectedItems = Set(filteredAttachments.map(\.id)) },
+            actionTitle: "Move to Trash",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Move \(selectedItems.count) Attachments to Trash?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Move to Trash",
+            message: "This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected.")
+            Task { await deleteSelected() }
         }
     }
 
@@ -257,15 +233,12 @@ struct AttachmentRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // File icon
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.path.path))
                 .resizable()
                 .frame(width: 32, height: 32)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -296,9 +269,7 @@ struct AttachmentRow: View {
                     }
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             Text(item.formattedSize)
                 .font(.headline)
 
@@ -311,7 +282,6 @@ struct AttachmentRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 
     private func sourceColor(_ source: String) -> Color {

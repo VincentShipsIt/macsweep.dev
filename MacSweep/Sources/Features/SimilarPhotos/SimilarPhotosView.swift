@@ -22,8 +22,7 @@ struct SimilarPhotosView: View {
             title: "Similar Photos",
             subtitle: "Detect look-alike images and keep the best shot.",
             trailing: photoItems.isEmpty ? nil : AnyView(
-                Button { Task { await scanPhotos() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scanPhotos() } }
             ),
             hidesChrome: photoItems.isEmpty,
             scrolls: photoItems.isEmpty
@@ -96,42 +95,21 @@ struct SimilarPhotosView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will recover \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(sortedItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will recover \(selectedSize)",
+            onSelectAll: { selectedItems = Set(sortedItems.map(\.id)) },
+            actionTitle: "Move to Trash",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Move \(selectedItems.count) similar photos to Trash?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Move to Trash",
+            message: "The selected similar photos will be moved to Trash so you can restore them if needed."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task { await cleanSelected() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The selected similar photos will be moved to Trash so you can restore them if needed.")
+            Task { await cleanSelected() }
         }
     }
 
@@ -204,14 +182,11 @@ private struct SimilarPhotoRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             SimilarPhotoThumbnail(url: item.path)
                 .frame(width: 44, height: 44)
                 .clipShape(.rect(cornerRadius: 8))
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -226,9 +201,7 @@ private struct SimilarPhotoRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(item.formattedSize)
                     .font(.headline)
@@ -248,7 +221,6 @@ private struct SimilarPhotoRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 

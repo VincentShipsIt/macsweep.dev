@@ -347,20 +347,19 @@ struct ProcessRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // App icon
-            if let icon = process.icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 24, height: 24)
-            } else {
-                Image(systemName: "app")
-                    .frame(width: 24, height: 24)
+            Group {
+                if let icon = process.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                } else {
+                    Image(systemName: "app")
+                        .frame(width: 24, height: 24)
+                }
             }
-
+        } content: {
             // Name
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
@@ -381,9 +380,7 @@ struct ProcessRow: View {
                         .lineLimit(1)
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             // Memory
             VStack(alignment: .trailing, spacing: 2) {
                 Text(process.formattedMemory)
@@ -410,7 +407,6 @@ struct ProcessRow: View {
             }
             .frame(width: 50)
         }
-        .padding(.vertical, 4)
     }
 
     private var memoryColor: Color {

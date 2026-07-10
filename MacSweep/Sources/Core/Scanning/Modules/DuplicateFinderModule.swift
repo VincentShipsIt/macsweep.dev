@@ -261,7 +261,7 @@ struct DuplicateFile: Identifiable, Hashable {
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        size.formattedFileSize
     }
 
     func hash(into hasher: inout Hasher) {

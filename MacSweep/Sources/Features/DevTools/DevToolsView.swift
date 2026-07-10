@@ -129,28 +129,13 @@ struct BuildArtifactsView: View {
     }
 
     private var noArtifactsView: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 52, weight: .light))
-                .foregroundStyle(MacSweepTheme.accent)
-
-            Text("No Developer Artifacts Found")
-                .font(.headline)
-
-            Text("No build artifacts, stale worktrees, or merged branches were found.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                Task { await scan() }
-            } label: {
-                Label("Scan Again", systemImage: "arrow.clockwise")
-            }
-            .glassButton()
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+        EmptyResultState(
+            icon: "checkmark.circle",
+            title: "No Developer Artifacts Found",
+            message: "No build artifacts, stale worktrees, or merged branches were found.",
+            actionTitle: "Scan Again",
+            action: { Task { await scan() } }
+        )
     }
 
     // MARK: - Toolbar
@@ -170,14 +155,7 @@ struct BuildArtifactsView: View {
 
                 Spacer()
 
-                Button {
-                    Task { await scan() }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scan() } }
             }
 
             // Project type filter
@@ -387,24 +365,21 @@ struct BuildArtifactsView: View {
             .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
-        .confirmationDialog(
+        .deleteConfirmation(
             "Clean \(selectedCount) items?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Clean Selected",
+            message: cleanConfirmationMessage
         ) {
-            Button("Clean Selected", role: .destructive) {
-                Task {
-                    await cleanSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if recentlyModifiedCount > 0 {
-                Text("Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move build artifacts to Trash and remove selected stale Git worktrees or branches.")
-            } else {
-                Text("This will move build artifacts to Trash and remove selected stale Git worktrees or branches.")
-            }
+            Task { await cleanSelected() }
         }
+    }
+
+    private var cleanConfirmationMessage: String {
+        if recentlyModifiedCount > 0 {
+            return "Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move build artifacts to Trash and remove selected stale Git worktrees or branches."
+        }
+        return "This will move build artifacts to Trash and remove selected stale Git worktrees or branches."
     }
 
     // MARK: - Actions
@@ -536,7 +511,7 @@ struct BuildArtifactsView: View {
             .filter { selectedGitItems.contains($0.id) }
             .reduce(0) { $0 + $1.size }
         let total = allCleanupItems.totalSize(selected: selectedItems) + gitTotal
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        return total.formattedFileSize
     }
 
     private var selectedCount: Int {
@@ -559,7 +534,7 @@ struct BuildArtifactsView: View {
 
     private func totalSizeForType(_ type: ProjectType) -> String {
         let total = projects.filter { $0.type == type }.reduce(0) { $0 + $1.artifactSize }
-        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        return total.formattedFileSize
     }
 
     private func cleanupItemIDs(for project: ProjectInfo) -> Set<UUID> {
@@ -599,9 +574,7 @@ struct ProjectRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 // Selection checkbox
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .blue : .secondary)
-                    .onTapGesture { onToggle() }
+                SelectionCheckmark(isSelected: isSelected, onToggle: onToggle)
 
                 // Type icon
                 Image(systemName: project.type.icon)
@@ -749,14 +722,11 @@ struct ArtifactRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             Image(systemName: "folder.fill")
                 .foregroundStyle(.orange)
                 .frame(width: 24)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -776,13 +746,10 @@ struct ArtifactRow: View {
                         .truncationMode(.head)
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             Text(item.formattedSize)
                 .font(.headline)
         }
-        .padding(.vertical, 4)
     }
 }
 
@@ -795,15 +762,11 @@ struct GitArtifactRow: View {
     @State private var showingCommand = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-                .onTapGesture { onToggle() }
-
+        SelectableItemRow(isSelected: isSelected, onToggle: onToggle) {
             Image(systemName: item.kind.icon)
                 .foregroundStyle(item.kind == .worktree ? .teal : .indigo)
                 .frame(width: 24)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(item.name)
@@ -836,9 +799,7 @@ struct GitArtifactRow: View {
                         .truncationMode(.head)
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             Text(item.formattedSize)
                 .font(.headline)
 
@@ -875,7 +836,6 @@ struct GitArtifactRow: View {
                 .padding()
             }
         }
-        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { onToggle() }
     }

@@ -22,8 +22,7 @@ struct DuplicateFinderView: View {
             title: "Duplicate Files",
             subtitle: "Find redundant copies and keep the best version.",
             trailing: duplicateItems.isEmpty ? nil : AnyView(
-                Button { Task { await scanDuplicates() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scanDuplicates() } }
             ),
             hidesChrome: duplicateItems.isEmpty,
             scrolls: duplicateItems.isEmpty
@@ -99,44 +98,21 @@ struct DuplicateFinderView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will recover \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(sortedItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will recover \(selectedSize)",
+            onSelectAll: { selectedItems = Set(sortedItems.map(\.id)) },
+            actionTitle: "Move to Trash",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Move \(selectedItems.count) duplicates to Trash?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Move to Trash",
+            message: "This will move \(selectedSize) of duplicate files to Trash."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will move \(selectedSize) of duplicate files to Trash.")
+            Task { await deleteSelected() }
         }
     }
 
@@ -213,13 +189,10 @@ struct DuplicateItemRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             FileIconView(url: item.path)
                 .frame(width: 36, height: 36)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .font(.body)
@@ -236,9 +209,7 @@ struct DuplicateItemRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(item.formattedSize)
                     .font(.headline)
@@ -258,7 +229,6 @@ struct DuplicateItemRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 

@@ -155,44 +155,22 @@ struct BrowserCleanupView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) items selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectAll()
-            }
-            .glassButton()
-
-            Button("Clean") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            countNoun: "items",
+            summary: "Will free \(selectedSize)",
+            onSelectAll: { selectAll() },
+            actionTitle: "Clean",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Clean browser data?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Clean",
+            message: "This will remove \(selectedSize) of browser caches and service workers. Browsers will recreate caches as needed."
         ) {
-            Button("Clean", role: .destructive) {
-                Task {
-                    await cleanSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove \(selectedSize) of browser caches and service workers. Browsers will recreate caches as needed.")
+            Task { await cleanSelected() }
         }
     }
 
@@ -389,8 +367,7 @@ struct BrowserItemRow: View {
     var body: some View {
         Button(action: toggle) {
             HStack(spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .blue : .secondary)
+                SelectionCheckmark(isSelected: isSelected)
 
                 Image(systemName: item.icon)
                     .foregroundStyle(.secondary)

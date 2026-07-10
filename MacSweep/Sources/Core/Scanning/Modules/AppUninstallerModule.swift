@@ -59,7 +59,7 @@ struct InstalledApp: Identifiable, Hashable {
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        totalSize.formattedFileSize
     }
 
     var formattedBundleSize: String {
@@ -93,7 +93,7 @@ struct AppLeftover: Identifiable {
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        size.formattedFileSize
     }
 }
 
