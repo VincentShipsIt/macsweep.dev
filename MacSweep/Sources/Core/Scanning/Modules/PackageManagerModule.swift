@@ -71,7 +71,7 @@ struct PackageManagerInfo: Identifiable {
     var cacheItems: [CleanupItem] = []
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file)
+        cacheSize.formattedFileSize
     }
 
     static let all: [PackageManagerInfo] = [

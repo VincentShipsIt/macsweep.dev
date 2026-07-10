@@ -124,6 +124,12 @@ enum MacSweepTheme {
     static let accentBlue = Color(red: 0.22, green: 0.52, blue: 0.84)
     static let warningPanel = Color.orange.opacity(0.12)
 
+    /// The single selection accent — the checkmark tint on every selectable row
+    /// and the fill behind a selected card. Centralizes the `.blue` that the row
+    /// structs and category cards used to hardcode.
+    static let selection = Color.blue
+    static let selectionFill = Color.blue.opacity(0.1)
+
     static let smallRadius: CGFloat = 8
     static let mediumRadius: CGFloat = 10
 }

@@ -228,7 +228,7 @@ struct MailStats {
     let byType: [String: (count: Int, size: Int64)]
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        totalSize.formattedFileSize
     }
 
     static func from(items: [CleanupItem]) -> MailStats {

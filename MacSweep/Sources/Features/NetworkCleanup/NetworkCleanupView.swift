@@ -206,24 +206,21 @@ struct WiFiNetworksView: View {
             .disabled(selectedNetworks.isEmpty)
         }
         .padding()
-        .confirmationDialog(
+        .deleteConfirmation(
             "Remove \(selectedNetworks.count) networks?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Remove Networks",
+            message: removalMessage
         ) {
-            Button("Remove Networks", role: .destructive) {
-                Task {
-                    await removeSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if containsCurrentNetwork {
-                Text("Warning: You are about to remove the currently connected network. You may lose your connection.")
-            } else {
-                Text("These networks will be removed from your saved networks list. You can reconnect to them later if needed.")
-            }
+            Task { await removeSelected() }
         }
+    }
+
+    private var removalMessage: String {
+        if containsCurrentNetwork {
+            return "Warning: You are about to remove the currently connected network. You may lose your connection."
+        }
+        return "These networks will be removed from your saved networks list. You can reconnect to them later if needed."
     }
 
     // MARK: - Actions
@@ -291,17 +288,13 @@ struct NetworkRow: View {
     let onToggleProtection: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Selection indicator
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // WiFi icon
             Image(systemName: network.isCurrentlyConnected ? "wifi" : "wifi.slash")
                 .font(.title3)
                 .foregroundStyle(network.isCurrentlyConnected ? .green : .secondary)
                 .frame(width: 24)
-
+        } content: {
             // Network info
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -325,9 +318,7 @@ struct NetworkRow: View {
                     }
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             // Protection toggle
             Button {
                 onToggleProtection()
@@ -338,7 +329,6 @@ struct NetworkRow: View {
             .buttonStyle(.plain)
             .help(isProtected ? "Unprotect network" : "Protect network from removal")
         }
-        .padding(.vertical, 4)
         .opacity(isProtected ? 0.7 : 1)
     }
 }
@@ -497,29 +487,21 @@ struct SSHHostsView: View {
             .disabled(selectedHosts.isEmpty)
         }
         .padding()
-        .confirmationDialog(
+        .deleteConfirmation(
             "Remove \(selectedHosts.count) SSH hosts?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Remove Hosts",
+            message: "These hosts will be removed from your known_hosts file. You will need to verify their fingerprints again when reconnecting."
         ) {
-            Button("Remove Hosts", role: .destructive) {
-                removeSelected()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("These hosts will be removed from your known_hosts file. You will need to verify their fingerprints again when reconnecting.")
+            removeSelected()
         }
-        .confirmationDialog(
+        .deleteConfirmation(
             "Clear all SSH known hosts?",
             isPresented: $showingClearAllConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Clear All (Backup Created)",
+            message: "This will remove ALL known SSH hosts. A backup will be created at ~/.ssh/known_hosts.backup. You will need to verify fingerprints for all hosts."
         ) {
-            Button("Clear All (Backup Created)", role: .destructive) {
-                clearAll()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove ALL known SSH hosts. A backup will be created at ~/.ssh/known_hosts.backup. You will need to verify fingerprints for all hosts.")
+            clearAll()
         }
     }
 
@@ -572,15 +554,12 @@ struct SSHHostRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             Image(systemName: "server.rack")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.host)
                     .font(.body)
@@ -604,10 +583,9 @@ struct SSHHostRow: View {
                     }
                 }
             }
-
-            Spacer()
+        } trailing: {
+            EmptyView()
         }
-        .padding(.vertical, 4)
     }
 }
 

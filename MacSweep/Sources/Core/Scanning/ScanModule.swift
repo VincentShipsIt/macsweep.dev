@@ -222,7 +222,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        size.formattedFileSize
     }
 
     var icon: String {

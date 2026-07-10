@@ -565,7 +565,7 @@ struct ProjectInfo: Identifiable {
     }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: artifactSize, countStyle: .file)
+        artifactSize.formattedFileSize
     }
 
     /// Whether the project was modified within the last 24 hours
@@ -788,7 +788,7 @@ struct GitCleanupItem: Identifiable, Hashable, Sendable {
 
     var formattedSize: String {
         guard size > 0 else { return "No disk data" }
-        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        return size.formattedFileSize
     }
 
     var timeSinceActivity: String? {

@@ -3,28 +3,25 @@ import SwiftUI
 /// View for managing mail attachments
 struct MailAttachmentsView: View {
     @EnvironmentObject var appState: AppState
-    @State private var isScanning = false
-    @State private var attachments: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
-    @State private var stats: MailStats?
+    @StateObject private var model = ScanFeatureModel()
     @State private var filterSource: String? = nil
     @State private var filterType: String? = nil
     @State private var sizeThreshold: Double = 1  // MB
-    @State private var errorMessage: String?
+
+    /// Derived from the current results, so it always reflects the live list.
+    private var stats: MailStats? { MailStats.from(items: model.items) }
 
     var body: some View {
         FeaturePageShell(
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
-            trailing: attachments.isEmpty ? nil : AnyView(
-                Button { Task { await scanAttachments() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(isScanning)
+            trailing: model.items.isEmpty ? nil : AnyView(
+                RescanButton(isScanning: model.isScanning) { Task { await scanAttachments() } }
             ),
-            hidesChrome: attachments.isEmpty,
-            scrolls: attachments.isEmpty
+            hidesChrome: model.items.isEmpty,
+            scrolls: model.items.isEmpty
         ) {
-            if attachments.isEmpty {
+            if model.items.isEmpty {
                 ScanLandingView(
                     icon: "envelope",
                     title: "Scan for Mail Attachments",
@@ -35,7 +32,7 @@ struct MailAttachmentsView: View {
                         ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
                     ],
                     illustration: "paperclip",
-                    isScanning: isScanning,
+                    isScanning: model.isScanning,
                     scanningMessage: "Scanning mail attachments",
                     action: { Task { await scanAttachments() } }
                 )
@@ -50,7 +47,8 @@ struct MailAttachmentsView: View {
                 }
             }
         }
-        .errorAlert("Couldn't delete attachments", message: $errorMessage)
+        .errorAlert("Couldn't delete attachments", message: $model.errorMessage)
+        .onDisappear { model.cancelScan() }
     }
 
     // MARK: - Filter Bar
@@ -122,9 +120,9 @@ struct MailAttachmentsView: View {
     // MARK: - Attachments List
 
     private var attachmentsList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             ForEach(filteredAttachments) { item in
-                AttachmentRow(item: item, isSelected: selectedItems.contains(item.id))
+                AttachmentRow(item: item, isSelected: model.selectedItems.contains(item.id))
                     .tag(item.id)
             }
         }
@@ -135,94 +133,49 @@ struct MailAttachmentsView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(filteredAttachments.map(\.id))
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
-            "Move \(selectedItems.count) Attachments to Trash?",
-            isPresented: $showingConfirmation,
-            titleVisibility: .visible
+        CleanupFooter(
+            selectedCount: model.selectedItems.count,
+            summary: "Will free \(selectedSize)",
+            onSelectAll: { model.selectAll(filteredAttachments) },
+            actionTitle: "Move to Trash",
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
+        )
+        .deleteConfirmation(
+            "Move \(model.selectedItems.count) Attachments to Trash?",
+            isPresented: $model.showingConfirmation,
+            confirmTitle: "Move to Trash",
+            message: "This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected.")
+            Task { await deleteSelected() }
         }
     }
 
     // MARK: - Actions
 
     private func scanAttachments() async {
-        isScanning = true
-        attachments = []
-        selectedItems = []
-
-        defer { isScanning = false }
-
-        var module = MailAttachmentsModule()
-        module.threshold = Int64(sizeThreshold * 1_048_576)
-
-        attachments = (try? await module.scan()) ?? []
-        stats = MailStats.from(items: attachments)
+        // Scan failures were swallowed here originally (via `try?`); keep that by
+        // passing no error formatter, and start with nothing selected.
+        let threshold = Int64(sizeThreshold * 1_048_576)
+        await model.scan(selectAllOnCompletion: false, onError: nil) {
+            var module = MailAttachmentsModule()
+            module.threshold = threshold
+            return try await module.scan()
+        }
     }
 
     private func deleteSelected() async {
-        let itemsToDelete = filteredAttachments.filter { selectedItems.contains($0.id) }
-
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
-        let engine = ScanEngine()
-        let result: CleanupResult
-        do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
-        } catch {
-            // The whole operation failed (e.g. deletion cap) — surface it and keep
-            // every item, since nothing was removed.
-            errorMessage = "Couldn't move attachments to Trash: \(error.localizedDescription)"
-            return
-        }
-
-        // Per-item failures come back in result.errors (not thrown). Only drop
-        // the items that actually left disk; keep failed ones visible. Assign
-        // unconditionally so a clean retry clears any stale error.
-        let failedPaths = Set(result.errors.map(\.path))
-        attachments.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
-        selectedItems = selectedItems.filter { id in attachments.contains(where: { $0.id == id }) }
-        stats = MailStats.from(items: attachments)
-        errorMessage = result.failureSummaryMessage
+        // The shared model routes through ScanEngine (per-item SafetyChecker +
+        // aggregate DeletionGuard cap), then prunes only the items that left disk;
+        // `stats` recomputes automatically from the pruned list.
+        let itemsToDelete = filteredAttachments.filter { model.selectedItems.contains($0.id) }
+        await model.clean(itemsToDelete) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
     }
 
     // MARK: - Computed
 
     private var filteredAttachments: [CleanupItem] {
-        var result = attachments
+        var result = model.items
 
         // Filter by size
         let thresholdBytes = Int64(sizeThreshold * 1_048_576)
@@ -246,7 +199,7 @@ struct MailAttachmentsView: View {
     }
 
     private var selectedSize: String {
-        filteredAttachments.formattedTotalSize(selected: selectedItems)
+        filteredAttachments.formattedTotalSize(selected: model.selectedItems)
     }
 }
 
@@ -257,15 +210,12 @@ struct AttachmentRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // File icon
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.path.path))
                 .resizable()
                 .frame(width: 32, height: 32)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -296,9 +246,7 @@ struct AttachmentRow: View {
                     }
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             Text(item.formattedSize)
                 .font(.headline)
 
@@ -311,7 +259,6 @@ struct AttachmentRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 
     private func sourceColor(_ source: String) -> Color {

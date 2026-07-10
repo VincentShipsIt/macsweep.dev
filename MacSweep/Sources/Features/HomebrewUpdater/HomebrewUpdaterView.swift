@@ -9,14 +9,12 @@ struct HomebrewUpdaterView: View {
             title: "Homebrew Updater",
             subtitle: "Keep your Homebrew packages up to date.",
             trailing: AnyView(
-                Button {
+                RescanButton(
+                    title: "Check Updates",
+                    isScanning: service.isLoading || service.isUpgrading
+                ) {
                     Task { await service.checkOutdated() }
-                } label: {
-                    Label("Check Updates", systemImage: "arrow.clockwise")
                 }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(service.isLoading || service.isUpgrading)
             )
         ) {
             VStack(spacing: 0) {
@@ -219,9 +217,9 @@ struct PackageRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
                 // Checkbox
-                Image(systemName: package.isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(package.isSelected ? .blue : .secondary)
-                    .onTapGesture { package.isSelected.toggle() }
+                SelectionCheckmark(isSelected: package.isSelected) {
+                    package.isSelected.toggle()
+                }
 
                 // Brew icon
                 Image(systemName: "shippingbox.fill")
