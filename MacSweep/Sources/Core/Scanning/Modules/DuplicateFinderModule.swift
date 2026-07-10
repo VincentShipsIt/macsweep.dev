@@ -23,12 +23,40 @@ struct DuplicateFinderModule: ScanModule {
             await scanDirectory(searchPath, into: &sizeGroups)
         }
 
-        // Phase 2: Hash files with matching sizes
-        var duplicateGroups: [DuplicateGroup] = []
+        // Phase 2: Hash files with matching sizes.
+        //
+        // Each size-group is hashed independently, so we fan the groups out across
+        // a BOUNDED task group instead of hashing them one after another. The
+        // width is capped at the core count because the work is IO-bound (reading
+        // file bytes) — over-spawning would just thrash the disk. The two-stage
+        // partial→full confirmation inside `findDuplicatesInGroup` is left exactly
+        // as-is and runs entirely within one task, so the safety-critical dedup
+        // logic is unchanged; only the dispatch across groups is parallel.
+        let candidates = sizeGroups.compactMap { size, urls in
+            urls.count > 1 ? (size, urls) : nil
+        }
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
 
-        for (size, urls) in sizeGroups where urls.count > 1 {
-            let groups = await findDuplicatesInGroup(urls: urls, size: size)
-            duplicateGroups.append(contentsOf: groups)
+        var duplicateGroups: [DuplicateGroup] = []
+        await withTaskGroup(of: [DuplicateGroup].self) { group in
+            var next = 0
+            func enqueueNext() {
+                guard next < candidates.count else { return }
+                let (size, urls) = candidates[next]
+                next += 1
+                group.addTask { await findDuplicatesInGroup(urls: urls, size: size) }
+            }
+
+            // Keep at most `width` hashings in flight; refill as each completes.
+            for _ in 0..<min(width, candidates.count) { enqueueNext() }
+            while let found = await group.next() {
+                duplicateGroups.append(contentsOf: found)
+                if Task.isCancelled {
+                    group.cancelAll()
+                    break
+                }
+                enqueueNext()
+            }
         }
 
         // Phase 3: Convert to CleanupItems
@@ -93,6 +121,7 @@ struct DuplicateFinderModule: ScanModule {
         // large files only get a partial (head/middle/tail) hash.
         var quickGroups: [String: [URL]] = [:]
         for url in urls {
+            if Task.isCancelled { return [] }
             if let hash = await computeHash(for: url, size: size) {
                 quickGroups[hash, default: []].append(url)
             }
@@ -111,6 +140,7 @@ struct DuplicateFinderModule: ScanModule {
                 hashGroups[quickHash] = candidates
             } else {
                 for url in candidates {
+                    if Task.isCancelled { return [] }
                     guard let full = try? streamingFullHash(url) else { continue }
                     hashGroups["\(quickHash):\(full)", default: []].append(url)
                 }

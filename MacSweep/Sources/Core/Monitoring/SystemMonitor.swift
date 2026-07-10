@@ -36,6 +36,36 @@ final class SystemMonitor: ObservableObject {
     /// slow `system_profiler`/`ioreg` probe from the previous tick is still running).
     private var isRefreshingDevices = false
 
+    /// Guards against overlapping core-metric refreshes: a slow probe (e.g. `top`)
+    /// can still be running when the next 2s tick fires, so re-entrant refreshes
+    /// would race on `previousNetworkStats` and waste work.
+    private var isRefreshing = false
+
+    /// Kernel page size, read once via `sysctl`. `vm_stat` reports page counts, so
+    /// every memory refresh multiplies by this — previously it spawned
+    /// `/usr/bin/pagesize` on every 2s tick just to read a value that never changes.
+    private let pageSize: UInt64 = {
+        var value: Int32 = 0
+        var length = MemoryLayout<Int32>.size
+        if sysctlbyname("hw.pagesize", &value, &length, nil, 0) == 0, value > 0 {
+            return UInt64(value)
+        }
+        return 16384
+    }()
+
+    /// Monotonic core-metric tick counter, used to run slow-changing probes
+    /// (disk usage, battery cycle-count/health) on a coarser cadence than 2s.
+    private var tickCount = 0
+    /// Refresh disk usage and battery health once every N ticks (N × 2s).
+    private let slowMetricInterval = 15
+
+    /// Cached battery cycle count / health from the last `system_profiler` probe.
+    /// The IOKit charge read is cheap and runs every tick; the profiler spawn that
+    /// yields these two fields is slow, so it runs on the slow cadence and its
+    /// result is folded into every `BatteryInfo` in between.
+    private var batteryCycleCount: Int?
+    private var batteryHealth: Int?
+
     /// How often connected-device battery is re-scanned. Much slower than the 2s
     /// core-metric tick so we don't spawn `system_profiler` every couple of seconds.
     private let deviceRefreshInterval: TimeInterval = 30
@@ -118,29 +148,58 @@ final class SystemMonitor: ObservableObject {
     }
 
     func refresh() async {
-        cpuUsage = await fetchCPUUsage()
-        memoryUsage = await fetchMemoryUsage()
-        batteryInfo = await fetchBatteryInfo()
-        networkUsage = await fetchNetworkUsage()
-        diskUsage = await DiskUsage.current()
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
 
-        // Update history arrays
-        cpuHistory.append(cpuUsage.total)
+        // Only reassign a @Published metric when its value actually changed.
+        // Reassigning an unchanged struct still invalidates every observing view;
+        // most metrics (battery, disk, and often CPU/memory when idle) hold steady
+        // between ticks, so the diff spares those views a needless re-render.
+        let newCPU = await fetchCPUUsage()
+        if newCPU != cpuUsage { cpuUsage = newCPU }
+
+        let newMemory = await fetchMemoryUsage()
+        if newMemory != memoryUsage { memoryUsage = newMemory }
+
+        // Battery health (cycle count / condition) comes from a slow profiler spawn
+        // refreshed on the coarse cadence below; the per-tick read is IOKit-only.
+        let runSlowMetrics = tickCount % slowMetricInterval == 0
+        if runSlowMetrics {
+            await refreshBatteryHealth()
+        }
+        let newBattery = await fetchBatteryInfo()
+        if newBattery != batteryInfo { batteryInfo = newBattery }
+
+        let newNetwork = await fetchNetworkUsage()
+        if newNetwork != networkUsage { networkUsage = newNetwork }
+
+        // Disk usage barely moves; probe it on the slow cadence instead of every 2s.
+        if runSlowMetrics {
+            let newDisk = await DiskUsage.current()
+            if newDisk != diskUsage { diskUsage = newDisk }
+        }
+
+        tickCount &+= 1
+
+        // History arrays always advance — the graphs are a scrolling window, so a
+        // flat metric still needs its point plotted each tick.
+        cpuHistory.append(newCPU.total)
         if cpuHistory.count > maxHistorySize {
             cpuHistory.removeFirst()
         }
 
-        memoryHistory.append(memoryUsage.usedPercentage * 100)
+        memoryHistory.append(newMemory.usedPercentage * 100)
         if memoryHistory.count > maxHistorySize {
             memoryHistory.removeFirst()
         }
 
-        networkDownloadHistory.append(networkUsage.downloadSpeed)
+        networkDownloadHistory.append(newNetwork.downloadSpeed)
         if networkDownloadHistory.count > maxHistorySize {
             networkDownloadHistory.removeFirst()
         }
 
-        networkUploadHistory.append(networkUsage.uploadSpeed)
+        networkUploadHistory.append(newNetwork.uploadSpeed)
         if networkUploadHistory.count > maxHistorySize {
             networkUploadHistory.removeFirst()
         }
@@ -169,7 +228,7 @@ final class SystemMonitor: ObservableObject {
 
 // MARK: - CPU Usage
 
-struct CPUUsage: Sendable {
+struct CPUUsage: Sendable, Equatable {
     var user: Double = 0
     var system: Double = 0
     var idle: Double = 0
@@ -239,7 +298,7 @@ extension SystemMonitor {
 
 // MARK: - Memory Usage
 
-struct MemoryUsage: Sendable {
+struct MemoryUsage: Sendable, Equatable {
     var total: UInt64 = 0
     var used: UInt64 = 0
     var free: UInt64 = 0
@@ -314,10 +373,7 @@ extension SystemMonitor {
         // Parse vm_stat for detailed breakdown
         let vmStatOutput = await runCommand("/usr/bin/vm_stat", arguments: [])
 
-        // Get page size
-        let pageSize: UInt64
-        let pageSizeOutput = await runCommand("/usr/bin/pagesize", arguments: [])
-        pageSize = UInt64(pageSizeOutput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 16384
+        // Page size is cached once via sysctl (see `pageSize`); no per-tick spawn.
 
         // Parse vm_stat output
         let lines = vmStatOutput.components(separatedBy: "\n")
@@ -348,7 +404,7 @@ extension SystemMonitor {
 
 // MARK: - Battery Info
 
-struct BatteryInfo: Sendable {
+struct BatteryInfo: Sendable, Equatable {
     var hasBattery: Bool = false
     var percentage: Int = 0
     var isCharging: Bool = false
@@ -432,23 +488,33 @@ extension SystemMonitor {
             return info
         }
 
-        // Get cycle count from system_profiler
+        // Cycle count / health come from the slow `system_profiler` probe (see
+        // refreshBatteryHealth); fold in the last cached values so this per-tick
+        // read stays IOKit-only.
+        info.cycleCount = batteryCycleCount
+        info.health = batteryHealth
+
+        return info
+    }
+
+    /// Refresh the slow-changing battery health fields (cycle count, condition) via
+    /// `system_profiler`. Run on the coarse cadence, not every 2s tick — the spawn
+    /// is comparatively expensive and these values move over days, not seconds.
+    func refreshBatteryHealth() async {
         let profilerOutput = await runCommand("/usr/sbin/system_profiler", arguments: ["SPPowerDataType"])
         if let match = profilerOutput.firstMatch(of: #/Cycle Count: ([0-9]+)/#) {
-            info.cycleCount = Int(match.1)
+            batteryCycleCount = Int(match.1)
         }
         if let match = profilerOutput.firstMatch(of: #/Condition: ([A-Za-z ]+)/#) {
             let condition = String(match.1)
-            info.health = condition == "Normal" ? 100 : (condition == "Replace Soon" ? 50 : 25)
+            batteryHealth = condition == "Normal" ? 100 : (condition == "Replace Soon" ? 50 : 25)
         }
-
-        return info
     }
 }
 
 // MARK: - Network Usage
 
-struct NetworkUsage: Sendable {
+struct NetworkUsage: Sendable, Equatable {
     var downloadSpeed: UInt64 = 0  // bytes per second
     var uploadSpeed: UInt64 = 0    // bytes per second
     var totalDownloaded: UInt64 = 0

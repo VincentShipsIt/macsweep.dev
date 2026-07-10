@@ -299,7 +299,7 @@ extension Array where Element == CleanupError {
 
 // MARK: - Disk Usage
 
-struct DiskUsage: Sendable {
+struct DiskUsage: Sendable, Equatable {
     let total: Int64
     let used: Int64
     let free: Int64
