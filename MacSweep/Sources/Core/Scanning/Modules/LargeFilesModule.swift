@@ -72,7 +72,13 @@ struct LargeFilesModule: ScanModule {
 
             // Hoisted out of the hot per-file loop (SafetyChecker is stateless).
             let checker = SafetyChecker()
+            var iterations = 0
             while let url = enumerator.nextObject() as? URL {
+                // Whole-home enumeration can run for minutes; without this check
+                // a cancelled scan keeps burning IO to completion.
+                iterations += 1
+                if iterations % 512 == 0 { try Task.checkCancellation() }
+
                 // Check if we should skip this path
                 let relativePath = url.path.replacingOccurrences(
                     of: searchPath.path + "/",

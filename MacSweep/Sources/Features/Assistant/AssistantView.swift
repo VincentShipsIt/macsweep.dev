@@ -106,7 +106,9 @@ struct AssistantView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
                 }
-                .background(MacSweepTheme.panel.opacity(0.45))
+                // No surface tint here: a background on this ScrollView extends
+                // under the toolbar and recolors the titlebar for this page only.
+                // The shared window surface owns the background.
                 .onChange(of: assistant.messages.count) {
                     scrollToBottom(proxy)
                 }

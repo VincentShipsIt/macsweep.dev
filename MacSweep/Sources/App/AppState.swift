@@ -60,6 +60,14 @@ final class AppState: ObservableObject {
 
     // MARK: - Actions
 
+    /// Stop the in-flight scan, if any. The scan modules check
+    /// `Task.checkCancellation()` inside their enumeration loops, so this
+    /// actually halts the disk walk instead of letting it run to completion.
+    /// A queued caller waiting in `startScan` proceeds normally afterwards.
+    func cancelScan() {
+        activeScanTask?.cancel()
+    }
+
     func quickScan() async {
         await startScan(
             moduleScan: { progress in try await self.scanEngine.smartCareScan(progress: progress) },
@@ -274,6 +282,8 @@ final class AppState: ObservableObject {
             let combined = deduplicated(items: scannedItems + persistentItems)
             applyScanResults(combined, modules: modules)
             scanProgress = 1
+        } catch is CancellationError {
+            // User-initiated stop — not an error worth a banner.
         } catch {
             // Surface to the UI instead of swallowing into a console log.
             lastError = "Scan failed: \(error.localizedDescription)"

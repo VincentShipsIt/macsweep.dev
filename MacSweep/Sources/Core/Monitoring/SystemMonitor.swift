@@ -35,10 +35,29 @@ final class SystemMonitor: ObservableObject {
     /// Guards against overlapping device scans (the timer can fire again while a
     /// slow `system_profiler`/`ioreg` probe from the previous tick is still running).
     private var isRefreshingDevices = false
+    /// Same overlap guard for the core-metric tick: a `top`/`system_profiler`
+    /// probe can outlast the 2s interval, and without this the timer stacks
+    /// concurrent refreshes (and their subprocess spawns) on top of each other.
+    private var isRefreshing = false
 
     /// How often connected-device battery is re-scanned. Much slower than the 2s
     /// core-metric tick so we don't spawn `system_profiler` every couple of seconds.
     private let deviceRefreshInterval: TimeInterval = 30
+
+    /// Battery cycle count / condition from `system_profiler SPPowerDataType` —
+    /// one of the heaviest probes on macOS, for values that change about once a
+    /// day. Cached and re-probed on this slow cadence rather than every 2s tick.
+    private var cachedBatteryHealth: (cycleCount: Int?, health: Int?, probedAt: Date)?
+    private let batteryHealthRefreshInterval: TimeInterval = 1800
+
+    /// VM page size is constant per boot; resolve once instead of spawning
+    /// `/usr/bin/pagesize` on every memory refresh.
+    static let vmPageSize: UInt64 = {
+        var pageSize: Int = 0
+        var size = MemoryLayout<Int>.size
+        sysctlbyname("hw.pagesize", &pageSize, &size, nil, 0)
+        return pageSize > 0 ? UInt64(pageSize) : 16384
+    }()
 
     // MARK: - Lifecycle
 
@@ -118,11 +137,23 @@ final class SystemMonitor: ObservableObject {
     }
 
     func refresh() async {
-        cpuUsage = await fetchCPUUsage()
-        memoryUsage = await fetchMemoryUsage()
-        batteryInfo = await fetchBatteryInfo()
-        networkUsage = await fetchNetworkUsage()
-        diskUsage = await DiskUsage.current()
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        // The probes are independent subprocess/sysctl reads; run them
+        // concurrently so one slow probe doesn't serialize the whole tick.
+        async let cpu = fetchCPUUsage()
+        async let memory = fetchMemoryUsage()
+        async let battery = fetchBatteryInfo()
+        async let network = fetchNetworkUsage()
+        async let disk = DiskUsage.current()
+
+        cpuUsage = await cpu
+        memoryUsage = await memory
+        batteryInfo = await battery
+        networkUsage = await network
+        diskUsage = await disk
 
         // Update history arrays
         cpuHistory.append(cpuUsage.total)
@@ -313,11 +344,7 @@ extension SystemMonitor {
 
         // Parse vm_stat for detailed breakdown
         let vmStatOutput = await runCommand("/usr/bin/vm_stat", arguments: [])
-
-        // Get page size
-        let pageSize: UInt64
-        let pageSizeOutput = await runCommand("/usr/bin/pagesize", arguments: [])
-        pageSize = UInt64(pageSizeOutput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 16384
+        let pageSize = Self.vmPageSize
 
         // Parse vm_stat output
         let lines = vmStatOutput.components(separatedBy: "\n")
@@ -432,7 +459,17 @@ extension SystemMonitor {
             return info
         }
 
-        // Get cycle count from system_profiler
+        // Cycle count / condition come from `system_profiler SPPowerDataType`,
+        // which can take seconds — far too heavy for the 2s tick, for values
+        // that change roughly daily. Probe it on a slow cadence and reuse the
+        // cached result in between.
+        if let cached = cachedBatteryHealth,
+           Date().timeIntervalSince(cached.probedAt) < batteryHealthRefreshInterval {
+            info.cycleCount = cached.cycleCount
+            info.health = cached.health
+            return info
+        }
+
         let profilerOutput = await runCommand("/usr/sbin/system_profiler", arguments: ["SPPowerDataType"])
         if let match = profilerOutput.firstMatch(of: #/Cycle Count: ([0-9]+)/#) {
             info.cycleCount = Int(match.1)
@@ -441,6 +478,7 @@ extension SystemMonitor {
             let condition = String(match.1)
             info.health = condition == "Normal" ? 100 : (condition == "Replace Soon" ? 50 : 25)
         }
+        cachedBatteryHealth = (info.cycleCount, info.health, Date())
 
         return info
     }

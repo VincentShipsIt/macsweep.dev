@@ -20,13 +20,14 @@ struct DuplicateFinderModule: ScanModule {
 
         // Phase 1: Group by size
         for searchPath in searchPaths {
-            await scanDirectory(searchPath, into: &sizeGroups)
+            try await scanDirectory(searchPath, into: &sizeGroups)
         }
 
         // Phase 2: Hash files with matching sizes
         var duplicateGroups: [DuplicateGroup] = []
 
         for (size, urls) in sizeGroups where urls.count > 1 {
+            try Task.checkCancellation()
             let groups = await findDuplicatesInGroup(urls: urls, size: size)
             duplicateGroups.append(contentsOf: groups)
         }
@@ -48,7 +49,7 @@ struct DuplicateFinderModule: ScanModule {
         }
     }
 
-    private func scanDirectory(_ root: URL, into sizeGroups: inout [Int64: [URL]]) async {
+    private func scanDirectory(_ root: URL, into sizeGroups: inout [Int64: [URL]]) async throws {
         let resourceKeys: Set<URLResourceKey> = [
             .fileSizeKey,
             .isDirectoryKey,
@@ -63,7 +64,12 @@ struct DuplicateFinderModule: ScanModule {
 
         // Hoisted out of the hot per-file loop (SafetyChecker is stateless).
         let checker = SafetyChecker()
+        var iterations = 0
         while let url = enumerator.nextObject() as? URL {
+            // Whole-home enumeration can run for minutes; without this check a
+            // cancelled scan keeps burning IO to completion.
+            iterations += 1
+            if iterations % 512 == 0 { try Task.checkCancellation() }
             do {
                 let values = try url.resourceValues(forKeys: resourceKeys)
 

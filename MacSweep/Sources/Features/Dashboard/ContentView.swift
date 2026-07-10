@@ -6,15 +6,7 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
-    @State private var exitingFeature: Feature?
-    @State private var slidePhase = false
-    @State private var slideToken = UUID()
-
-    private let detailSlideDuration: TimeInterval = 0.58
-
-    private var detailSlideAnimation: Animation {
-        .timingCurve(0.75, 0.25, 0, 1.0, duration: detailSlideDuration)
-    }
+    @State private var usesSlideTransition = true
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -71,28 +63,22 @@ struct ContentView: View {
         displayedFeature ?? appState.selectedFeature
     }
 
+    // SwiftUI owns the whole transition: identity is the feature itself (stable
+    // across a transition, so an interrupted slide retargets instead of
+    // rebuilding both pages), and insertion/removal use move transitions instead
+    // of hand-scheduled offsets. Landing pages slide vertically; everything else
+    // cross-fades briefly so no navigation is a hard cut.
     private var detailDeck: some View {
-        GeometryReader { proxy in
-            let height = max(proxy.size.height, 1)
-
-            ZStack {
-                if let exitingFeature {
-                    detailView(for: exitingFeature)
-                        .id("exiting-\(exitingFeature.rawValue)-\(slideToken.uuidString)")
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .offset(y: slidePhase ? -height : 0)
-                        .zIndex(1)
-                }
-
-                detailView(for: activeFeature)
-                    .id("active-\(activeFeature.rawValue)-\(slideToken.uuidString)")
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .offset(y: exitingFeature == nil ? 0 : (slidePhase ? 0 : height))
-                    .zIndex(0)
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+        ZStack {
+            detailView(for: activeFeature)
+                .id(activeFeature)
+                .transition(
+                    usesSlideTransition
+                        ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
+                        : .opacity
+                )
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func showFeature(_ newFeature: Feature) {
@@ -102,31 +88,9 @@ struct ContentView: View {
         let shouldSlide = usesCenteredLandingTransition(oldFeature)
             && usesCenteredLandingTransition(newFeature)
 
-        slideToken = UUID()
-
-        guard shouldSlide else {
-            exitingFeature = nil
-            slidePhase = false
+        usesSlideTransition = shouldSlide
+        withAnimation(shouldSlide ? .snappy(duration: 0.4) : .easeOut(duration: 0.15)) {
             displayedFeature = newFeature
-            return
-        }
-
-        exitingFeature = oldFeature
-        displayedFeature = newFeature
-        slidePhase = false
-
-        let token = slideToken
-        DispatchQueue.main.async {
-            guard slideToken == token else { return }
-            withAnimation(detailSlideAnimation) {
-                slidePhase = true
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + detailSlideDuration + 0.04) {
-            guard slideToken == token else { return }
-            exitingFeature = nil
-            slidePhase = false
         }
     }
 
