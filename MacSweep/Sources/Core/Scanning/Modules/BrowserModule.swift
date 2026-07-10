@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Darwin
 
 /// Protocol for browser-specific cleanup modules
 protocol BrowserModule: ScanModule {
@@ -98,13 +99,276 @@ extension BrowserModule {
         }
 
         return await cleanItems(moduleItems, dryRun: dryRun) { item, _ in
-            let contents = try FileManager.default.contentsOfDirectory(
-                at: item.path,
-                includingPropertiesForKeys: nil
+            try BrowserCacheRemover.removeContents(at: item.path)
+        }
+    }
+}
+
+/// Removes browser-cache contents without ever resolving a symbolic link.
+///
+/// The walk is anchored to directory descriptors instead of path-based
+/// `FileManager` recursion. Every component leading to the cache root is opened
+/// with `O_NOFOLLOW`; encountering a symlink there rejects the whole item. A
+/// symlink that is itself the cache root, or appears below a real cache root, is
+/// unlinked as a node with `unlinkat` and its target is never opened.
+private enum BrowserCacheRemover {
+    static func removeContents(at url: URL) throws {
+        let path = url.standardized.path
+        guard url.isFileURL, path.hasPrefix("/") else {
+            throw BrowserCacheRemovalError.invalidPath(path)
+        }
+
+        let components = (path as NSString).pathComponents.filter { $0 != "/" }
+        guard let rootName = components.last else {
+            throw BrowserCacheRemovalError.invalidPath(path)
+        }
+
+        var parentFD = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard parentFD >= 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "open",
+                path: "/",
+                code: errno
             )
-            for content in contents {
-                try FileManager.default.removeItem(at: content)
+        }
+        defer { close(parentFD) }
+
+        var traversedPath = ""
+        for component in components.dropLast() {
+            traversedPath += "/\(component)"
+            let nextFD = try openDirectoryComponent(
+                named: component,
+                at: parentFD,
+                displayPath: traversedPath
+            )
+            close(parentFD)
+            parentFD = nextFD
+        }
+
+        var rootInfo = stat()
+        let statResult = rootName.withCString {
+            fstatat(parentFD, $0, &rootInfo, AT_SYMLINK_NOFOLLOW)
+        }
+        guard statResult == 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "fstatat",
+                path: path,
+                code: errno
+            )
+        }
+
+        let rootType = rootInfo.st_mode & mode_t(S_IFMT)
+        if rootType == mode_t(S_IFLNK) {
+            // Explicit root policy: remove the link itself, never its target.
+            try unlinkEntry(named: rootName, at: parentFD, displayPath: path)
+            return
+        }
+        guard rootType == mode_t(S_IFDIR) else {
+            throw BrowserCacheRemovalError.notDirectory(path)
+        }
+
+        let rootFD = rootName.withCString {
+            openat(parentFD, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard rootFD >= 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "openat",
+                path: path,
+                code: errno
+            )
+        }
+        defer { close(rootFD) }
+
+        try removeChildren(from: rootFD, displayPath: path)
+    }
+
+    private static func openDirectoryComponent(
+        named name: String,
+        at parentFD: Int32,
+        displayPath: String
+    ) throws -> Int32 {
+        var info = stat()
+        let statResult = name.withCString {
+            fstatat(parentFD, $0, &info, AT_SYMLINK_NOFOLLOW)
+        }
+        guard statResult == 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "fstatat",
+                path: displayPath,
+                code: errno
+            )
+        }
+
+        let type = info.st_mode & mode_t(S_IFMT)
+        guard type != mode_t(S_IFLNK) else {
+            throw BrowserCacheRemovalError.symbolicLinkComponent(displayPath)
+        }
+        guard type == mode_t(S_IFDIR) else {
+            throw BrowserCacheRemovalError.notDirectory(displayPath)
+        }
+
+        let descriptor = name.withCString {
+            openat(parentFD, $0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard descriptor >= 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "openat",
+                path: displayPath,
+                code: errno
+            )
+        }
+        return descriptor
+    }
+
+    private static func removeChildren(from directoryFD: Int32, displayPath: String) throws {
+        // Give fdopendir its own descriptor; closedir takes ownership of it.
+        let streamFD = openat(directoryFD, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard streamFD >= 0 else {
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "openat",
+                path: displayPath,
+                code: errno
+            )
+        }
+        guard let directory = fdopendir(streamFD) else {
+            let code = errno
+            close(streamFD)
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "fdopendir",
+                path: displayPath,
+                code: code
+            )
+        }
+        defer { closedir(directory) }
+
+        while true {
+            errno = 0
+            guard let entry = readdir(directory) else {
+                let code = errno
+                if code != 0 {
+                    throw BrowserCacheRemovalError.systemCall(
+                        operation: "readdir",
+                        path: displayPath,
+                        code: code
+                    )
+                }
+                break
             }
+
+            var nameBuffer = entry.pointee.d_name
+            let capacity = MemoryLayout.size(ofValue: nameBuffer)
+            try withUnsafePointer(to: &nameBuffer) { buffer in
+                try buffer.withMemoryRebound(to: CChar.self, capacity: capacity) { name in
+                    guard strcmp(name, ".") != 0, strcmp(name, "..") != 0 else { return }
+                    try removeEntry(named: name, at: directoryFD, displayParent: displayPath)
+                }
+            }
+        }
+    }
+
+    private static func removeEntry(
+        named name: UnsafePointer<CChar>,
+        at parentFD: Int32,
+        displayParent: String
+    ) throws {
+        let displayName = String(validatingUTF8: name) ?? "<non-UTF-8 entry>"
+        let displayPath = displayParent + "/" + displayName
+
+        var info = stat()
+        guard fstatat(parentFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+            let code = errno
+            if code == ENOENT { return }
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "fstatat",
+                path: displayPath,
+                code: code
+            )
+        }
+
+        let type = info.st_mode & mode_t(S_IFMT)
+        if type == mode_t(S_IFDIR) {
+            let childFD = openat(
+                parentFD,
+                name,
+                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+            )
+            guard childFD >= 0 else {
+                let code = errno
+                if code == ENOENT { return }
+                throw BrowserCacheRemovalError.systemCall(
+                    operation: "openat",
+                    path: displayPath,
+                    code: code
+                )
+            }
+
+            do {
+                try removeChildren(from: childFD, displayPath: displayPath)
+                close(childFD)
+            } catch {
+                close(childFD)
+                throw error
+            }
+
+            guard unlinkat(parentFD, name, AT_REMOVEDIR) == 0 else {
+                let code = errno
+                if code == ENOENT { return }
+                throw BrowserCacheRemovalError.systemCall(
+                    operation: "unlinkat",
+                    path: displayPath,
+                    code: code
+                )
+            }
+            return
+        }
+
+        // Files and special nodes are unlinked directly. For symlinks this is
+        // the explicit nested-node policy: unlink the link, never open it.
+        guard unlinkat(parentFD, name, 0) == 0 else {
+            let code = errno
+            if code == ENOENT { return }
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "unlinkat",
+                path: displayPath,
+                code: code
+            )
+        }
+    }
+
+    private static func unlinkEntry(
+        named name: String,
+        at parentFD: Int32,
+        displayPath: String
+    ) throws {
+        let result = name.withCString { unlinkat(parentFD, $0, 0) }
+        guard result == 0 else {
+            let code = errno
+            if code == ENOENT { return }
+            throw BrowserCacheRemovalError.systemCall(
+                operation: "unlinkat",
+                path: displayPath,
+                code: code
+            )
+        }
+    }
+}
+
+private enum BrowserCacheRemovalError: LocalizedError {
+    case invalidPath(String)
+    case symbolicLinkComponent(String)
+    case notDirectory(String)
+    case systemCall(operation: String, path: String, code: Int32)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPath(let path):
+            return "Refused invalid browser cache path: \(path)"
+        case .symbolicLinkComponent(let path):
+            return "Refused browser cache path with a symbolic-link component: \(path)"
+        case .notDirectory(let path):
+            return "Browser cache path component is not a directory: \(path)"
+        case .systemCall(let operation, let path, let code):
+            return "\(operation) failed for \(path): \(String(cString: strerror(code)))"
         }
     }
 }
