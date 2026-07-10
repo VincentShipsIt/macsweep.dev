@@ -755,10 +755,28 @@ struct DeletionGuard {
     var dryRunDefault: Bool = true
 
     func preflightCheck(items: [CleanupItem]) -> PreflightResult {
-        let totalSize = items.reduce(0) { $0 + $1.size }
+        do {
+            let totalSize = try LiveDeletionByteCounter().totalAllocatedBytes(
+                for: items.map(\.path),
+                limit: maxTotalSize
+            )
+            return classify(measuredTotalSize: totalSize)
+        } catch LiveDeletionByteCounter.MeasurementError.limitExceeded {
+            return maximumExceededResult
+        } catch {
+            return .blocked(
+                reason: "Unable to safely measure every selected path immediately before deletion."
+            )
+        }
+    }
 
+    /// Pure threshold classification after a complete live measurement.
+    func classify(measuredTotalSize totalSize: Int64) -> PreflightResult {
+        guard totalSize >= 0 else {
+            return .blocked(reason: "Unable to safely measure every selected path immediately before deletion.")
+        }
         if totalSize > maxTotalSize {
-            return .blocked(reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))")
+            return maximumExceededResult
         }
 
         if totalSize > confirmationThreshold {
@@ -766,6 +784,12 @@ struct DeletionGuard {
         }
 
         return .allowed
+    }
+
+    private var maximumExceededResult: PreflightResult {
+        .blocked(
+            reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
+        )
     }
 }
 
