@@ -538,7 +538,7 @@ struct SafetySettingsView: View {
 
             Toggle("Confirm deletes over 1 GB", isOn: $confirmLargeDeletes)
 
-            Text("Protected paths cannot be modified. MacSweep will never delete system files, credentials, or user documents.")
+            Text("Protected paths cannot be modified. macsweep.dev will never delete system files, credentials, or user documents.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -799,7 +799,7 @@ struct AboutView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.purple)
 
-            Text("MacSweep")
+            Text("macsweep.dev")
                 .font(.largeTitle)
                 .fontWeight(.bold)
 

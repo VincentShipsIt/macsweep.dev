@@ -6,7 +6,7 @@ import os
 /// MacSweep irreversibly deletes user files; before this facade existed there was
 /// no repo-wide logging at all, so a bad deletion left no trace to diagnose after
 /// the fact. Three categories keep the unified-log output filterable in
-/// Console.app (`subsystem: com.vincentshipsit.macsweep`):
+/// Console.app (`subsystem: dev.macsweep`):
 ///
 ///   • `safety`  — every deletion (path + module + result) and safety decisions.
 ///   • `scan`    — scan / cleanup lifecycle and best-effort scan failures.
@@ -17,7 +17,7 @@ import os
 /// by which module. This is the user's own machine acting on the user's own
 /// files; nothing logged here leaves the device.
 enum Log {
-    private static let subsystem = "com.vincentshipsit.macsweep"
+    private static let subsystem = "dev.macsweep"
 
     static let safety = Logger(subsystem: subsystem, category: "safety")
     static let scan = Logger(subsystem: subsystem, category: "scan")

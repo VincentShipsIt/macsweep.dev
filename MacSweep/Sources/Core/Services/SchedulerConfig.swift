@@ -3,17 +3,18 @@ import Foundation
 /// Shared persistent store for the weekly background-scan schedule, readable and
 /// writable by BOTH the GUI app (`ScanScheduler`) and the `macsweep` CLI. The two
 /// run as separate executables and cannot share `UserDefaults.standard`, so they
-/// coordinate through an explicit suite domain
-/// (`~/Library/Preferences/com.vincentshipsit.macsweep.plist`), which any
-/// non-sandboxed process on the machine can open by name. The GUI app's bundle id
-/// is itself `com.vincentshipsit.macsweep`, so its `UserDefaults.standard` resolves
-/// to the same plist — the CLI just names the suite explicitly.
+/// coordinate through an explicit shared suite domain
+/// (`~/Library/Preferences/dev.macsweep.plist`), which any
+/// non-sandboxed process on the machine can open by name. `dev.macsweep` is the
+/// product's org-level namespace — the shared parent of the app's `dev.macsweep.app`
+/// and the CLI's `dev.macsweep.cli` bundle ids — so it belongs to neither
+/// executable's `UserDefaults.standard`; both name this suite explicitly.
 ///
 /// `@unchecked Sendable`: the only stored property is a `UserDefaults`, which Apple
 /// documents as thread-safe; the struct is otherwise immutable, so it is safe to
 /// pass across the headless actor boundary.
 public struct SchedulerConfig: @unchecked Sendable {
-    public static let suiteName = "com.vincentshipsit.macsweep"
+    public static let suiteName = "dev.macsweep"
     static let intervalDaysKey = "scanIntervalDays"
     static let nextScheduledScanKey = "nextScheduledScan"
     /// Key for the last-scan summary blob. Lives here so GUI (`LastScanStore`) and

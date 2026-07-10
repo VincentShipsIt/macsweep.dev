@@ -1174,7 +1174,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep.core;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.9;
@@ -1258,7 +1258,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep.cli;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.cli;
 				PRODUCT_NAME = macsweep;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
@@ -1341,7 +1341,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep.core;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.core;
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.9;
@@ -1360,15 +1360,16 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
-				INFOPLIST_KEY_CFBundleDisplayName = MacSweep;
+				INFOPLIST_KEY_CFBundleDisplayName = macsweep.dev;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 MacSweep. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 macsweep.dev. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.app;
+				PRODUCT_NAME = macsweep.dev;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
 			};
@@ -1383,7 +1384,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep.cli;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.cli;
 				PRODUCT_NAME = macsweep;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
@@ -1402,15 +1403,16 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
-				INFOPLIST_KEY_CFBundleDisplayName = MacSweep;
+				INFOPLIST_KEY_CFBundleDisplayName = macsweep.dev;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 MacSweep. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 macsweep.dev. All rights reserved.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vincentshipsit.macsweep;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.app;
+				PRODUCT_NAME = macsweep.dev;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
 			};

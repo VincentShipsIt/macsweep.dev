@@ -69,7 +69,7 @@ actor AssistantConfigRepository {
 
     private static func defaultRootURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/MacSweep", directoryHint: .isDirectory)
+            .appending(path: "Library/Application Support/macsweep.dev", directoryHint: .isDirectory)
     }
 
     private static func defaultWatchlistRules() -> [AssistantWatchlistRule] {
