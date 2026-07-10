@@ -287,22 +287,36 @@ struct ShredderView: View {
                     Text("\(result.filesShredded) files shredded")
                     Text("\(result.formattedBytes) destroyed")
                         .foregroundStyle(.secondary)
+                }
 
-                    if !result.errors.isEmpty {
-                        Text("\(result.errors.count) errors occurred")
+                if !result.errors.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(result.errors.count) items need attention")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.orange)
+
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(Array(result.errors.enumerated()), id: \.offset) { _, error in
+                                    Text(error.localizedDescription)
+                                        .font(.caption)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 220)
                     }
                 }
 
                 Button("Done") {
                     showingResult = false
-                    droppedFiles.removeAll()
                 }
                 .glassButton(prominent: true)
             }
         }
         .padding(40)
-        .frame(minWidth: 300)
+        .frame(minWidth: 520)
     }
 
     // MARK: - Actions
@@ -342,6 +356,7 @@ struct ShredderView: View {
         var totalFiles = 0
         var totalBytes: Int64 = 0
         var errors: [ShredError] = []
+        var failedSelections: [URL] = []
 
         let fileCount = droppedFiles.count
         // Use the shared instance AppState already holds rather than building a
@@ -358,7 +373,10 @@ struct ShredderView: View {
             // destructive write. Arbitrary user-selected files pass.
             let verdict = safety.validateForShred(url)
             guard verdict.isSafe else {
-                errors.append(.unknown("Skipped \(url.lastPathComponent): \(verdict.reason ?? "blocked by safety checks")"))
+                errors.append(.unknown(
+                    "Skipped \(url.path): \(verdict.reason ?? "blocked by safety checks")"
+                ))
+                failedSelections.append(url)
                 continue
             }
 
@@ -367,36 +385,73 @@ struct ShredderView: View {
                 FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
 
                 if isDirectory.boolValue {
-                    let result = try await SecureDelete.shredDirectory(at: url, level: shredLevel) { name, fileProgress in
+                    let result = try await SecureDelete.shredDirectory(
+                        at: url,
+                        level: shredLevel
+                    ) { name, fileProgress in
                         Task { @MainActor in
                             currentFile = name
                             progress = (Double(index) + fileProgress) / Double(fileCount)
                         }
                     }
                     totalFiles += result.filesShredded
-                    totalBytes += result.bytesShredded
+                    addShreddedBytes(
+                        result.bytesShredded,
+                        near: url,
+                        total: &totalBytes,
+                        errors: &errors
+                    )
                     errors.append(contentsOf: result.errors)
+                    if !result.success {
+                        failedSelections.append(url)
+                    }
                 } else {
-                    let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-                    try await SecureDelete.shred(file: url, level: shredLevel) { fileProgress in
+                    let size = try await SecureDelete.shred(
+                        file: url,
+                        level: shredLevel
+                    ) { fileProgress in
                         Task { @MainActor in
                             progress = (Double(index) + fileProgress) / Double(fileCount)
                         }
                     }
                     totalFiles += 1
-                    totalBytes += size
+                    addShreddedBytes(size, near: url, total: &totalBytes, errors: &errors)
                 }
             } catch let error as ShredError {
                 errors.append(error)
+                failedSelections.append(url)
             } catch {
-                errors.append(.unknown(error.localizedDescription))
+                errors.append(.unknown(
+                    "Shredding did not complete for \(url.path): \(error.localizedDescription)"
+                ))
+                failedSelections.append(url)
             }
         }
 
         await MainActor.run {
             isShredding = false
-            lastResult = ShredResult(filesShredded: totalFiles, bytesShredded: totalBytes, errors: errors)
+            droppedFiles = failedSelections
+            lastResult = ShredResult(
+                filesShredded: totalFiles,
+                bytesShredded: totalBytes,
+                errors: errors
+            )
             showingResult = true
+        }
+    }
+
+    private func addShreddedBytes(
+        _ bytes: Int64,
+        near url: URL,
+        total: inout Int64,
+        errors: inout [ShredError]
+    ) {
+        let (sum, overflow) = total.addingReportingOverflow(bytes)
+        if overflow {
+            total = Int64.max
+            errors.append(.byteCountOverflow(url))
+        } else {
+            total = sum
         }
     }
 }
