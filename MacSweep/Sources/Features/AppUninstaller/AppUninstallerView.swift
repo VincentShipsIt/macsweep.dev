@@ -242,7 +242,7 @@ struct AppUninstallerView: View {
         // Load leftovers for each app
         let scanner = LeftoverScanner()
         for i in loadedApps.indices {
-            loadedApps[i].leftovers = await scanner.findLeftovers(for: loadedApps[i])
+            loadedApps[i].leftovers = await scanner.findLeftovers(for: loadedApps[i], among: loadedApps)
         }
 
         apps = loadedApps

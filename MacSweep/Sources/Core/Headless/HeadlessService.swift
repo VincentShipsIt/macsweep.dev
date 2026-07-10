@@ -363,7 +363,7 @@ public actor MacSweepHeadlessService {
         var apps = await discovery.installedApps()
         let scanner = LeftoverScanner()
         for index in apps.indices {
-            apps[index].leftovers = await scanner.findLeftovers(for: apps[index])
+            apps[index].leftovers = await scanner.findLeftovers(for: apps[index], among: apps)
         }
 
         let headless = apps
@@ -387,7 +387,7 @@ public actor MacSweepHeadlessService {
 
         // Always populate leftovers before previewing or removing.
         let scanner = LeftoverScanner()
-        target.leftovers = await scanner.findLeftovers(for: target)
+        target.leftovers = await scanner.findLeftovers(for: target, among: apps)
         let leftoverDTOs = target.leftovers.map { Self.serializeLeftover($0) }
 
         if dryRun {

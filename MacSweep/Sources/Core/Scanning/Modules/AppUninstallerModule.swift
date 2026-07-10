@@ -224,11 +224,20 @@ actor LeftoverScanner {
     ]
 
     /// Find leftovers for a specific app
-    func findLeftovers(for app: InstalledApp) async -> [AppLeftover] {
+    /// `installedApps` lets matching distinguish an app's helper data from
+    /// data owned by another installed app whose bundle identifier extends the
+    /// candidate's identifier (for example, `.canary` or `.beta`).
+    func findLeftovers(for app: InstalledApp, among installedApps: [InstalledApp]) async -> [AppLeftover] {
         var leftovers: [AppLeftover] = []
 
         for (baseURL, type) in leftoverLocations {
-            let found = await scanForAppData(in: baseURL, matching: app.id, appName: app.name, type: type)
+            let found = await scanForAppData(
+                in: baseURL,
+                matching: app.id,
+                appName: app.name,
+                installedApps: installedApps,
+                type: type
+            )
             leftovers.append(contentsOf: found)
         }
 
@@ -273,7 +282,13 @@ actor LeftoverScanner {
         return orphans
     }
 
-    private func scanForAppData(in baseURL: URL, matching bundleID: String, appName: String, type: AppLeftover.LeftoverType) async -> [AppLeftover] {
+    private func scanForAppData(
+        in baseURL: URL,
+        matching bundleID: String,
+        appName: String,
+        installedApps: [InstalledApp],
+        type: AppLeftover.LeftoverType
+    ) async -> [AppLeftover] {
         var found: [AppLeftover] = []
 
         guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -282,7 +297,12 @@ actor LeftoverScanner {
         ) else { return [] }
 
         for item in contents {
-            guard Self.leftoverMatches(itemName: item.lastPathComponent, bundleID: bundleID, appName: appName) else {
+            guard Self.leftoverMatches(
+                itemName: item.lastPathComponent,
+                bundleID: bundleID,
+                appName: appName,
+                installedApps: installedApps
+            ) else {
                 continue
             }
             let size = (try? await DiskAnalyzer.size(of: item)) ?? 0
@@ -302,28 +322,43 @@ actor LeftoverScanner {
     /// Whether a Library item named `itemName` belongs to the app identified by
     /// `bundleID` / `appName`, for uninstaller leftover removal.
     ///
-    /// The bundle id is the reliable key: leftovers are named exactly after it
+    /// The bundle ID is the reliable key: leftovers are named exactly after it
     /// (`com.foo.App.plist`) or carry it as a dotted prefix (`com.foo.App.savedState`,
-    /// container dirs `com.foo.App`). App-name matching is an EXACT compare on a
-    /// space- and case-folded form — deliberately not the old two-way substring,
-    /// so uninstalling an app named "Mail" can never sweep unrelated "MailChimp"
-    /// data, and a short folder name can't superstring-match the app name (#76).
-    nonisolated static func leftoverMatches(itemName: String, bundleID: String, appName: String) -> Bool {
-        let base = itemName.hasSuffix(".plist") ? String(itemName.dropLast(6)) : itemName
-        let itemLower = base.lowercased()
+    /// container dirs `com.foo.App`). When several installed IDs match such a
+    /// prefix, exactly one app with the longest ID owns the item. This preserves
+    /// unambiguous helper data while refusing to attribute an installed
+    /// canary/beta app's data to its stable app. App-name matching is an exact
+    /// space- and case-folded fallback, and is refused when another installed
+    /// app has the same name.
+    nonisolated static func leftoverMatches(
+        itemName: String,
+        bundleID: String,
+        appName: String,
+        installedApps: [InstalledApp]
+    ) -> Bool {
+        let itemLower = itemName.lowercased()
+        let base = itemLower.hasSuffix(".plist") ? String(itemLower.dropLast(6)) : itemLower
 
         let bundleLower = bundleID.lowercased()
-        if !bundleLower.isEmpty, itemLower == bundleLower || itemLower.hasPrefix(bundleLower + ".") {
-            return true
+        let matchingApps = installedApps.filter { installedApp in
+            let installedID = installedApp.id.lowercased()
+            return !installedID.isEmpty && (base == installedID || base.hasPrefix(installedID + "."))
+        }
+        if !matchingApps.isEmpty {
+            guard let longestBundleIDLength = matchingApps.map({ $0.id.count }).max() else {
+                return false
+            }
+            let mostSpecificOwners = matchingApps.filter { $0.id.count == longestBundleIDLength }
+            return mostSpecificOwners.count == 1 && mostSpecificOwners[0].id.lowercased() == bundleLower
         }
 
         let appCompact = appName.lowercased().replacingOccurrences(of: " ", with: "")
-        let itemCompact = itemLower.replacingOccurrences(of: " ", with: "")
-        if !appCompact.isEmpty, itemCompact == appCompact {
-            return true
+        let matchingAppNames = installedApps.filter {
+            $0.name.lowercased().replacingOccurrences(of: " ", with: "") == appCompact
         }
-
-        return false
+        return !appCompact.isEmpty
+            && base.replacingOccurrences(of: " ", with: "") == appCompact
+            && matchingAppNames.count == 1
     }
 
     private func looksLikeAppData(_ url: URL) -> Bool {
