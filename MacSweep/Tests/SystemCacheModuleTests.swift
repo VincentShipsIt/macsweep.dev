@@ -334,6 +334,47 @@ final class SystemCacheModuleTests {
         #expect(result.errors.first?.message.hasPrefix("Failed to delete:") == true)
     }
 
+    @Test func cleanRootLateArrivalReportsPartialResultAndPreservesRemovedByteCredit() async throws {
+        let cacheRoot = testDirectory.appendingPathComponent("root-late-arrival-cache")
+        let removableFile = cacheRoot.appendingPathComponent("discard.cache")
+        let lateProtectedFile = cacheRoot.appendingPathComponent("CloudKit/keep.cache")
+        try FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        try Data(repeating: 0xA5, count: 4_096).write(to: removableFile)
+        let removedBytes = try await DiskAnalyzer.size(of: removableFile)
+
+        let lateArrivalModule = SystemCacheModule(permanentRemover: { url, moduleID in
+            try CleanupFileRemover.permanent(url, module: moduleID)
+            if url.lastPathComponent == "discard.cache" {
+                try FileManager.default.createDirectory(
+                    at: lateProtectedFile.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try Data("protected root arrival".utf8).write(to: lateProtectedFile)
+            }
+        })
+        let item = CleanupItem(
+            id: UUID(),
+            path: cacheRoot,
+            size: 999_999,
+            type: .directory,
+            module: "system-cache",
+            moduleName: "System Caches - Test"
+        )
+
+        let result = try await lateArrivalModule.clean(items: [item], dryRun: false)
+
+        #expect(!FileManager.default.fileExists(atPath: removableFile.path))
+        #expect(FileManager.default.fileExists(atPath: lateProtectedFile.path))
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == removedBytes)
+        #expect(result.errors.count == 1)
+        #expect(
+            result.errors.first?.path.resolvingSymlinksInPath().path
+                == lateProtectedFile.deletingLastPathComponent().resolvingSymlinksInPath().path
+        )
+        #expect(result.errors.first?.message.contains("remained after cleanup") == true)
+    }
+
     @Test func cleanMixedResultsCreditsSafeItemsWithoutClaimingFailedOrProtectedBytes() async throws {
         let safeFile = testDirectory.appendingPathComponent("safe.cache")
         try Data(repeating: 1, count: 2_048).write(to: safeFile)

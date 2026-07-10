@@ -273,6 +273,34 @@ struct SystemCacheModule: ScanModule {
                     directoryResult.merge(await removeValidatedNode(content, checker: checker))
                 }
 
+                // The selected cache root is intentionally kept, so it cannot
+                // use the atomic `rmdir` emptiness check applied to nested
+                // directories. Re-enumerate it after removals: a protected or
+                // otherwise unvalidated child may have arrived after the first
+                // snapshot. Such a survivor keeps the actual removed-byte
+                // credit, but the item must be reported as partial rather than
+                // full success.
+                do {
+                    let survivors = try FileManager.default.contentsOfDirectory(
+                        at: item.path,
+                        includingPropertiesForKeys: nil,
+                        options: []
+                    )
+                    for survivor in survivors
+                    where !directoryResult.hasReportedFailure(atOrBelow: survivor) {
+                        directoryResult.fullyRemoved = false
+                        directoryResult.errors.append(CleanupError(
+                            path: survivor,
+                            message: "Cache item appeared or remained after cleanup"
+                        ))
+                    }
+                } catch {
+                    directoryResult.fullyRemoved = false
+                    directoryResult.errors.append(
+                        deletionError(at: item.path, error: error, action: "verify")
+                    )
+                }
+
                 freed += directoryResult.bytesFreed
                 errors.append(contentsOf: directoryResult.errors)
                 if directoryResult.fullyRemoved {
@@ -399,6 +427,14 @@ struct SystemCacheModule: ScanModule {
             fullyRemoved = fullyRemoved && other.fullyRemoved
             bytesFreed += other.bytesFreed
             errors.append(contentsOf: other.errors)
+        }
+
+        func hasReportedFailure(atOrBelow url: URL) -> Bool {
+            let survivorPath = url.standardizedFileURL.path
+            return errors.contains { error in
+                let errorPath = error.path.standardizedFileURL.path
+                return errorPath == survivorPath || errorPath.hasPrefix(survivorPath + "/")
+            }
         }
     }
 }
