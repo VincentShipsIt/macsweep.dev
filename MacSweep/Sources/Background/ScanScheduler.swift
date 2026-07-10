@@ -10,7 +10,7 @@ import Foundation
 @MainActor
 final class ScanScheduler {
     static let shared = ScanScheduler()
-    static let taskIdentifier = "com.vincentshipsit.macsweep.weeklyscan"
+    static let taskIdentifier = "dev.macsweep.weeklyscan"
 
     // Interval and next-scan date live in the shared suite domain so the `macsweep`
     // CLI (`schedule status` / `set-interval`) can read and steer this scheduler

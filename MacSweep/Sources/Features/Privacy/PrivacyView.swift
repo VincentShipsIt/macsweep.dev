@@ -20,14 +20,7 @@ struct PrivacyView: View {
             title: "Privacy",
             subtitle: "Remove traces of your recent activity.",
             trailing: (hasScanned && !isScanning) ? AnyView(
-                Button {
-                    Task { await scanPrivacy() }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(isScanning)
+                RescanButton(isScanning: isScanning) { Task { await scanPrivacy() } }
             ) : nil,
             hidesChrome: isScanning || !hasScanned,
             scrolls: isScanning || !hasScanned
@@ -182,20 +175,12 @@ struct PrivacyView: View {
     }
 
     private var noPrivacyItemsView: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "checkmark.shield")
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(MacSweepTheme.accent)
-
-            Text("No Privacy Traces Found")
-                .font(.headline)
-
-            Text("Your recent activity traces look clean.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        EmptyResultState(
+            icon: "checkmark.shield",
+            title: "No Privacy Traces Found",
+            message: "Your recent activity traces look clean.",
+            fillsSpace: false
+        )
     }
 
     // MARK: - Actions
@@ -362,7 +347,7 @@ struct PrivacyCategoryCard: View {
         Button(action: onToggle) {
             HStack(spacing: 16) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .foregroundStyle(isSelected ? MacSweepTheme.selection : .secondary)
                     .font(.title2)
 
                 Image(systemName: icon)
@@ -388,11 +373,11 @@ struct PrivacyCategoryCard: View {
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+                    .fill(isSelected ? MacSweepTheme.selectionFill : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.blue : Color.gray.opacity(0.2), lineWidth: 1)
+                    .stroke(isSelected ? MacSweepTheme.selection : Color.gray.opacity(0.2), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

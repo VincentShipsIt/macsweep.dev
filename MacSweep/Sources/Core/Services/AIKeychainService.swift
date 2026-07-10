@@ -6,7 +6,7 @@ final class AIKeychainService {
     static let shared = AIKeychainService()
     private init() {}
 
-    private let service = "com.vincentshipsit.macsweep"
+    private let service = "dev.macsweep"
     private let account = "ai-api-key"
 
     @discardableResult

@@ -102,7 +102,7 @@ Primary users:
 
 8. **Distribution-ready build**
    - Release app is signed and notarized.
-   - Bundle identifier stable: `com.vincentshipsit.macsweep`.
+   - Bundle identifier stable: `dev.macsweep.app`.
    - Hardened runtime enabled.
    - GitHub release contains app zip/dmg plus CLI notes.
    - Homebrew formula remains CLI-first unless a separate cask is added.

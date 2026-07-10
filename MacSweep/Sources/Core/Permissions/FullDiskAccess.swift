@@ -42,6 +42,6 @@ struct FullDiskAccess {
 
     /// Get the app's bundle identifier
     static var bundleIdentifier: String {
-        Bundle.main.bundleIdentifier ?? "com.vincentshipsit.macsweep"
+        Bundle.main.bundleIdentifier ?? "dev.macsweep.app"
     }
 }

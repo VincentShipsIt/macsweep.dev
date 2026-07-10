@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MacSweep are documented in this file.
+All notable changes to macsweep.dev are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The product is renamed **macsweep.dev** to match its domain. The GUI now
+  ships as `macsweep.dev.app`, and every bundle identifier moved from
+  `com.vincentshipsit.macsweep` to the reverse-DNS of the domain:
+  `dev.macsweep.app` (app), `dev.macsweep.core` (framework), `dev.macsweep.cli`
+  (CLI), and `dev.macsweep.weeklyscan` (background task). The shared scheduler
+  preferences suite and log subsystem stay on the org-level `dev.macsweep`
+  namespace (the common parent the app and CLI both read); the app's Keychain
+  service and the assistant config directory
+  (`~/Library/Application Support/macsweep.dev`) follow the same rename.
+  Because no signed build ever shipped under the old identifier, existing
+  installs simply re-run onboarding: old preferences, the stored AI API key,
+  and the scheduled-scan state are not migrated. The Homebrew tap coordinates
+  (`vincentshipsit/tap/macsweep`) and the `macsweep` CLI binary are unchanged.
 - The canonical product website is now [macsweep.dev](https://macsweep.dev),
   including the in-app About view and generated Homebrew cask metadata.
 

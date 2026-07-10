@@ -7,7 +7,7 @@ import AppKit
 /// headless snapshot renderer — that supplies its own `@main`.
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    static let mainWindowIdentifier = NSUserInterfaceItemIdentifier("com.vincentshipsit.macsweep.main-window")
+    static let mainWindowIdentifier = NSUserInterfaceItemIdentifier("dev.macsweep.main-window")
     private static let sharedAppState = AppState()
 
     private var windowObserver: Any?

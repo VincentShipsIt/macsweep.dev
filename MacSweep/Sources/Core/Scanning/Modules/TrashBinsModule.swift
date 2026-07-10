@@ -127,7 +127,7 @@ struct TrashSummary {
     var totalCount: Int { userTrashCount + volumeTrashCount }
 
     var formattedSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        totalSize.formattedFileSize
     }
 
     static func current() async -> TrashSummary {

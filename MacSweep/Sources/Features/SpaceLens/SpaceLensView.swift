@@ -431,46 +431,79 @@ struct SpaceLensView: View {
     }
 
     private func colorFor(node: DiskNode) -> Color {
-        switch node.color {
-        case "purple": return .purple
-        case "green": return .green
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "red": return .red
-        case "blue": return .blue
-        case "cyan": return .cyan
-        default: return .gray
+        Color(diskCategory: node.color)
+    }
+}
+
+extension Color {
+    /// Resolves a `DiskNode.color` category name to its display color. Centralizes
+    /// the switch the treemap, sunburst, list rows, and detail view all duplicated,
+    /// and lets the treemap precompute each cell's color once per layout.
+    init(diskCategory name: String) {
+        switch name {
+        case "purple": self = .purple
+        case "green": self = .green
+        case "orange": self = .orange
+        case "yellow": self = .yellow
+        case "red": self = .red
+        case "blue": self = .blue
+        case "cyan": self = .cyan
+        default: self = .gray
         }
     }
 }
 
 // MARK: - Treemap View
 
+/// One laid-out treemap child: its rect and its already-resolved color, cached so
+/// neither the squarify pass nor the color switch runs on every render.
+private struct TreemapTile: Identifiable {
+    let node: DiskNode
+    let rect: CGRect
+    let color: Color
+    var id: DiskNode.ID { node.id }
+}
+
 struct TreemapView: View {
     let node: DiskNode
     @Binding var selectedNode: DiskNode?
     let onDrillDown: (DiskNode) -> Void
 
+    // Cached layout, rebuilt only when the node or the available size actually
+    // changes. Previously `calculateTreemap` ran inside the GeometryReader body on
+    // EVERY layout pass — including every hover and selection change — recomputing
+    // the full O(n) squarify each time. Selection now only re-reads `tiles`.
+    @State private var tiles: [TreemapTile] = []
+
     var body: some View {
         GeometryReader { geometry in
-            let rects = calculateTreemap(
-                items: node.children,
-                bounds: CGRect(origin: .zero, size: geometry.size)
-            )
-
             ZStack {
-                ForEach(Array(zip(node.children, rects)), id: \.0.id) { child, rect in
+                ForEach(tiles) { tile in
                     TreemapCell(
-                        node: child,
-                        rect: rect,
-                        isSelected: selectedNode?.id == child.id,
-                        onTap: { selectedNode = child },
-                        onDoubleTap: { if child.isDirectory { onDrillDown(child) } }
+                        node: tile.node,
+                        rect: tile.rect,
+                        color: tile.color,
+                        isSelected: selectedNode?.id == tile.node.id,
+                        onTap: { selectedNode = tile.node },
+                        onDoubleTap: { if tile.node.isDirectory { onDrillDown(tile.node) } }
                     )
                 }
             }
+            .onAppear { rebuild(for: geometry.size) }
+            .onChange(of: geometry.size) { _, newSize in rebuild(for: newSize) }
+            .onChange(of: node.id) { _, _ in rebuild(for: geometry.size) }
         }
         .padding()
+    }
+
+    private func rebuild(for size: CGSize) {
+        let rects = calculateTreemap(
+            items: node.children,
+            bounds: CGRect(origin: .zero, size: size)
+        )
+        tiles = zip(node.children, rects).map { child, rect in
+            TreemapTile(node: child, rect: rect, color: Color(diskCategory: child.color))
+        }
     }
 
     private func calculateTreemap(items: [DiskNode], bounds: CGRect) -> [CGRect] {
@@ -552,22 +585,10 @@ struct TreemapView: View {
 struct TreemapCell: View {
     let node: DiskNode
     let rect: CGRect
+    let color: Color
     let isSelected: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
-
-    private var color: Color {
-        switch node.color {
-        case "purple": return .purple
-        case "green": return .green
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "red": return .red
-        case "blue": return .blue
-        case "cyan": return .cyan
-        default: return .gray
-        }
-    }
 
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
@@ -679,18 +700,7 @@ struct SunburstArc: View {
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
-    private var color: Color {
-        switch arc.node.color {
-        case "purple": return .purple
-        case "green": return .green
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "red": return .red
-        case "blue": return .blue
-        case "cyan": return .cyan
-        default: return .gray
-        }
-    }
+    private var color: Color { Color(diskCategory: arc.node.color) }
 
     var body: some View {
         ArcShape(
@@ -758,18 +768,7 @@ struct SpaceLensRow: View {
         return Double(node.size) / Double(parentSize) * 100
     }
 
-    private var color: Color {
-        switch node.color {
-        case "purple": return .purple
-        case "green": return .green
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "red": return .red
-        case "blue": return .blue
-        case "cyan": return .cyan
-        default: return .gray
-        }
-    }
+    private var color: Color { Color(diskCategory: node.color) }
 
     var body: some View {
         HStack(spacing: 12) {

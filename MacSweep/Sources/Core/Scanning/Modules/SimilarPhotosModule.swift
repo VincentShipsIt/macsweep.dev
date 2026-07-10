@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CoreGraphics
+import ImageIO
 import UniformTypeIdentifiers
 
 /// Module for finding visually similar photos.
@@ -111,8 +112,18 @@ struct SimilarPhotoSignature: Hashable, Sendable {
     let aspectRatioBucket: Int
 
     static func make(from url: URL) -> SimilarPhotoSignature? {
-        guard let sourceImage = NSImage(contentsOf: url) else { return nil }
-        guard let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        // Decode a small thumbnail instead of the full-resolution image: the
+        // perceptual hash only needs an 8×8 downsample, so paying to decode a
+        // 48-megapixel photo into memory was pure waste. `kCGImageSourceThumbnail
+        // MaxPixelSize` of 32 gives ImageIO enough detail to feed the 8×8 hash
+        // while decoding a tiny fraction of the pixels; `…FromImageAlways` forces
+        // a real downsample even when the file embeds no thumbnail.
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 32,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
 
         let width = cgImage.width
         let height = cgImage.height

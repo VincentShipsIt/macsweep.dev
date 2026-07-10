@@ -111,9 +111,9 @@ System tools: `networksetup`, `periodic`, `sfltool`, `mdutil`, `diskutil`, `vm_s
 
 | Store | What | Evidence |
 |---|---|---|
-| `UserDefaults` suite `com.vincentshipsit.macsweep` | scan interval, next-scan date, last-scan summary (JSON blob) | `SchedulerConfig.swift:15-51`, `LastScanStore.swift:13-21` |
+| `UserDefaults` suite `dev.macsweep` | scan interval, next-scan date, last-scan summary (JSON blob) | `SchedulerConfig.swift:15-51`, `LastScanStore.swift:13-21` |
 | `@AppStorage` | onboarding-complete flag | `MacSweepApp.swift:7` |
-| macOS Keychain (generic password, service `com.vincentshipsit.macsweep`, account `ai-api-key`) | single Anthropic API key | `AIKeychainService.swift:9-51` |
+| macOS Keychain (generic password, service `dev.macsweep`, account `ai-api-key`) | single Anthropic API key | `AIKeychainService.swift:9-51` |
 | TOML files under an assistant config root (`assistant/providers.toml`, `watchlists/watchlists.toml`, bootstrapped with defaults) | AI provider config + user watchlist rules; hand-rolled TOML codec | `AssistantConfigRepository.swift:1-60`, `AssistantTOMLCodec.swift` |
 
 ### AI integrations (the only network integrations in the product)

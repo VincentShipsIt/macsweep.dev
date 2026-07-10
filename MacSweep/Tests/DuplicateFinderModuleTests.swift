@@ -53,6 +53,44 @@ final class DuplicateFinderModuleTests {
         #expect(items.first?.path.lastPathComponent.hasPrefix("real-") == true)
     }
 
+    // MARK: - Parallel dispatch across size-groups
+
+    @Test func scanFindsEveryDuplicateGroupWhenHashedConcurrently() async throws {
+        // Several independent duplicate sets of DISTINCT sizes, so each lands in its
+        // own size-group and the groups hash concurrently through the bounded task
+        // group. The result must still be complete and correct — parallel dispatch
+        // only reorders work, it must not drop or invent duplicates.
+
+        // Pair A: two identical 2MB files (large → partial+full confirmation path).
+        try write(Data(count: 2_097_152), "a1.bin")
+        try write(Data(count: 2_097_152), "a2.bin")
+
+        // Pair B: two identical 512KB files (small → full-hash path).
+        try write(Data(count: 524_288), "b1.bin")
+        try write(Data(count: 524_288), "b2.bin")
+
+        // Trio C: three identical 1.5MB files → keep one, two are deletable.
+        try write(Data(count: 1_572_864), "c1.bin")
+        try write(Data(count: 1_572_864), "c2.bin")
+        try write(Data(count: 1_572_864), "c3.bin")
+
+        // Unique files at sizes that match nothing else → no false positives.
+        try write(Data(count: 700_003), "u1.bin")
+        try write(Data(count: 900_007), "u2.bin")
+
+        var module = DuplicateFinderModule()
+        module.searchPaths = [tempDir]
+
+        let items = try await module.scan()
+
+        // 1 (pair A) + 1 (pair B) + 2 (trio C) = 4 deletion candidates.
+        #expect(items.count == 4)
+        #expect(items.allSatisfy { $0.module == "duplicates" })
+        // Every surfaced duplicate is one of the intended dupes, never a unique file.
+        let surfaced = Set(items.map { $0.path.lastPathComponent })
+        #expect(surfaced.isDisjoint(with: ["u1.bin", "u2.bin"]))
+    }
+
     // MARK: - DuplicateSelector keep-priority
 
     private func file(_ path: String, created: Date = Date()) -> DuplicateFile {

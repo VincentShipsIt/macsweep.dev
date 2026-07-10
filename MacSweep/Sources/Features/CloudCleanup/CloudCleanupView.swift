@@ -3,23 +3,12 @@ import AppKit
 
 /// View for reclaiming local storage from cloud providers.
 struct CloudCleanupView: View {
-    @State private var isScanning = false
-    @State private var cloudItems: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
+    @StateObject private var model = ScanFeatureModel()
     @State private var selectedProvider: String? = nil
-    @State private var sortOrder: SortOrder = .sizeDesc
-    @State private var errorMessage: String?
-
-    enum SortOrder: String, CaseIterable {
-        case sizeDesc = "Largest First"
-        case dateAsc = "Oldest First"
-        case dateDesc = "Newest First"
-        case nameAsc = "Name A-Z"
-    }
+    @State private var sortOrder: CleanupSortOrder = .sizeDesc
 
     private var providers: [String] {
-        let names = Set(cloudItems.map { providerName(for: $0.moduleName) })
+        let names = Set(model.items.map { providerName(for: $0.moduleName) })
         return names.sorted()
     }
 
@@ -27,27 +16,20 @@ struct CloudCleanupView: View {
         FeaturePageShell(
             title: "Cloud Cleanup",
             subtitle: "Evict stale cloud downloads and provider caches.",
-            trailing: cloudItems.isEmpty ? nil : AnyView(
-                Button {
-                    Task { await scanCloudStorage() }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(isScanning)
+            trailing: model.items.isEmpty ? nil : AnyView(
+                RescanButton(isScanning: model.isScanning) { Task { await scanCloudStorage() } }
             ),
-            hidesChrome: cloudItems.isEmpty,
-            scrolls: cloudItems.isEmpty
+            hidesChrome: model.items.isEmpty,
+            scrolls: model.items.isEmpty
         ) {
             VStack(spacing: 0) {
-                if let errorMessage {
+                if let errorMessage = model.errorMessage {
                     MacSweepErrorBanner(message: errorMessage) {
-                        self.errorMessage = nil
+                        model.errorMessage = nil
                     }
                 }
 
-                if cloudItems.isEmpty {
+                if model.items.isEmpty {
                     ScanLandingView(
                         icon: "icloud",
                         title: "Scan Cloud Storage",
@@ -58,7 +40,7 @@ struct CloudCleanupView: View {
                             ScanBenefit("externaldrive.badge.icloud", "Clears provider caches", "Removes oversized cloud cache folders left behind by sync clients while your files stay safe online."),
                         ],
                         illustration: "icloud.and.arrow.down",
-                        isScanning: isScanning,
+                        isScanning: model.isScanning,
                         action: { Task { await scanCloudStorage() } }
                     )
                 } else {
@@ -73,6 +55,7 @@ struct CloudCleanupView: View {
                 }
             }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     private var filterBar: some View {
@@ -98,7 +81,7 @@ struct CloudCleanupView: View {
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
+                    ForEach(CleanupSortOrder.standardCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -117,9 +100,9 @@ struct CloudCleanupView: View {
     }
 
     private var itemsList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             ForEach(filteredItems) { item in
-                CloudCleanupRow(item: item, isSelected: selectedItems.contains(item.id))
+                CloudCleanupRow(item: item, isSelected: model.selectedItems.contains(item.id))
                     .tag(item.id)
             }
         }
@@ -128,101 +111,46 @@ struct CloudCleanupView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will reclaim \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(filteredItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Reclaim Space") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
-            "Reclaim \(selectedItems.count) cloud items?",
-            isPresented: $showingConfirmation,
-            titleVisibility: .visible
+        CleanupFooter(
+            selectedCount: model.selectedItems.count,
+            summary: "Will reclaim \(selectedSize)",
+            onSelectAll: { model.selectAll(filteredItems) },
+            actionTitle: "Reclaim Space",
+            actionTint: nil,
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
+        )
+        .deleteConfirmation(
+            "Reclaim \(model.selectedItems.count) cloud items?",
+            isPresented: $model.showingConfirmation,
+            confirmTitle: "Reclaim Space",
+            message: "Local cloud copies will be evicted when possible, and cloud cache folders will be moved to Trash."
         ) {
-            Button("Reclaim Space", role: .destructive) {
-                Task { await cleanSelected() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Local cloud copies will be evicted when possible, and cloud cache folders will be moved to Trash.")
+            Task { await cleanSelected() }
         }
     }
 
     private func scanCloudStorage() async {
-        isScanning = true
-        cloudItems = []
-        selectedItems = []
-        errorMessage = nil
-        defer { isScanning = false }
-
-        do {
-            let module = CloudCleanupModule()
-            cloudItems = try await module.scan()
-            selectedItems = Set(cloudItems.map(\.id))
-        } catch {
-            errorMessage = "Couldn't scan cloud storage: \(error.localizedDescription)"
+        await model.scan(onError: { "Couldn't scan cloud storage: \($0.localizedDescription)" }) {
+            try await CloudCleanupModule().scan()
         }
     }
 
     private func cleanSelected() async {
-        let itemsToClean = filteredItems.filter { selectedItems.contains($0.id) }
-
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
-        let engine = ScanEngine()
-        let result: CleanupResult
-        do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
-        } catch {
-            errorMessage = "Couldn't reclaim cloud space: \(error.localizedDescription)"
-            return
-        }
-        // Per-item failures come back in result.errors (not thrown). Only drop
-        // the items that actually left disk; keep failed ones visible.
-        let failedPaths = Set(result.errors.map(\.path))
-        cloudItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
-        selectedItems = selectedItems.filter { id in cloudItems.contains(where: { $0.id == id }) }
-        errorMessage = result.failureSummaryMessage
+        // The shared model routes through ScanEngine (per-item SafetyChecker +
+        // aggregate DeletionGuard cap), then prunes only the items that left disk.
+        let itemsToClean = filteredItems.filter { model.selectedItems.contains($0.id) }
+        await model.clean(itemsToClean) { "Couldn't reclaim cloud space: \($0.localizedDescription)" }
     }
 
     private var filteredItems: [CleanupItem] {
-        var items = cloudItems
+        var items = model.items
 
         if let selectedProvider {
             items = items.filter { providerName(for: $0.moduleName) == selectedProvider }
         }
 
-        switch sortOrder {
-        case .sizeDesc:
-            items.sort { $0.size > $1.size }
-        case .dateAsc:
-            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
-        case .dateDesc:
-            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
-        case .nameAsc:
-            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
-        }
-
-        return items
+        return items.sorted(using: sortOrder)
     }
 
     private var totalSize: String {
@@ -230,7 +158,7 @@ struct CloudCleanupView: View {
     }
 
     private var selectedSize: String {
-        filteredItems.formattedTotalSize(selected: selectedItems)
+        filteredItems.formattedTotalSize(selected: model.selectedItems)
     }
 
     private func providerName(for moduleName: String) -> String {
@@ -243,14 +171,11 @@ private struct CloudCleanupRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             Image(systemName: item.moduleName.contains("Local Copy") ? "icloud.and.arrow.down" : "externaldrive.badge.icloud")
                 .foregroundStyle(item.moduleName.contains("Local Copy") ? .cyan : .blue)
                 .frame(width: 22)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -265,9 +190,7 @@ private struct CloudCleanupRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(item.formattedSize)
                     .font(.headline)
@@ -287,7 +210,6 @@ private struct CloudCleanupRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 

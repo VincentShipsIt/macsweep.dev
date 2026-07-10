@@ -3,38 +3,26 @@ import AppKit
 
 /// View for finding duplicate files and removing redundant copies
 struct DuplicateFinderView: View {
-    @State private var isScanning = false
-    @State private var duplicateItems: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
-    @State private var sortOrder: SortOrder = .sizeDesc
-    @State private var errorMessage: String?
-
-    enum SortOrder: String, CaseIterable {
-        case sizeDesc = "Largest First"
-        case dateAsc = "Oldest First"
-        case dateDesc = "Newest First"
-        case nameAsc = "Name A-Z"
-    }
+    @StateObject private var model = ScanFeatureModel()
+    @State private var sortOrder: CleanupSortOrder = .sizeDesc
 
     var body: some View {
         FeaturePageShell(
             title: "Duplicate Files",
             subtitle: "Find redundant copies and keep the best version.",
-            trailing: duplicateItems.isEmpty ? nil : AnyView(
-                Button { Task { await scanDuplicates() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(isScanning)
+            trailing: model.items.isEmpty ? nil : AnyView(
+                RescanButton(isScanning: model.isScanning) { Task { await scanDuplicates() } }
             ),
-            hidesChrome: duplicateItems.isEmpty,
-            scrolls: duplicateItems.isEmpty
+            hidesChrome: model.items.isEmpty,
+            scrolls: model.items.isEmpty
         ) {
-            if let errorMessage {
+            if let errorMessage = model.errorMessage {
                 MacSweepErrorBanner(message: errorMessage) {
-                    self.errorMessage = nil
+                    model.errorMessage = nil
                 }
             }
 
-            if duplicateItems.isEmpty {
+            if model.items.isEmpty {
                 ScanLandingView(
                     icon: "doc.on.doc",
                     title: "Find Duplicate Files",
@@ -45,7 +33,7 @@ struct DuplicateFinderView: View {
                         ScanBenefit("trash.slash", "Keeps one, removes the rest", "Duplicates only move to Trash after you review them, so the version you want to keep always stays put."),
                     ],
                     illustration: "doc.on.doc.fill",
-                    isScanning: isScanning,
+                    isScanning: model.isScanning,
                     action: { Task { await scanDuplicates() } }
                 )
             } else {
@@ -56,6 +44,7 @@ struct DuplicateFinderView: View {
                 footer
             }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     private var filterBar: some View {
@@ -66,7 +55,7 @@ struct DuplicateFinderView: View {
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
+                    ForEach(CleanupSortOrder.standardCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -85,11 +74,11 @@ struct DuplicateFinderView: View {
     }
 
     private var duplicatesList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             ForEach(sortedItems) { item in
                 DuplicateItemRow(
                     item: item,
-                    isSelected: selectedItems.contains(item.id)
+                    isSelected: model.selectedItems.contains(item.id)
                 )
                 .tag(item.id)
             }
@@ -99,104 +88,40 @@ struct DuplicateFinderView: View {
     }
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will recover \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(sortedItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
-            "Move \(selectedItems.count) duplicates to Trash?",
-            isPresented: $showingConfirmation,
-            titleVisibility: .visible
+        CleanupFooter(
+            selectedCount: model.selectedItems.count,
+            summary: "Will recover \(selectedSize)",
+            onSelectAll: { model.selectAll(sortedItems) },
+            actionTitle: "Move to Trash",
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
+        )
+        .deleteConfirmation(
+            "Move \(model.selectedItems.count) duplicates to Trash?",
+            isPresented: $model.showingConfirmation,
+            confirmTitle: "Move to Trash",
+            message: "This will move \(selectedSize) of duplicate files to Trash."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will move \(selectedSize) of duplicate files to Trash.")
+            Task { await deleteSelected() }
         }
     }
 
     private func scanDuplicates() async {
-        isScanning = true
-        duplicateItems = []
-        selectedItems = []
-        errorMessage = nil
-
-        defer { isScanning = false }
-
-        let module = DuplicateFinderModule()
-
-        do {
-            duplicateItems = try await module.scan()
-            selectedItems = Set(duplicateItems.map(\.id))
-        } catch {
-            errorMessage = "Couldn't scan for duplicates: \(error.localizedDescription)"
+        await model.scan(onError: { "Couldn't scan for duplicates: \($0.localizedDescription)" }) {
+            try await DuplicateFinderModule().scan()
         }
     }
 
     private func deleteSelected() async {
-        let itemsToDelete = sortedItems.filter { selectedItems.contains($0.id) }
-
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
-        let engine = ScanEngine()
-        let result: CleanupResult
-        do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
-        } catch {
-            errorMessage = "Couldn't move duplicates to Trash: \(error.localizedDescription)"
-            return
-        }
-
-        // Per-item failures are returned in result.errors (not thrown), so only
-        // drop the items that actually left disk — keep failed ones visible and
-        // tell the user, rather than silently removing them from the list.
-        let failedPaths = Set(result.errors.map(\.path))
-        duplicateItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
-        selectedItems = selectedItems.filter { id in duplicateItems.contains(where: { $0.id == id }) }
-        errorMessage = result.failureSummaryMessage
+        // The shared model routes through ScanEngine (per-item SafetyChecker +
+        // aggregate DeletionGuard cap), then prunes only the items that left disk;
+        // engine-blocked items stay in the list and a failure summary is surfaced.
+        let itemsToDelete = sortedItems.filter { model.selectedItems.contains($0.id) }
+        await model.clean(itemsToDelete) { "Couldn't move duplicates to Trash: \($0.localizedDescription)" }
     }
 
     private var sortedItems: [CleanupItem] {
-        var items = duplicateItems
-
-        switch sortOrder {
-        case .sizeDesc:
-            items.sort { $0.size > $1.size }
-        case .dateAsc:
-            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
-        case .dateDesc:
-            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
-        case .nameAsc:
-            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
-        }
-
-        return items
+        model.items.sorted(using: sortOrder)
     }
 
     private var totalSize: String {
@@ -204,7 +129,7 @@ struct DuplicateFinderView: View {
     }
 
     private var selectedSize: String {
-        sortedItems.formattedTotalSize(selected: selectedItems)
+        sortedItems.formattedTotalSize(selected: model.selectedItems)
     }
 }
 
@@ -213,13 +138,10 @@ struct DuplicateItemRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             FileIconView(url: item.path)
                 .frame(width: 36, height: 36)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .font(.body)
@@ -236,9 +158,7 @@ struct DuplicateItemRow: View {
                     .lineLimit(1)
                     .truncationMode(.head)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(item.formattedSize)
                     .font(.headline)
@@ -258,7 +178,6 @@ struct DuplicateItemRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 

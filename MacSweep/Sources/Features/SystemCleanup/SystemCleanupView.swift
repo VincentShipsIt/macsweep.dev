@@ -11,14 +11,9 @@ struct SystemCleanupView: View {
             title: "System Junk",
             subtitle: "Clear caches, logs, and temporary files.",
             trailing: appState.scanResults.isEmpty ? nil : AnyView(
-                Button {
+                RescanButton(isScanning: appState.isScanning) {
                     Task { await appState.scan(modules: ["system-cache"]) }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
                 }
-                .glassButton()
-                .controlSize(.small)
-                .disabled(appState.isScanning)
             ),
             hidesChrome: appState.scanResults.isEmpty,
             scrolls: appState.scanResults.isEmpty
@@ -100,7 +95,7 @@ struct SystemCleanupView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("Will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file))")
+                Text("Will free \(appState.selectedSize.formattedFileSize)")
                     .font(.headline)
             }
 
@@ -120,20 +115,16 @@ struct SystemCleanupView: View {
         }
         .padding()
         .background(MacSweepTheme.panelStrong)
-        .confirmationDialog(
+        .deleteConfirmation(
             "Delete \(appState.selectedItems.count) items?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Delete",
+            message: "This will free \(appState.selectedSize.formattedFileSize). This action cannot be undone."
         ) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    // Behind this confirmation dialog → confirm the large-deletion gate.
-                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
-                }
+            // Behind this confirmation dialog → confirm the large-deletion gate.
+            Task {
+                _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). This action cannot be undone.")
         }
     }
 
@@ -157,14 +148,11 @@ struct CleanupItemRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             Image(systemName: item.icon)
                 .foregroundStyle(.secondary)
                 .frame(width: 24)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .font(.body)
@@ -176,9 +164,7 @@ struct CleanupItemRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-
-            Spacer()
-
+        } trailing: {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(item.formattedSize)
                     .font(.caption)
@@ -191,7 +177,6 @@ struct CleanupItemRow: View {
                 }
             }
         }
-        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 }

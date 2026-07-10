@@ -64,6 +64,18 @@ struct LargeFilesModule: ScanModule {
         ]
 
         for searchPath in searchPaths {
+            // Size every directory under `searchPath` in a SINGLE enumeration,
+            // instead of re-walking each subtree via DiskAnalyzer.directorySize at
+            // every ancestor level (the old O(files × depth) hot path: a file N
+            // levels deep was counted once by each of its N sized ancestors).
+            // The numbers are identical to directorySize by construction — same
+            // enumerator options, same symlink/hidden handling, same on-disk
+            // sizing — so folder surfacing decisions are byte-for-byte unchanged.
+            // Skipped entirely when folders aren't being surfaced (nothing reads it).
+            let subtreeSizes = scanKind.includesFolders
+                ? try Self.subtreeSizes(under: searchPath)
+                : [:]
+
             guard let enumerator = FileManager.default.enumerator(
                 at: searchPath,
                 includingPropertiesForKeys: Array(resourceKeys),
@@ -108,7 +120,7 @@ struct LargeFilesModule: ScanModule {
                             continue
                         }
 
-                        let size = try await DiskAnalyzer.directorySize(at: url)
+                        let size = subtreeSizes[url.path] ?? 0
                         guard size >= threshold else { continue }
 
                         items.append(CleanupItem(
@@ -163,6 +175,61 @@ struct LargeFilesModule: ScanModule {
         }
 
         return items.sorted { $0.size > $1.size }
+    }
+
+    /// Total on-disk size of every directory under `root`, keyed by absolute
+    /// path, computed in a single enumeration. Each file's on-disk size is folded
+    /// into all of its ancestor directories up to `root`.
+    ///
+    /// This is the crux of the performance fix: `DiskAnalyzer.directorySize(at:)`
+    /// re-enumerates a whole subtree per call, so sizing a directory and then its
+    /// children re-walked the same files O(depth) times. Here every file is read
+    /// exactly once. The result for any directory equals `directorySize(at:)`
+    /// exactly — identical enumerator options (`.skipsHiddenFiles`, packages
+    /// descended into), identical symlink skipping, identical `diskSize` sizing —
+    /// so the scan surfaces the same folders with the same byte counts.
+    private static func subtreeSizes(under root: URL) throws -> [String: Int64] {
+        let resourceKeys: Set<URLResourceKey> = [
+            .totalFileAllocatedSizeKey,
+            .fileSizeKey,
+            .isDirectoryKey,
+            .isSymbolicLinkKey
+        ]
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles]
+        ) else { return [:] }
+
+        let rootPath = root.path
+        var sizes: [String: Int64] = [:]
+        var processed = 0
+
+        while let fileURL = enumerator.nextObject() as? URL {
+            processed += 1
+            // Periodic cooperative cancellation without a check-per-file cost.
+            if processed & 0x3FFF == 0 { try Task.checkCancellation() }
+
+            guard let values = try? fileURL.resourceValues(forKeys: resourceKeys) else { continue }
+            // Match directorySize: skip symlinks, count only files.
+            if values.isSymbolicLink == true { continue }
+            guard values.isDirectory == false else { continue }
+
+            let bytes = values.diskSize
+            guard bytes > 0 else { continue }
+
+            // Fold this file's bytes into each ancestor directory up to `root`.
+            var dir = fileURL.deletingLastPathComponent()
+            while true {
+                let path = dir.path
+                sizes[path, default: 0] += bytes
+                if path == rootPath || path.count <= rootPath.count { break }
+                dir = dir.deletingLastPathComponent()
+            }
+        }
+
+        return sizes
     }
 
     /// Categorize file by type
