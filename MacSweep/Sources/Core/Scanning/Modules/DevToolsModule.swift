@@ -1260,24 +1260,21 @@ struct GitArtifactScanner: Sendable {
     /// tree as unsafe to delete.
     static func worktreeHasValuableIgnoredContent(at url: URL) -> Bool {
         let result = run([
-            "git", "-C", url.path, "-c", "core.quotePath=false",
-            "status", "--porcelain", "--ignored", "--ignore-submodules"
+            "git", "-C", url.path,
+            "status", "--porcelain=v1", "-z", "--ignored", "--ignore-submodules"
         ])
         guard result.status == 0 else { return true }
 
-        for rawLine in result.output.split(separator: "\n") {
-            let line = String(rawLine)
-            guard line.hasPrefix("!!") else { continue }  // "!!" marks ignored entries
-            let entry = unquoteGitPath(String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces))
+        // `-z` emits paths verbatim and terminates each record with NUL, so
+        // quotes, backslashes, tabs, newlines, and non-ASCII characters are not
+        // C-quoted or confused with a record boundary.
+        for record in result.output.split(separator: "\0") {
+            guard record.hasPrefix("!! ") else { continue }  // "!!" marks ignored entries
+            let entry = String(record.dropFirst(3))
             guard !entry.isEmpty else { continue }
             if pathHasNonzeroContent(url.appending(path: entry)) { return true }
         }
         return false
-    }
-
-    private static func unquoteGitPath(_ path: String) -> String {
-        guard path.count >= 2, path.hasPrefix("\""), path.hasSuffix("\"") else { return path }
-        return String(path.dropFirst().dropLast())
     }
 
     /// Whether `url` is a nonempty file, or a directory containing at least one
