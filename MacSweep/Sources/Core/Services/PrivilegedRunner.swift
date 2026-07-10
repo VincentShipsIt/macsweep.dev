@@ -243,8 +243,13 @@ enum PrivilegedRunner {
             /bin/kill -TERM 0 2>/dev/null
             /bin/sleep 0.5
             if [ "$wait_for_reader" = yes ]; then
-              handoff_deadline=$((SECONDS + 1))
-              while [ -d "$state_dir" ] && [ ! -e "$timeout_reader_ready" ] && [ "$SECONDS" -lt "$handoff_deadline" ]; do
+              handoff_deadline="$state_dir/timeout-reader-deadline"
+              (
+                trap '' HUP
+                /bin/sleep 1
+                : >"$handoff_deadline"
+              ) </dev/null >/dev/null 2>&1 &
+              while [ -d "$state_dir" ] && [ ! -e "$timeout_reader_ready" ] && [ ! -e "$handoff_deadline" ]; do
                 /bin/sleep 0.1
               done
             fi
@@ -300,13 +305,17 @@ enum PrivilegedRunner {
         done
         if [ -e "$cancel_file" ] || [ ! -e \(keepalive) ] || [ "$SECONDS" -ge \(fallbackSeconds) ]; then
           : >"$cancel_file"
-          /bin/sleep 0.7
+          # Pin the root-owned capture files before the anchor is allowed to
+          # unlink its state directory. The held descriptors remain readable
+          # after unlink, so scheduler delay cannot discard partial output.
           if exec 3<"$stdout_file" 4<"$stderr_file"; then
             : >"$timeout_reader_ready"
+            /bin/sleep 0.7
             /bin/cat <&3 >&2
             /bin/cat <&4 >&2
           else
             : >"$timeout_reader_ready" 2>/dev/null
+            /bin/sleep 0.7
           fi
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
           exit 124
