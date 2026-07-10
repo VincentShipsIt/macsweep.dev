@@ -609,10 +609,7 @@ public actor MacSweepHeadlessService {
                 errors: result.errors.map { $0.localizedDescription }
             )
         } else {
-            // Read size before shredding — the file is gone afterward.
-            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let size = (attrs?[.size] as? Int64) ?? 0
-            try await SecureDelete.shred(file: url, level: shredLevel)
+            let size = try await SecureDelete.shred(file: url, level: shredLevel)
             return HeadlessShredResult(
                 path: expanded,
                 level: level.lowercased(),

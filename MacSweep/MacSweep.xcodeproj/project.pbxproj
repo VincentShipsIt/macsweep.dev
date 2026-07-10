@@ -87,6 +87,7 @@
 		7BFEA824B9747324124CAE33 /* ScanNotificationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81045162875FEC21FE25FE5 /* ScanNotificationContent.swift */; };
 		7CC0B637AB08FCDA826D0D70 /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A74BC2A7CF41BB49263DAFA /* ConnectedDevice.swift */; };
 		7CC691558E41C1F913884DD2 /* AssistantConversationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA282C1C88FBED26724AFE6 /* AssistantConversationService.swift */; };
+		7D64217B59B550BCC46B1467 /* DescriptorSecureDelete.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705229D6F89E5E03F8D6C4E3 /* DescriptorSecureDelete.swift */; };
 		808010E4CB0673AB3704D9E0 /* MacSweepCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75D69EC395FDF95988521299 /* MacSweepCore.framework */; };
 		829579CF3E800F99E256927B /* AIKeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A0B88BA182F26028BDB23A /* AIKeychainService.swift */; };
 		82A3D3164449C81DF8AA4737 /* MemoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0CD8EA90C8C1C33422724B /* MemoryDetailView.swift */; };
@@ -145,6 +146,7 @@
 		D0EBE25EE9213B7C76A6A13B /* HomebrewPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBEC46C3D4743A56A309ABC /* HomebrewPaths.swift */; };
 		D33F6E4CEE9DCEAE5FFB1301 /* MacSweepApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70DEE234385630F130EEADC /* MacSweepApp.swift */; };
 		D45B839C2D74B08EAD3408B5 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 536F06694304C235D62347B1 /* MenuBarView.swift */; };
+		D7F0B3025595FB5A0EC33466 /* DescriptorSecureDelete.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705229D6F89E5E03F8D6C4E3 /* DescriptorSecureDelete.swift */; };
 		D923E7045DE10491945E5070 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4C2BEA01208B10FB418E72 /* ProcessRunner.swift */; };
 		D9FA7B71B24E18A700B56776 /* TrashBinsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C27F5DE04268CCDC8C81A66 /* TrashBinsView.swift */; };
 		DBA42C86A92A4C0B7B458B9A /* HomebrewUpdaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33C4C610105C1E99709CF623 /* HomebrewUpdaterView.swift */; };
@@ -226,6 +228,7 @@
 		6A0AD8A72B6E0757A996EC3E /* HeadlessModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadlessModels.swift; sourceTree = "<group>"; };
 		6D4367DF34D86285178F78DE /* PrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyView.swift; sourceTree = "<group>"; };
 		6D4C2BEA01208B10FB418E72 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
+		705229D6F89E5E03F8D6C4E3 /* DescriptorSecureDelete.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DescriptorSecureDelete.swift; sourceTree = "<group>"; };
 		705809867727E9D0D7A9EA71 /* DuplicateFinderModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderModule.swift; sourceTree = "<group>"; };
 		724A05F965CC698424FB0FCF /* MetricUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricUI.swift; sourceTree = "<group>"; };
 		73B4954C12AB67F55D377782 /* SystemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemDetailView.swift; sourceTree = "<group>"; };
@@ -346,6 +349,7 @@
 		25F73693B5AEAF2AEFCA5312 /* Shredder */ = {
 			isa = PBXGroup;
 			children = (
+				705229D6F89E5E03F8D6C4E3 /* DescriptorSecureDelete.swift */,
 				8651EAA95D4FD7E5FBB32295 /* SecureDelete.swift */,
 			);
 			path = Shredder;
@@ -969,6 +973,7 @@
 				8584BB46592C2E8C9F77F808 /* ConnectedDevicesDetailView.swift in Sources */,
 				8570389DD7FCDE991FFA7665 /* ContentView.swift in Sources */,
 				2A5F8392D7377F359256EE36 /* DashboardView.swift in Sources */,
+				7D64217B59B550BCC46B1467 /* DescriptorSecureDelete.swift in Sources */,
 				289122E6DEDAB2C4D2A4A51D /* DevToolsModule.swift in Sources */,
 				C851B738094389440FA27544 /* DevToolsView.swift in Sources */,
 				614224D24B38A534D1311DF1 /* DiskAnalyzer.swift in Sources */,
@@ -1063,6 +1068,7 @@
 				6673472675DA79E8A44AC983 /* CleanupPerformance.swift in Sources */,
 				C796696BCEC358AB02323C48 /* CloudCleanupModule.swift in Sources */,
 				65E56B96402B5C7B73A40C65 /* ConnectedDevice.swift in Sources */,
+				D7F0B3025595FB5A0EC33466 /* DescriptorSecureDelete.swift in Sources */,
 				5F27AC2A07069D4BF486AD97 /* DevToolsModule.swift in Sources */,
 				5DB70F6366D86DBFC400BCD9 /* DiskAnalyzer.swift in Sources */,
 				515C6E1B5F927411296FFE6A /* DockerModule.swift in Sources */,
