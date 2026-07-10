@@ -22,7 +22,14 @@ struct DockerCleanupActionTests {
             #"{"Reclaimable":"0B","Type":"Local Volumes"}"#,
         ].joined(separator: "\n")
 
-        init(dockerDFOutput: String = zeroUsage) {
+        init() {
+            dockerDFOutputs = Array(
+                repeating: Self.zeroUsage,
+                count: DockerCleanupAction.allCases.count
+            )
+        }
+
+        init(dockerDFOutput: String) {
             dockerDFOutputs = [dockerDFOutput]
         }
 
@@ -98,13 +105,16 @@ struct DockerCleanupActionTests {
         #expect(result.itemsProcessed == DockerCleanupAction.allCases.count)
         #expect(invocations.map(\.executable) == Array(
             repeating: "/test/bin/docker",
-            count: DockerCleanupAction.allCases.count + 1
+            count: DockerCleanupAction.allCases.count * 2
         ))
         #expect(invocations.map(\.arguments) == [
             ["system", "df", "--format", "{{json .}}"],
             ["builder", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
             ["image", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
             ["container", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
             ["volume", "prune", "-f"],
         ])
     }
@@ -233,6 +243,37 @@ struct DockerCleanupActionTests {
         #expect(result.errors.first?.message.localizedCaseInsensitiveContains("verify") == true)
         #expect(await recorder.recordedInvocations().map(\.arguments) == [
             ["system", "df", "--format", "{{json .}}"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func laterActionIsReverifiedAfterEarlierPruneChangesDockerState() async throws {
+        let beforeContainerPrune = [
+            #"{"Reclaimable":"1B","Type":"Containers"}"#,
+            #"{"Reclaimable":"1B","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+        let afterContainerPrune = [
+            #"{"Reclaimable":"0B","Type":"Containers"}"#,
+            #"{"Reclaimable":"12TB","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+        let recorder = CommandRecorder(dockerDFOutputs: [
+            beforeContainerPrune,
+            afterContainerPrune,
+        ])
+        let docker = module(recorder: recorder)
+        let items = [
+            CleanupItem(id: UUID(), action: .docker(.pruneContainers), size: 1),
+            CleanupItem(id: UUID(), action: .docker(.pruneVolumes), size: 1),
+        ]
+
+        let result = try await docker.clean(items: items, dryRun: false)
+
+        #expect(result.itemsProcessed == 1)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["container", "prune", "-f"],
             ["system", "df", "--format", "{{json .}}"],
         ])
     }

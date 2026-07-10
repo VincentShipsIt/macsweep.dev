@@ -203,18 +203,6 @@ struct DockerModule: ScanModule {
         var freed: Int64 = 0
         var errors: [CleanupError] = []
 
-        let requiresFreshImpact = !dryRun && items.contains { item in
-            guard item.module == id, item.size > 0,
-                  case .action(.docker) = item.target else { return false }
-            return true
-        }
-        // A prune acts on execution-time Docker state, not the earlier scan
-        // snapshot. Refresh once immediately before the allowlisted commands;
-        // every current category must remain at or below its guarded declaration.
-        // Docker can still change in the narrow interval after this query, but
-        // refusing any observed growth removes the long scan-to-clean stale window.
-        let freshReclaimable = requiresFreshImpact ? await getDockerReclaimableByType() : nil
-
         var executedActions: Set<DockerCleanupAction> = []
         for item in items where item.module == id {
             guard case .action(.docker(let action)) = item.target else {
@@ -242,6 +230,25 @@ struct DockerModule: ScanModule {
                 continue
             }
 
+            // A duplicated finding must not run the same destructive command
+            // twice. It still contributed to DeletionGuard's conservative sum.
+            guard executedActions.insert(action).inserted else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Duplicate Docker cleanup action"
+                ))
+                continue
+            }
+
+            // Each prune can run for minutes and can itself change the impact of
+            // a later action (for example, container prune can make a volume
+            // unused). Refresh the relevant category immediately before this
+            // command, after all preceding prunes, and require it to remain no
+            // larger than the declaration already approved by DeletionGuard.
+            // Docker can still change in the narrow interval between this query
+            // and the command, but no earlier or concurrent growth is knowingly
+            // executed from stale state.
+            let freshReclaimable = await getDockerReclaimableByType()
             guard let dfType = Self.dockerDFTypeByAction[action],
                   let currentReclaimable = freshReclaimable?[dfType]
             else {
@@ -255,16 +262,6 @@ struct DockerModule: ScanModule {
                 errors.append(CleanupError(
                     path: item.path,
                     message: "Docker cleanup impact increased after scanning; rescan before cleaning"
-                ))
-                continue
-            }
-
-            // A duplicated finding must not run the same destructive command
-            // twice. It still contributed to DeletionGuard's conservative sum.
-            guard executedActions.insert(action).inserted else {
-                errors.append(CleanupError(
-                    path: item.path,
-                    message: "Duplicate Docker cleanup action"
                 ))
                 continue
             }
