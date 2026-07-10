@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 /// Secure file deletion with multiple overwrite passes.
 ///
@@ -141,68 +142,171 @@ enum SecureDelete {
         level: ShredLevel = .standard,
         progress: ((String, Double) -> Void)? = nil
     ) async throws -> ShredResult {
+        try await shredDirectory(
+            at: url,
+            level: level,
+            progress: progress,
+            fileShredder: { fileURL, fileLevel in
+                try await shred(file: fileURL, level: fileLevel)
+            }
+        )
+    }
+
+    /// Internal injection seam used to deterministically exercise partial failures.
+    static func shredDirectory(
+        at url: URL,
+        level: ShredLevel,
+        progress: ((String, Double) -> Void)?,
+        fileShredder: (URL, ShredLevel) async throws -> Void
+    ) async throws -> ShredResult {
         var filesShredded = 0
         var bytesShredded: Int64 = 0
         var errors: [ShredError] = []
+        var retainedPaths: [URL] = []
+
+        // Fail closed on the selected root. In particular, never enumerate a
+        // directory symlink and then unlink the link during container cleanup.
+        let rootValues: URLResourceValues
+        do {
+            rootValues = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        } catch {
+            throw ShredError.cannotInspectItem(url, error.localizedDescription)
+        }
+        if rootValues.isSymbolicLink == true {
+            throw ShredError.refusedSymlink(url)
+        }
+        guard rootValues.isDirectory == true else {
+            throw ShredError.notADirectory(url)
+        }
 
         // Enumerate all files. Hidden files are INCLUDED (no .skipsHiddenFiles):
-        // skipping them would leave dotfiles to be merely unlinked by the final
-        // removeItem instead of overwritten — defeating the point for things like
-        // ~/Documents/secret/.env. Symlinks are skipped (see loop below).
+        // skipping them would leave dotfiles unprocessed. Each non-regular entry
+        // is retained and reported rather than being swept up by recursive
+        // directory removal.
         guard let enumerator = FileManager.default.enumerator(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey],
-            options: []
+            includingPropertiesForKeys: [
+                .isDirectoryKey,
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+                .fileSizeKey,
+            ],
+            options: [],
+            errorHandler: { itemURL, error in
+                errors.append(.cannotInspectItem(itemURL, error.localizedDescription))
+                retainedPaths.append(itemURL)
+                return true
+            }
         ) else {
             throw ShredError.cannotEnumerateDirectory(url)
         }
 
         var files: [(URL, Int64)] = []
+        var directories: [URL] = []
 
         while let fileURL = enumerator.nextObject() as? URL {
-            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey])
-            // Skip symlinks: shred(file:) would follow them to their target. The
-            // final removeItem unlinks them safely without touching the target.
-            if values?.isSymbolicLink == true { continue }
-            if values?.isDirectory == false {
-                let size = Int64(values?.fileSize ?? 0)
-                files.append((fileURL, size))
-                bytesShredded += size
+            let values: URLResourceValues
+            do {
+                values = try fileURL.resourceValues(forKeys: [
+                    .isDirectoryKey,
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                    .fileSizeKey,
+                ])
+            } catch {
+                enumerator.skipDescendants()
+                errors.append(.cannotInspectItem(fileURL, error.localizedDescription))
+                retainedPaths.append(fileURL)
+                continue
+            }
+
+            if values.isSymbolicLink == true {
+                enumerator.skipDescendants()
+                errors.append(.refusedSymlink(fileURL))
+                retainedPaths.append(fileURL)
+            } else if values.isDirectory == true {
+                directories.append(fileURL)
+            } else if values.isRegularFile == true {
+                files.append((fileURL, Int64(values.fileSize ?? 0)))
+            } else {
+                enumerator.skipDescendants()
+                errors.append(.unsupportedFileType(fileURL))
+                retainedPaths.append(fileURL)
             }
         }
 
         let totalFiles = files.count
 
         // Shred each file
-        for (index, (fileURL, _)) in files.enumerated() {
+        for (index, (fileURL, fileSize)) in files.enumerated() {
             do {
                 progress?(fileURL.lastPathComponent, Double(index) / Double(totalFiles))
-                try await shred(file: fileURL, level: level)
+                try await fileShredder(fileURL, level)
                 filesShredded += 1
+                bytesShredded += fileSize
             } catch let error as ShredError {
                 errors.append(error)
+                retainedPaths.append(fileURL)
             } catch {
-                errors.append(.unknown(error.localizedDescription))
+                errors.append(.failedToShred(fileURL, error.localizedDescription))
+                retainedPaths.append(fileURL)
             }
         }
 
-        // Remove the now-shredded directory tree. Log the outcome instead of
-        // silently swallowing it: this is the container removal after every file
-        // inside was individually shredded (and logged) above.
-        do {
-            try FileManager.default.removeItem(at: url)
-            Log.deletion(path: url, module: "shredder", disposition: .shred)
-        } catch {
-            Log.deletion(path: url, module: "shredder", disposition: .shred, error: error)
+        // `FileManager.removeItem` recursively unlinks a directory. Even after an
+        // emptiness check, a file appearing in the race window could therefore be
+        // deleted without an overwrite. POSIX rmdir is the required primitive:
+        // it removes only an empty directory and never follows a final symlink.
+        let directoriesToPrune = directories.sorted {
+            $0.standardizedFileURL.pathComponents.count > $1.standardizedFileURL.pathComponents.count
+        } + [url]
+
+        for directory in directoriesToPrune {
+            let result = directory.withUnsafeFileSystemRepresentation { path in
+                guard let path else {
+                    errno = EINVAL
+                    return Int32(-1)
+                }
+                return Darwin.rmdir(path)
+            }
+
+            if result == 0 {
+                Log.deletion(path: directory, module: "shredder", disposition: .shred)
+                continue
+            }
+
+            let errorCode = errno
+            let hasRetainedDescendant = retainedPaths.contains {
+                isSameOrDescendant($0, of: directory)
+            }
+            if (errorCode == ENOTEMPTY || errorCode == EEXIST), hasRetainedDescendant {
+                continue
+            }
+
+            let removalError = NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errorCode),
+                userInfo: [NSFilePathErrorKey: directory.path]
+            )
+            errors.append(.cannotRemoveDirectory(directory, removalError.localizedDescription))
+            retainedPaths.append(directory)
+            Log.deletion(path: directory, module: "shredder", disposition: .shred, error: removalError)
         }
 
-        progress?("Complete", 1.0)
+        progress?(errors.isEmpty ? "Complete" : "Completed with errors", 1.0)
 
         return ShredResult(
             filesShredded: filesShredded,
             bytesShredded: bytesShredded,
             errors: errors
         )
+    }
+
+    private static func isSameOrDescendant(_ item: URL, of directory: URL) -> Bool {
+        let itemComponents = item.standardizedFileURL.pathComponents
+        let directoryComponents = directory.standardizedFileURL.pathComponents
+        guard itemComponents.count >= directoryComponents.count else { return false }
+        return itemComponents.prefix(directoryComponents.count).elementsEqual(directoryComponents)
     }
 
     /// Generate overwrite data for a specific pass
@@ -300,8 +404,13 @@ struct ShredResult {
 
 enum ShredError: LocalizedError {
     case notAFile(URL)
+    case notADirectory(URL)
     case cannotOpenFile(URL)
     case cannotEnumerateDirectory(URL)
+    case cannotInspectItem(URL, String)
+    case unsupportedFileType(URL)
+    case failedToShred(URL, String)
+    case cannotRemoveDirectory(URL, String)
     case writeFailed(URL)
     case refusedSymlink(URL)
     case unknown(String)
@@ -310,14 +419,24 @@ enum ShredError: LocalizedError {
         switch self {
         case .notAFile(let url):
             return "Not a file: \(url.lastPathComponent)"
+        case .notADirectory(let url):
+            return "Not a directory: \(url.path)"
         case .cannotOpenFile(let url):
             return "Cannot open file: \(url.lastPathComponent)"
         case .cannotEnumerateDirectory(let url):
             return "Cannot enumerate directory: \(url.lastPathComponent)"
+        case .cannotInspectItem(let url, let reason):
+            return "Cannot inspect item; left in place: \(url.path) (\(reason))"
+        case .unsupportedFileType(let url):
+            return "Unsupported file type; left in place: \(url.path)"
+        case .failedToShred(let url, let reason):
+            return "Shredding did not complete for \(url.path): \(reason)"
+        case .cannotRemoveDirectory(let url, let reason):
+            return "Cannot remove directory \(url.path): \(reason)"
         case .writeFailed(let url):
             return "Write failed: \(url.lastPathComponent)"
         case .refusedSymlink(let url):
-            return "Refused symlink (would destroy its target, not the link): \(url.lastPathComponent)"
+            return "Refused symlink; left in place to avoid following its target: \(url.path)"
         case .unknown(let message):
             return message
         }
