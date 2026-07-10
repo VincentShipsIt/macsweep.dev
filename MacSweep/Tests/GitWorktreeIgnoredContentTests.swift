@@ -88,6 +88,16 @@ final class GitWorktreeIgnoredContentTests {
         )
     }
 
+    @Test func invalidUTF8StdoutProducesFailureSentinel() {
+        // Invalid UTF-8 path fixtures are not portable across macOS filesystems,
+        // so exercise the subprocess boundary directly with one raw 0xFF byte.
+        let result = GitArtifactScanner.run(["sh", "-c", #"printf '\377'"#])
+
+        #expect(result.status != 0, "Invalid UTF-8 stdout must produce a failure sentinel")
+        #expect(result.output.isEmpty)
+        #expect(result.error.contains("valid UTF-8"), "Decode failure must be explicit")
+    }
+
     @Test func gitignoredDirectoryWithContentBlocksRemoval() throws {
         guard gitAvailable else { return }
         try #require(try initRepo(at: root))
