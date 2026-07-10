@@ -38,11 +38,12 @@ final class AppUninstallerDisposalTests {
     /// written to those locations — the injected trash spy intercepts disposal.
     private func makeApp(
         named name: String,
+        bundleID: String? = nil,
         bundleSize: Int64 = 1_000,
         leftovers: [AppLeftover] = []
     ) -> InstalledApp {
         var app = InstalledApp(
-            id: "com.example.\(name.lowercased())",
+            id: bundleID ?? "com.example.\(name.lowercased())",
             name: name,
             bundlePath: FileManager.default.homeDirectoryForCurrentUser
                 .appending(path: "Applications/\(name).app"),
@@ -167,12 +168,40 @@ final class AppUninstallerDisposalTests {
         try Data(repeating: 0, count: 64).write(to: locations[0].0.appendingPathComponent("com.other.tool.plist"))
 
         let app = makeApp(named: "Demo")
-        let leftovers = await LeftoverScanner(leftoverLocations: locations).findLeftovers(for: app)
+        let leftovers = await LeftoverScanner(leftoverLocations: locations).findLeftovers(for: app, among: [app])
 
         let names = Set(leftovers.map(\.path.lastPathComponent))
         #expect(names.contains("com.example.demo.plist"))
         #expect(names.contains("Demo"))
         #expect(!names.contains("com.other.tool.plist"))
+    }
+
+    @Test func findLeftoversDoesNotAssignInstalledCanaryDataToStableApp() async throws {
+        let locations = try makeFixtureLibrary()
+        for name in [
+            "com.vendor.app.plist",
+            "com.vendor.app.helper.plist",
+            "com.vendor.app.canary.plist",
+            "com.vendor.app.beta.plist",
+        ] {
+            try Data(repeating: 0, count: 64).write(to: locations[0].0.appendingPathComponent(name))
+        }
+
+        let stable = makeApp(named: "Vendor App", bundleID: "com.vendor.app")
+        let canary = makeApp(named: "Vendor App Canary", bundleID: "com.vendor.app.canary")
+        let beta = makeApp(named: "Vendor App Beta", bundleID: "com.vendor.app.beta")
+        let scanner = LeftoverScanner(leftoverLocations: locations)
+
+        let stableNames = Set((await scanner.findLeftovers(for: stable, among: [stable, canary, beta]))
+            .map(\.path.lastPathComponent))
+        let canaryNames = Set((await scanner.findLeftovers(for: canary, among: [stable, canary, beta]))
+            .map(\.path.lastPathComponent))
+        let betaNames = Set((await scanner.findLeftovers(for: beta, among: [stable, canary, beta]))
+            .map(\.path.lastPathComponent))
+
+        #expect(stableNames == ["com.vendor.app.plist", "com.vendor.app.helper.plist"])
+        #expect(canaryNames == ["com.vendor.app.canary.plist"])
+        #expect(betaNames == ["com.vendor.app.beta.plist"])
     }
 
     @Test func findOrphanedLeftoversSkipsInstalledApps() async throws {

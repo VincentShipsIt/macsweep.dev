@@ -11,6 +11,18 @@ struct AppUninstallerModuleTests {
     private let checker = SafetyChecker()
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 
+    private func app(id: String, name: String = "App") -> InstalledApp {
+        InstalledApp(
+            id: id,
+            name: name,
+            bundlePath: URL(fileURLWithPath: "/Applications/\(name).app"),
+            version: nil,
+            bundleSize: 0,
+            icon: nil,
+            lastUsed: nil
+        )
+    }
+
     // MARK: - Bundle removal gate (#81)
 
     @Test func allowsAppBundleInSystemApplications() {
@@ -46,47 +58,95 @@ struct AppUninstallerModuleTests {
     // MARK: - Leftover matching (#76)
 
     @Test func matchesExactBundleIDPlist() {
+        let app = app(id: "com.foo.App")
         #expect(LeftoverScanner.leftoverMatches(
-            itemName: "com.foo.App.plist", bundleID: "com.foo.App", appName: "App"))
+            itemName: "com.foo.App.plist", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func matchesBundleIDDottedPrefix() {
         // Saved-state / container / helper names carry the bundle id as a prefix.
+        let app = app(id: "com.foo.App")
         #expect(LeftoverScanner.leftoverMatches(
-            itemName: "com.foo.App.savedState", bundleID: "com.foo.App", appName: "App"))
+            itemName: "com.foo.App.savedState", bundleID: app.id, appName: app.name, installedApps: [app]))
         #expect(LeftoverScanner.leftoverMatches(
-            itemName: "com.foo.App", bundleID: "com.foo.App", appName: "App"))
+            itemName: "com.foo.App", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func matchesAppNameFolderIgnoringSpacesAndCase() {
         // An Application Support folder named after the app ("Google Chrome").
+        let app = app(id: "com.google.Chrome", name: "Google Chrome")
         #expect(LeftoverScanner.leftoverMatches(
-            itemName: "Google Chrome", bundleID: "com.google.Chrome", appName: "Google Chrome"))
+            itemName: "Google Chrome", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func rejectsDecoySubstringOfAppName() {
         // The core #76 regression: uninstalling "Mail" must NOT match "MailChimp"
         // data — the old two-way substring test destroyed it.
+        let app = app(id: "com.apple.mail", name: "Mail")
         #expect(!LeftoverScanner.leftoverMatches(
-            itemName: "MailChimp", bundleID: "com.apple.mail", appName: "Mail"))
+            itemName: "MailChimp", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func rejectsUnrelatedBundleID() {
+        let app = app(id: "com.foo.App")
         #expect(!LeftoverScanner.leftoverMatches(
-            itemName: "com.other.Thing.plist", bundleID: "com.foo.App", appName: "App"))
+            itemName: "com.other.Thing.plist", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func rejectsItemThatIsSubstringOfBundleID() {
         // The old reverse-substring branch (`term.contains(itemName)`) matched a
         // folder whose short name was a substring of the app name / bundle id.
+        let app = app(id: "com.foo.App")
         #expect(!LeftoverScanner.leftoverMatches(
-            itemName: "com", bundleID: "com.foo.App", appName: "App"))
+            itemName: "com", bundleID: app.id, appName: app.name, installedApps: [app]))
     }
 
     @Test func rejectsEmptyBundleAndName() {
         // A fallback app with no usable identifiers must not match arbitrary items.
+        let app = app(id: "", name: "")
         #expect(!LeftoverScanner.leftoverMatches(
-            itemName: "com.someone.else", bundleID: "", appName: ""))
+            itemName: "com.someone.else", bundleID: app.id, appName: app.name, installedApps: [app]))
+    }
+
+    @Test func rejectsStableAppClaimOnInstalledCanaryOrBetaData() {
+        let stable = app(id: "com.vendor.app", name: "Vendor App")
+        let canary = app(id: "com.vendor.app.canary", name: "Vendor App Canary")
+        let beta = app(id: "com.vendor.app.beta", name: "Vendor App Beta")
+        let installed = [stable, canary, beta]
+
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.canary.plist", bundleID: stable.id, appName: stable.name, installedApps: installed))
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.beta.savedState", bundleID: stable.id, appName: stable.name, installedApps: installed))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.canary.plist", bundleID: canary.id, appName: canary.name, installedApps: installed))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.beta.savedState", bundleID: beta.id, appName: beta.name, installedApps: installed))
+    }
+
+    @Test func matchesUnambiguousHelperData() {
+        let app = app(id: "com.vendor.app", name: "Vendor App")
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.helper.service.plist", bundleID: app.id, appName: app.name, installedApps: [app]))
+    }
+
+    @Test func normalizesCaseForExactBundleIDAndHelperData() {
+        let app = app(id: "com.Vendor.App", name: "Vendor App")
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "COM.VENDOR.APP", bundleID: app.id, appName: app.name, installedApps: [app]))
+        #expect(LeftoverScanner.leftoverMatches(
+            itemName: "COM.VENDOR.APP.HELPER.PLIST", bundleID: app.id, appName: app.name, installedApps: [app]))
+    }
+
+    @Test func rejectsAmbiguousBundleIDOrAppNameOwnership() {
+        let first = app(id: "com.vendor.app", name: "Vendor App")
+        let duplicate = app(id: "com.vendor.app", name: "Vendor App Copy")
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "com.vendor.app.plist", bundleID: first.id, appName: first.name, installedApps: [first, duplicate]))
+
+        let sameName = app(id: "com.other.app", name: "Vendor App")
+        #expect(!LeftoverScanner.leftoverMatches(
+            itemName: "Vendor App", bundleID: first.id, appName: first.name, installedApps: [first, sameName]))
     }
 
     // MARK: - Leftover removal gate (validateForUninstallLeftover)
