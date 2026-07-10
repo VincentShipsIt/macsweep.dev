@@ -824,11 +824,22 @@ struct DeletionGuard {
         // re-verify immediately before execution. Filesystem targets ignore stale
         // scan metadata and are measured from live state below.
         var actionSize: Int64 = 0
-        var filesystemRoots: [URL] = []
+        var filesystemRoots: [LiveDeletionByteCounter.FilesystemRoot] = []
         for item in items {
             switch item.target {
-            case .fileSystem(let path, _):
-                filesystemRoots.append(path)
+            case .fileSystem(let path, let type):
+                let expectedType: LiveDeletionByteCounter.ExpectedNodeType
+                switch type {
+                case .file:
+                    expectedType = .regularFile
+                case .directory:
+                    expectedType = .directory
+                case .symbolicLink:
+                    expectedType = .symbolicLink
+                case .action:
+                    return .blocked(reason: "Filesystem cleanup target has an invalid action type")
+                }
+                filesystemRoots.append(.init(url: path, expectedType: expectedType))
             case .action:
                 guard item.size > 0 else {
                     return .blocked(reason: "Cleanup action impact must be a positive verified size")

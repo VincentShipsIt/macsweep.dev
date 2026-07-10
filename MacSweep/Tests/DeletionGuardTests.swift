@@ -180,6 +180,44 @@ struct DeletionGuardTests {
         )
     }
 
+    @Test func directoryTypeDriftToFinalSymlinkFailsClosed() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardRootTypeDrift")
+        let target = temp.appendingPathComponent("target-cache")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+        let payload = target.appendingPathComponent("large.cache")
+        try Data(repeating: 0xB4, count: 2_097_152).write(to: payload)
+
+        let replacedRoot = temp.appendingPathComponent("scanned-directory")
+        try FileManager.default.createSymbolicLink(
+            at: replacedRoot,
+            withDestinationURL: target
+        )
+
+        let result = smallGuard.preflightCheck(items: [
+            item(at: replacedRoot, size: 65_536, type: .directory),
+        ])
+
+        guard case .blocked = result else {
+            Issue.record("Expected a scanned directory replaced by a symlink to fail closed, got \(result)")
+            return
+        }
+        #expect(FileManager.default.fileExists(atPath: payload.path))
+    }
+
+    @Test func explicitlyDeclaredSymlinkRootIsMeasuredWithoutFollowingTarget() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardExplicitSymlink")
+        let target = temp.appendingPathComponent("large.cache")
+        try Data(repeating: 0x2D, count: 2_097_152).write(to: target)
+        let link = temp.appendingPathComponent("cache-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        #expect(
+            smallGuard.preflightCheck(items: [
+                item(at: link, size: 0, type: .symbolicLink),
+            ]) == .allowed
+        )
+    }
+
     @Test func overlappingSelectedPathsAreCountedOnce() throws {
         let temp = try TempTestDirectory(prefix: "DeletionGuardOverlap")
         let directory = temp.appendingPathComponent("cache")

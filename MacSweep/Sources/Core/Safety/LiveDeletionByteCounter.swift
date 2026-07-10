@@ -13,9 +13,30 @@ struct LiveDeletionByteCounter {
         case cannotRead(path: String, code: Int32)
         case cannotEnumerate(String)
         case changedDuringMeasurement(String)
+        case unexpectedNodeType(String)
         case invalidByteCount(String)
         case arithmeticOverflow
         case limitExceeded
+    }
+
+    enum ExpectedNodeType {
+        case regularFile
+        case directory
+        case symbolicLink
+
+        fileprivate func matches(_ status: stat) -> Bool {
+            let type = status.st_mode & S_IFMT
+            switch self {
+            case .regularFile: return type == S_IFREG
+            case .directory: return type == S_IFDIR
+            case .symbolicLink: return type == S_IFLNK
+            }
+        }
+    }
+
+    struct FilesystemRoot {
+        let url: URL
+        let expectedType: ExpectedNodeType
     }
 
     private struct FileIdentity: Hashable {
@@ -98,10 +119,35 @@ struct LiveDeletionByteCounter {
     /// parent target. `(device, inode)` identity deduplicates duplicate, hard-link,
     /// and parent/child-overlapping selections.
     func totalAllocatedBytes(for roots: [URL], limit: Int64) throws -> Int64 {
+        try totalAllocatedBytes(
+            for: roots.map { ($0, Optional<ExpectedNodeType>.none) },
+            limit: limit
+        )
+    }
+
+    /// Variant used by DeletionGuard to bind scan-time target intent to the live
+    /// root node inspected by the same lstat snapshot as byte accounting. A
+    /// directory replaced by a final symlink must not be approved for a cleaner
+    /// that will later enumerate it as a directory.
+    func totalAllocatedBytes(for roots: [FilesystemRoot], limit: Int64) throws -> Int64 {
+        try totalAllocatedBytes(
+            for: roots.map { ($0.url, Optional($0.expectedType)) },
+            limit: limit
+        )
+    }
+
+    private func totalAllocatedBytes(
+        for roots: [(url: URL, expectedType: ExpectedNodeType?)],
+        limit: Int64
+    ) throws -> Int64 {
         var state = MeasurementState(bytes: try ByteAccumulator(limit: limit))
 
-        for root in roots.sorted(by: Self.pathOrder) {
-            try measure(root.standardizedFileURL, state: &state)
+        for root in roots.sorted(by: { Self.pathOrder($0.url, $1.url) }) {
+            try measure(
+                root.url.standardizedFileURL,
+                expectedType: root.expectedType,
+                state: &state
+            )
         }
 
         // Revalidate every pathname after the complete aggregate walk. A leaf
@@ -126,8 +172,15 @@ struct LiveDeletionByteCounter {
         return accumulator.total
     }
 
-    private func measure(_ url: URL, state: inout MeasurementState) throws {
+    private func measure(
+        _ url: URL,
+        expectedType: ExpectedNodeType? = nil,
+        state: inout MeasurementState
+    ) throws {
         let status = try status(at: url)
+        if let expectedType, !expectedType.matches(status) {
+            throw MeasurementError.unexpectedNodeType(url.path)
+        }
         let identity = FileIdentity(status)
         let snapshot = NodeSnapshot(status)
 
