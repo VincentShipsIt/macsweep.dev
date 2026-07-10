@@ -57,7 +57,7 @@ typealias ScanProgressHandler = @Sendable (ScanProgressUpdate) async -> Void
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
-    private let deletionGuard = DeletionGuard()
+    private let deletionGuard: DeletionGuard
     private static let cleanupPriority: [String] = [
         "trash-bins",
         "system-cache",
@@ -79,8 +79,12 @@ actor ScanEngine {
         "service-workers",
     ]
 
-    init(modules: [any ScanModule]? = nil) {
+    init(
+        modules: [any ScanModule]? = nil,
+        deletionGuard: DeletionGuard = DeletionGuard()
+    ) {
         self.modules = modules ?? Self.defaultModules()
+        self.deletionGuard = deletionGuard
     }
 
     private static func defaultModules() -> [any ScanModule] {
@@ -284,11 +288,12 @@ actor ScanEngine {
             plan.append((module, safeItems))
         }
 
-        // Deletion guard: a hard backstop against runaway deletes. Enforced only
-        // for real deletions — a dry run touches nothing, so previews of any size
-        // are always permitted. Both the hard cap (.blocked) and the confirmation
-        // threshold (.requiresConfirmation) are enforced here; the latter demands
-        // the caller pass `confirmedLargeDeletion` (a GUI dialog or CLI --yes).
+        // Deletion guard: the last operation before destructive module dispatch.
+        // It remeasures every selected filesystem path now (including hidden
+        // descendants, without following final-component symlinks), deduplicates
+        // overlaps, and fails closed on incomplete/overflowing measurement. A dry
+        // run touches nothing, so previews remain exempt. Both the hard cap and
+        // confirmation threshold use this live total.
         if !dryRun {
             let aggregate = plan.flatMap { $0.items }
             switch deletionGuard.preflightCheck(items: aggregate) {

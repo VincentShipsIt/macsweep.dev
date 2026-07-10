@@ -95,6 +95,7 @@
 		8570389DD7FCDE991FFA7665 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C966FB7F1A9AD8C09EB48B /* ContentView.swift */; };
 		8584BB46592C2E8C9F77F808 /* ConnectedDevicesDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003DF9FFDB5B4302F946766A /* ConnectedDevicesDetailView.swift */; };
 		878DCAF648A5B7BC2F61E976 /* SafetyChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC7738E561B403C960BF591 /* SafetyChecker.swift */; };
+		8E94A3D620874268AEB58BD1 /* LiveDeletionByteCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A159F40902804A8286EBBDDC /* LiveDeletionByteCounter.swift */; };
 		89FC9D5F428C0FD73D0861A1 /* PrivacyModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50DAAD50600EAFBF671312DC /* PrivacyModule.swift */; };
 		8BCB972C2CB041D7DDC9FE21 /* ScanNotificationContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81045162875FEC21FE25FE5 /* ScanNotificationContent.swift */; };
 		8D463547995A1A0177954D13 /* NetworkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1165CC0384EBFF4A498CA /* NetworkModule.swift */; };
@@ -105,6 +106,7 @@
 		93CEB7A7900AD9C6F8ED38C6 /* CleanupPerformance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2052C6BF287BBAA51A7966A1 /* CleanupPerformance.swift */; };
 		9476B692EC5DA16EA614FE45 /* HeadlessService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5FD2DD475F28ADA79F52F0 /* HeadlessService.swift */; };
 		95A148F295CED3AA97945847 /* SystemCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086C609B2DA745F6E4298C91 /* SystemCleanupView.swift */; };
+		95319B504BFA4A5383E42DB4 /* LiveDeletionByteCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A159F40902804A8286EBBDDC /* LiveDeletionByteCounter.swift */; };
 		96978BD57F210E2E4591D52B /* FullDiskAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B48084853799CA6B9FB9B2 /* FullDiskAccess.swift */; };
 		9974EDCBD28A455DCEA489F3 /* MetricThresholds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162883CF6751EE755CFA0594 /* MetricThresholds.swift */; };
 		9B477FB9521603C9924F9BE8 /* CleanupFileRemover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596F39F6CBA6900B9B28707B /* CleanupFileRemover.swift */; };
@@ -282,6 +284,7 @@
 		EE5776F79C1FE736127D7367 /* MailAttachmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailAttachmentsView.swift; sourceTree = "<group>"; };
 		EED70737BE8709A33F6154A5 /* MenuBarDetailPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarDetailPanel.swift; sourceTree = "<group>"; };
 		EFBC54E02A2A920F54CD0CEC /* OptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimizationView.swift; sourceTree = "<group>"; };
+		A159F40902804A8286EBBDDC /* LiveDeletionByteCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDeletionByteCounter.swift; sourceTree = "<group>"; };
 		EFC7738E561B403C960BF591 /* SafetyChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyChecker.swift; sourceTree = "<group>"; };
 		F4458407817D41F1B0EB9820 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		F96D1EC382075A5427AF150C /* CLIExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIExecutor.swift; sourceTree = "<group>"; };
@@ -403,6 +406,7 @@
 			isa = PBXGroup;
 			children = (
 				596F39F6CBA6900B9B28707B /* CleanupFileRemover.swift */,
+				A159F40902804A8286EBBDDC /* LiveDeletionByteCounter.swift */,
 				EFC7738E561B403C960BF591 /* SafetyChecker.swift */,
 			);
 			path = Safety;
@@ -1021,6 +1025,7 @@
 				35FBE2BFC2C66527E7F92F75 /* PrivilegedRunner.swift in Sources */,
 				8300C00CE42C11FCDF8EBA69 /* ProcessMonitor.swift in Sources */,
 				74497A8048D7D9D8FFDB7CA6 /* ProcessRunner.swift in Sources */,
+				95319B504BFA4A5383E42DB4 /* LiveDeletionByteCounter.swift in Sources */,
 				E71D3D51ACFEF6A32523DAF7 /* SafetyChecker.swift in Sources */,
 				1116D40D7423683E07063604 /* ScanEngine.swift in Sources */,
 				5869114B87440E7667809E80 /* ScanModule.swift in Sources */,
@@ -1090,6 +1095,7 @@
 				EF0F984BD862C58B36E8D580 /* PrivilegedRunner.swift in Sources */,
 				0FE36D622782CCCB3884DFAD /* ProcessMonitor.swift in Sources */,
 				D923E7045DE10491945E5070 /* ProcessRunner.swift in Sources */,
+				8E94A3D620874268AEB58BD1 /* LiveDeletionByteCounter.swift in Sources */,
 				878DCAF648A5B7BC2F61E976 /* SafetyChecker.swift in Sources */,
 				C3BA5A5271CF6A49843C0DED /* ScanEngine.swift in Sources */,
 				2479951865FCD6A571C06DFF /* ScanModule.swift in Sources */,

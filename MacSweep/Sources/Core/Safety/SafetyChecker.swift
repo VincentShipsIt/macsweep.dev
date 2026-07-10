@@ -793,27 +793,52 @@ struct DeletionGuard {
     var dryRunDefault: Bool = true
 
     func preflightCheck(items: [CleanupItem]) -> PreflightResult {
-        // Cleanup actions carry a declared impact measured by their scanner
-        // (Docker uses live `docker system df` reclaimable bytes). Count it just
-        // like filesystem impact, but fail closed on malformed negative values or
-        // integer overflow instead of letting either understate the aggregate.
-        var totalSize: Int64 = 0
+        // Closed actions have no filesystem path to measure. Their strictly
+        // positive declaration is an upper bound that the owning module must
+        // re-verify immediately before execution. Filesystem targets ignore stale
+        // scan metadata and are measured from live state below.
+        var actionSize: Int64 = 0
+        var filesystemRoots: [URL] = []
         for item in items {
-            if case .action = item.target, item.size <= 0 {
-                return .blocked(reason: "Cleanup action impact must be a positive verified size")
+            switch item.target {
+            case .fileSystem(let path, _):
+                filesystemRoots.append(path)
+            case .action:
+                guard item.size > 0 else {
+                    return .blocked(reason: "Cleanup action impact must be a positive verified size")
+                }
+                let (nextSize, overflowed) = actionSize.addingReportingOverflow(item.size)
+                guard !overflowed else {
+                    return .blocked(reason: "Cleanup impact exceeds the supported size range")
+                }
+                guard nextSize <= maxTotalSize else { return maximumExceededResult }
+                actionSize = nextSize
             }
-            guard item.size >= 0 else {
-                return .blocked(reason: "Cleanup impact cannot be negative")
-            }
-            let (nextTotal, overflowed) = totalSize.addingReportingOverflow(item.size)
-            guard !overflowed else {
-                return .blocked(reason: "Cleanup impact exceeds the supported size range")
-            }
-            totalSize = nextTotal
         }
 
+        do {
+            let filesystemSize = try LiveDeletionByteCounter().totalAllocatedBytes(
+                for: filesystemRoots,
+                limit: maxTotalSize - actionSize
+            )
+            let totalSize = actionSize + filesystemSize
+            return classify(measuredTotalSize: totalSize)
+        } catch LiveDeletionByteCounter.MeasurementError.limitExceeded {
+            return maximumExceededResult
+        } catch {
+            return .blocked(
+                reason: "Unable to safely measure every selected path immediately before deletion."
+            )
+        }
+    }
+
+    /// Pure threshold classification after a complete live measurement.
+    func classify(measuredTotalSize totalSize: Int64) -> PreflightResult {
+        guard totalSize >= 0 else {
+            return .blocked(reason: "Unable to safely measure every selected path immediately before deletion.")
+        }
         if totalSize > maxTotalSize {
-            return .blocked(reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))")
+            return maximumExceededResult
         }
 
         if totalSize > confirmationThreshold {
@@ -821,6 +846,12 @@ struct DeletionGuard {
         }
 
         return .allowed
+    }
+
+    private var maximumExceededResult: PreflightResult {
+        .blocked(
+            reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
+        )
     }
 }
 
