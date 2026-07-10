@@ -308,8 +308,31 @@ actor ScanEngine {
             }
         }
 
-        // Second pass: execute cleanup in priority order.
+        // Second pass: execute cleanup in priority order. Remeasure each module's
+        // targets immediately before dispatch because an earlier module (or an
+        // external process) can change a later target after the aggregate gate.
+        // Carry forward the measured impact of earlier dispatches so the 10 GiB
+        // cap applies to the whole operation, even when modules return incomplete
+        // or stale bytes-freed accounting.
+        var authorizedImpact: Int64 = 0
         for entry in plan {
+            if !dryRun {
+                switch deletionGuard.evaluate(
+                    items: entry.items,
+                    alreadyAuthorizedSize: authorizedImpact
+                ) {
+                case .blocked(let reason):
+                    throw ScanEngineError.deletionBlocked(reason: reason)
+                case .requiresConfirmation(let cumulativeSize):
+                    guard confirmedLargeDeletion else {
+                        throw ScanEngineError.confirmationRequired(size: cumulativeSize)
+                    }
+                    authorizedImpact = cumulativeSize
+                case .allowed(let cumulativeSize):
+                    authorizedImpact = cumulativeSize
+                }
+            }
+
             let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
             processedCount += result.itemsProcessed
             bytesFreed += result.bytesFreed

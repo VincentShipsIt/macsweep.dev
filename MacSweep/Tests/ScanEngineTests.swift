@@ -39,6 +39,25 @@ struct ScanEngineTests {
         }
     }
 
+    struct GrowingTestModule: ScanModule {
+        let id: String
+        let name: String
+        let description: String
+        let icon: String = "testtube.2"
+        let recorder: CleanupRecorder
+        let targetToGrow: URL
+
+        func scan() async throws -> [CleanupItem] { [] }
+
+        func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+            await recorder.record(moduleID: id, items: items)
+            if !dryRun {
+                try Data(repeating: 0xE7, count: 2_097_152).write(to: targetToGrow)
+            }
+            return CleanupResult(itemsProcessed: items.count, bytesFreed: 0)
+        }
+    }
+
     @Test func cleanDispatchesItemsToOwningModules() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
@@ -342,6 +361,70 @@ struct ScanEngineTests {
         }
 
         #expect(await recorder.items(for: "system-cache").isEmpty)
+    }
+
+    @Test func cleanRemeasuresLaterModuleAndCarriesForwardEarlierImpact() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineSequentialGrowth")
+        let cacheDirectory = temp.appendingPathComponent("Caches")
+        try FileManager.default.createDirectory(
+            at: cacheDirectory,
+            withIntermediateDirectories: false
+        )
+        let first = cacheDirectory.appendingPathComponent("first.cache")
+        let later = cacheDirectory.appendingPathComponent("later.cache")
+        try Data(repeating: 0x11, count: 65_536).write(to: first)
+        try Data(repeating: 0x22, count: 65_536).write(to: later)
+
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            GrowingTestModule(
+                id: "alpha",
+                name: "Alpha",
+                description: "Alpha",
+                recorder: recorder,
+                targetToGrow: later
+            ),
+            TestModule(id: "beta", name: "Beta", description: "Beta", recorder: recorder),
+        ], deletionGuard: DeletionGuard(
+            maxTotalSize: 1_048_576,
+            confirmationThreshold: 1_048_576,
+            dryRunDefault: true
+        ))
+
+        let firstItem = CleanupItem(
+            id: UUID(),
+            path: first,
+            size: 65_536,
+            type: .file,
+            module: "alpha",
+            moduleName: "Alpha"
+        )
+        let laterItem = CleanupItem(
+            id: UUID(),
+            path: later,
+            size: 65_536,
+            type: .file,
+            module: "beta",
+            moduleName: "Beta"
+        )
+
+        do {
+            _ = try await engine.clean(
+                items: [firstItem, laterItem],
+                dryRun: false,
+                confirmedLargeDeletion: true
+            )
+            Issue.record("Expected later growth to exceed the cumulative hard cap")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked(let reason) = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+            #expect(reason.contains("exceeds maximum"))
+        }
+
+        #expect(await recorder.items(for: "alpha") == [firstItem])
+        #expect(await recorder.items(for: "beta").isEmpty)
     }
 
     // MARK: - Partial-scan diagnostics

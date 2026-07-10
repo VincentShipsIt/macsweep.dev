@@ -792,7 +792,33 @@ struct DeletionGuard {
     /// Dry-run by default
     var dryRunDefault: Bool = true
 
-    func preflightCheck(items: [CleanupItem]) -> PreflightResult {
+    func preflightCheck(
+        items: [CleanupItem],
+        fileManager: FileManager = .default
+    ) -> PreflightResult {
+        evaluate(
+            items: items,
+            alreadyAuthorizedSize: 0,
+            fileManager: fileManager
+        ).preflightResult
+    }
+
+    /// Measures one imminent destructive dispatch and combines it with the
+    /// impact already authorized for earlier dispatches in this cleanup run.
+    /// ScanEngine uses the returned cumulative size exactly once, avoiding a
+    /// second measurement window merely to recover the byte count.
+    func evaluate(
+        items: [CleanupItem],
+        alreadyAuthorizedSize: Int64,
+        fileManager: FileManager = .default
+    ) -> MeasuredPreflightResult {
+        guard alreadyAuthorizedSize >= 0 else {
+            return .blocked(reason: "Cleanup impact cannot be negative")
+        }
+        guard alreadyAuthorizedSize <= maxTotalSize else {
+            return .blocked(reason: maximumExceededReason)
+        }
+
         // Closed actions have no filesystem path to measure. Their strictly
         // positive declaration is an upper bound that the owning module must
         // re-verify immediately before execution. Filesystem targets ignore stale
@@ -811,20 +837,26 @@ struct DeletionGuard {
                 guard !overflowed else {
                     return .blocked(reason: "Cleanup impact exceeds the supported size range")
                 }
-                guard nextSize <= maxTotalSize else { return maximumExceededResult }
+                guard nextSize <= maxTotalSize - alreadyAuthorizedSize else {
+                    return .blocked(reason: maximumExceededReason)
+                }
                 actionSize = nextSize
             }
         }
 
         do {
-            let filesystemSize = try LiveDeletionByteCounter().totalAllocatedBytes(
+            let filesystemSize = try LiveDeletionByteCounter(fileManager: fileManager).totalAllocatedBytes(
                 for: filesystemRoots,
-                limit: maxTotalSize - actionSize
+                limit: maxTotalSize - alreadyAuthorizedSize - actionSize
             )
-            let totalSize = actionSize + filesystemSize
-            return classify(measuredTotalSize: totalSize)
+            let dispatchSize = actionSize + filesystemSize
+            let cumulativeSize = alreadyAuthorizedSize + dispatchSize
+            if cumulativeSize > confirmationThreshold {
+                return .requiresConfirmation(cumulativeSize: cumulativeSize)
+            }
+            return .allowed(cumulativeSize: cumulativeSize)
         } catch LiveDeletionByteCounter.MeasurementError.limitExceeded {
-            return maximumExceededResult
+            return .blocked(reason: maximumExceededReason)
         } catch {
             return .blocked(
                 reason: "Unable to safely measure every selected path immediately before deletion."
@@ -849,9 +881,28 @@ struct DeletionGuard {
     }
 
     private var maximumExceededResult: PreflightResult {
-        .blocked(
-            reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
-        )
+        .blocked(reason: maximumExceededReason)
+    }
+
+    private var maximumExceededReason: String {
+        "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
+    }
+}
+
+enum MeasuredPreflightResult: Sendable, Equatable {
+    case allowed(cumulativeSize: Int64)
+    case requiresConfirmation(cumulativeSize: Int64)
+    case blocked(reason: String)
+
+    var preflightResult: PreflightResult {
+        switch self {
+        case .allowed:
+            return .allowed
+        case .requiresConfirmation(let cumulativeSize):
+            return .requiresConfirmation(size: cumulativeSize)
+        case .blocked(let reason):
+            return .blocked(reason: reason)
+        }
     }
 }
 

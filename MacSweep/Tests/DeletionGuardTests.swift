@@ -10,6 +10,37 @@ import Foundation
 /// behavior (`>`, not `>=`), so the exact-threshold sizes resolve to the
 /// lower-severity outcome.
 struct DeletionGuardTests {
+    private final class TriggeredMutationFileManager: FileManager, @unchecked Sendable {
+        let triggerDirectory: URL
+        let mutation: () throws -> Void
+        private(set) var didMutate = false
+
+        init(triggerDirectory: URL, mutation: @escaping () throws -> Void) {
+            self.triggerDirectory = triggerDirectory.standardizedFileURL
+            self.mutation = mutation
+            super.init()
+        }
+
+        override func contentsOfDirectory(
+            at url: URL,
+            includingPropertiesForKeys keys: [URLResourceKey]?,
+            options mask: FileManager.DirectoryEnumerationOptions
+        ) throws -> [URL] {
+            let contents = try super.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: mask
+            )
+
+            if !didMutate && url.standardizedFileURL == triggerDirectory {
+                didMutate = true
+                try mutation()
+            }
+
+            return contents
+        }
+    }
+
     private let guardUnit = DeletionGuard()
 
     private var smallGuard: DeletionGuard {
@@ -246,5 +277,142 @@ struct DeletionGuardTests {
             Issue.record("Expected an overflowing impact aggregate to be blocked")
             return
         }
+    }
+
+    @Test func hardLinkedSelectionsCountTheirAllocatedBytesOnce() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardHardLinks")
+        let original = temp.appendingPathComponent("original.cache")
+        let hardLink = temp.appendingPathComponent("alias.cache")
+        try Data(repeating: 0xD3, count: 700_000).write(to: original)
+        try FileManager.default.linkItem(at: original, to: hardLink)
+
+        let result = smallGuard.preflightCheck(items: [
+            item(at: original, size: 0, type: .file),
+            item(at: hardLink, size: 0, type: .file),
+        ])
+
+        #expect(result == .allowed)
+    }
+
+    @Test func leafMutationLaterInTraversalIsRejected() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardLeafRace")
+        let leaf = temp.appendingPathComponent("a-victim.bin")
+        try Data(repeating: 0x6D, count: 65_536).write(to: leaf)
+        let trigger = temp.appendingPathComponent("z-trigger")
+        try FileManager.default.createDirectory(at: trigger, withIntermediateDirectories: false)
+
+        let fileManager = TriggeredMutationFileManager(triggerDirectory: trigger) {
+            let handle = try FileHandle(forWritingTo: leaf)
+            defer { try? handle.close() }
+            // In-place growth changes the leaf metadata without changing its
+            // parent's directory mtime/ctime.
+            try handle.truncate(atOffset: 2_097_152)
+        }
+        let counter = LiveDeletionByteCounter(fileManager: fileManager)
+
+        do {
+            _ = try counter.totalAllocatedBytes(for: [temp.url], limit: 8_388_608)
+            Issue.record("Expected a leaf changed after accounting to invalidate the live snapshot")
+        } catch LiveDeletionByteCounter.MeasurementError.changedDuringMeasurement(let path) {
+            #expect(
+                URL(fileURLWithPath: path).resolvingSymlinksInPath()
+                    == leaf.resolvingSymlinksInPath()
+            )
+        } catch let error as LiveDeletionByteCounter.MeasurementError {
+            Issue.record("Expected a changed-node measurement error, got \(error)")
+        } catch {
+            Issue.record("Expected a measurement race error, got \(error)")
+        }
+
+        #expect(fileManager.didMutate)
+    }
+
+    @Test func guardBlocksLeafMutationLaterInTraversal() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardLeafRaceGate")
+        let leaf = temp.appendingPathComponent("a-victim.bin")
+        try Data(repeating: 0x4F, count: 65_536).write(to: leaf)
+        let trigger = temp.appendingPathComponent("z-trigger")
+        try FileManager.default.createDirectory(at: trigger, withIntermediateDirectories: false)
+
+        let fileManager = TriggeredMutationFileManager(triggerDirectory: trigger) {
+            let handle = try FileHandle(forWritingTo: leaf)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: 2_097_152)
+        }
+        let result = DeletionGuard(
+            maxTotalSize: 8_388_608,
+            confirmationThreshold: 8_388_608,
+            dryRunDefault: true
+        ).preflightCheck(
+            items: [item(at: temp.url, size: 0, type: .directory)],
+            fileManager: fileManager
+        )
+
+        guard case .blocked(let reason) = result else {
+            Issue.record("Expected DeletionGuard to block the raced leaf snapshot, got \(result)")
+            return
+        }
+        #expect(reason.contains("Unable to safely measure"))
+        #expect(fileManager.didMutate)
+    }
+
+    @Test func earlierDirectoryMutationDuringLaterSiblingTraversalIsRejected() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardDirectoryRace")
+        let victim = temp.appendingPathComponent("a-victim-directory")
+        let trigger = temp.appendingPathComponent("z-trigger")
+        try FileManager.default.createDirectory(at: victim, withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(at: trigger, withIntermediateDirectories: false)
+
+        let fileManager = TriggeredMutationFileManager(triggerDirectory: trigger) {
+            try Data(repeating: 0x9A, count: 2_097_152)
+                .write(to: victim.appendingPathComponent("late.cache"))
+        }
+
+        do {
+            _ = try LiveDeletionByteCounter(fileManager: fileManager)
+                .totalAllocatedBytes(for: [temp.url], limit: 8_388_608)
+            Issue.record("Expected a previously walked directory mutation to invalidate the snapshot")
+        } catch LiveDeletionByteCounter.MeasurementError.changedDuringMeasurement(let path) {
+            #expect(
+                URL(fileURLWithPath: path).resolvingSymlinksInPath()
+                    == victim.resolvingSymlinksInPath()
+            )
+        } catch {
+            Issue.record("Expected a directory measurement race error, got \(error)")
+        }
+
+        #expect(fileManager.didMutate)
+    }
+
+    @Test func deduplicatedHardLinkAliasReplacementIsRejected() throws {
+        let temp = try TempTestDirectory(prefix: "DeletionGuardHardLinkRace")
+        let original = temp.appendingPathComponent("a-original.cache")
+        let alias = temp.appendingPathComponent("b-alias.cache")
+        let trigger = temp.appendingPathComponent("z-trigger")
+        try Data(repeating: 0x3C, count: 65_536).write(to: original)
+        try FileManager.default.linkItem(at: original, to: alias)
+        try FileManager.default.createDirectory(at: trigger, withIntermediateDirectories: false)
+
+        let fileManager = TriggeredMutationFileManager(triggerDirectory: trigger) {
+            try FileManager.default.removeItem(at: alias)
+            try Data(repeating: 0xA7, count: 2_097_152).write(to: alias)
+        }
+
+        do {
+            _ = try LiveDeletionByteCounter(fileManager: fileManager).totalAllocatedBytes(
+                for: [original, alias, trigger],
+                limit: 8_388_608
+            )
+            Issue.record("Expected replacement of a deduplicated hard-link alias to be rejected")
+        } catch LiveDeletionByteCounter.MeasurementError.changedDuringMeasurement(let path) {
+            let changed = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+            // Unlinking the alias can update the shared inode's ctime/link
+            // metadata, so either name may be the first snapshot to detect it.
+            #expect([original, alias].map { $0.resolvingSymlinksInPath() }.contains(changed))
+        } catch {
+            Issue.record("Expected a hard-link alias measurement race error, got \(error)")
+        }
+
+        #expect(fileManager.didMutate)
     }
 }

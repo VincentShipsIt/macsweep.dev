@@ -28,9 +28,11 @@ struct LiveDeletionByteCounter {
         }
     }
 
-    private struct DirectorySnapshot: Equatable {
+    private struct NodeSnapshot: Equatable {
         let identity: FileIdentity
         let fileType: mode_t
+        let fileSize: Int64
+        let blockCount: Int64
         let modificationSeconds: Int64
         let modificationNanoseconds: Int64
         let changeSeconds: Int64
@@ -39,11 +41,18 @@ struct LiveDeletionByteCounter {
         init(_ status: stat) {
             identity = FileIdentity(status)
             fileType = status.st_mode & S_IFMT
+            fileSize = Int64(status.st_size)
+            blockCount = Int64(status.st_blocks)
             modificationSeconds = Int64(status.st_mtimespec.tv_sec)
             modificationNanoseconds = Int64(status.st_mtimespec.tv_nsec)
             changeSeconds = Int64(status.st_ctimespec.tv_sec)
             changeNanoseconds = Int64(status.st_ctimespec.tv_nsec)
         }
+    }
+
+    private struct MeasuredNode {
+        let url: URL
+        let snapshot: NodeSnapshot
     }
 
     private struct ByteAccumulator {
@@ -69,6 +78,7 @@ struct LiveDeletionByteCounter {
 
     private struct MeasurementState {
         var seen: Set<FileIdentity> = []
+        var nodes: [MeasuredNode] = []
         var bytes: ByteAccumulator
     }
 
@@ -94,6 +104,15 @@ struct LiveDeletionByteCounter {
             try measure(root.standardizedFileURL, state: &state)
         }
 
+        // Revalidate every pathname after the complete aggregate walk. A leaf
+        // can grow without touching its parent directory metadata, while a
+        // previously walked subdirectory can change as a later root or sibling
+        // is measured. Keeping every pathname also catches replacement of one
+        // selected hard-link name even though its inode bytes were counted once.
+        for node in state.nodes {
+            try verifyNode(at: node.url, stillMatches: node.snapshot)
+        }
+
         return state.bytes.total
     }
 
@@ -110,6 +129,9 @@ struct LiveDeletionByteCounter {
     private func measure(_ url: URL, state: inout MeasurementState) throws {
         let status = try status(at: url)
         let identity = FileIdentity(status)
+        let snapshot = NodeSnapshot(status)
+
+        state.nodes.append(MeasuredNode(url: url, snapshot: snapshot))
 
         guard state.seen.insert(identity).inserted else { return }
 
@@ -118,7 +140,7 @@ struct LiveDeletionByteCounter {
         // Explicit no-follow semantics: only a real directory reached by lstat
         // is traversed. A directory symlink is an S_IFLNK leaf.
         guard (status.st_mode & S_IFMT) == S_IFDIR else { return }
-        let before = DirectorySnapshot(status)
+        let before = snapshot
 
         let children: [URL]
         do {
@@ -128,7 +150,7 @@ struct LiveDeletionByteCounter {
                 options: []
             ).sorted(by: Self.pathOrder)
         } catch {
-            try verifyDirectory(at: url, stillMatches: before)
+            try verifyNode(at: url, stillMatches: before)
             throw MeasurementError.cannotEnumerate(url.path)
         }
 
@@ -138,10 +160,10 @@ struct LiveDeletionByteCounter {
 
         // A concurrent add/remove/replace can make a seemingly complete walk
         // omit bytes. Refuse that unstable snapshot rather than deleting from it.
-        try verifyDirectory(at: url, stillMatches: before)
+        try verifyNode(at: url, stillMatches: before)
     }
 
-    private func verifyDirectory(at url: URL, stillMatches before: DirectorySnapshot) throws {
+    private func verifyNode(at url: URL, stillMatches before: NodeSnapshot) throws {
         let after: stat
         do {
             after = try status(at: url)
@@ -149,7 +171,7 @@ struct LiveDeletionByteCounter {
             throw MeasurementError.changedDuringMeasurement(url.path)
         }
 
-        guard DirectorySnapshot(after) == before else {
+        guard NodeSnapshot(after) == before else {
             throw MeasurementError.changedDuringMeasurement(url.path)
         }
     }
