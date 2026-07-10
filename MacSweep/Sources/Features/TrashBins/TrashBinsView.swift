@@ -26,23 +26,13 @@ struct TrashBinsView: View {
                 .tint(.red)
                 .controlSize(.small)
                 .disabled((trashItems.isEmpty && (trashSummary?.totalCount ?? 0) == 0) || isScanning)
-                .confirmationDialog(
+                .deleteConfirmation(
                     "Empty All Trash?",
                     isPresented: $showingEmptyAllConfirmation,
-                    titleVisibility: .visible
+                    confirmTitle: "Empty Trash",
+                    message: emptyAllTrashMessage
                 ) {
-                    Button("Empty Trash", role: .destructive) {
-                        Task {
-                            await emptyAllTrash()
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    if let summary = trashSummary {
-                        Text("This will permanently delete \(summary.totalCount) items (\(summary.formattedSize)). This cannot be undone.")
-                    } else {
-                        Text("This will permanently delete all items in Trash. This cannot be undone.")
-                    }
+                    Task { await emptyAllTrash() }
                 }
             ),
             hidesChrome: trashItems.isEmpty && !(hasScanned && !isScanning && errorMessage == nil),
@@ -119,75 +109,39 @@ struct TrashBinsView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will permanently delete \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                selectedItems = Set(trashItems.map(\.id))
-            }
-            .glassButton()
-
-            Button("Delete Selected") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: selectedItems.count,
+            summary: "Will permanently delete \(selectedSize)",
+            onSelectAll: { selectedItems = Set(trashItems.map(\.id)) },
+            actionTitle: "Delete Selected",
+            actionDisabled: selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Permanently Delete \(selectedItems.count) Items?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Delete Permanently",
+            message: "This will permanently delete \(selectedSize) of files. This cannot be undone."
         ) {
-            Button("Delete Permanently", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently delete \(selectedSize) of files. This cannot be undone.")
+            Task { await deleteSelected() }
         }
     }
 
     private var emptyTrashState: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 44, weight: .regular))
-                .foregroundStyle(MacSweepTheme.accent)
+        EmptyResultState(
+            icon: "checkmark.circle",
+            title: "Trash bins are empty",
+            message: "No cleanable items were found in your Trash bins.",
+            actionTitle: "Scan Again",
+            action: { Task { await scanTrash() } }
+        )
+    }
 
-            VStack(spacing: 6) {
-                Text("Trash bins are empty")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-
-                Text("No cleanable items were found in your Trash bins.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Button {
-                Task { await scanTrash() }
-            } label: {
-                Label("Scan Again", systemImage: "arrow.clockwise")
-            }
-            .glassButton()
+    private var emptyAllTrashMessage: String {
+        if let summary = trashSummary {
+            return "This will permanently delete \(summary.totalCount) items (\(summary.formattedSize)). This cannot be undone."
         }
-        .frame(maxWidth: 360)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+        return "This will permanently delete all items in Trash. This cannot be undone."
     }
 
     // MARK: - Actions
@@ -289,15 +243,12 @@ struct TrashItemRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // File icon
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.path.path))
                 .resizable()
                 .frame(width: 32, height: 32)
-
+        } content: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .lineLimit(1)
@@ -316,9 +267,7 @@ struct TrashItemRow: View {
                         .truncationMode(.head)
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             Text(item.formattedSize)
                 .font(.headline)
 
@@ -332,7 +281,6 @@ struct TrashItemRow: View {
             .foregroundStyle(.secondary)
             .help("Put Back")
         }
-        .padding(.vertical, 4)
     }
 
     private func putBack(_ item: CleanupItem) {

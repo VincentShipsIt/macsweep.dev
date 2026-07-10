@@ -38,8 +38,7 @@ struct LargeFilesView: View {
             title: "Large & Old Files",
             subtitle: "Find large files and folders by size and age.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                Button { Task { await scanLargeFiles() } } label: { Label("Rescan", systemImage: "arrow.clockwise") }
-                    .glassButton().controlSize(.small).disabled(model.isScanning)
+                RescanButton(isScanning: model.isScanning) { Task { await scanLargeFiles() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -183,44 +182,21 @@ struct LargeFilesView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(model.selectedItems.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(selectedSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Select All") {
-                model.selectAll(filteredItems)
-            }
-            .glassButton()
-
-            Button("Move to Trash") {
-                model.showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(model.selectedItems.isEmpty)
-        }
-        .padding()
-        .confirmationDialog(
+        CleanupFooter(
+            selectedCount: model.selectedItems.count,
+            summary: "Will free \(selectedSize)",
+            onSelectAll: { model.selectAll(filteredItems) },
+            actionTitle: "Move to Trash",
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
+        )
+        .deleteConfirmation(
             "Move \(model.selectedItems.count) items to Trash?",
             isPresented: $model.showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Move to Trash",
+            message: "This will move \(selectedSize) of files and folders to Trash. You can restore them from Trash if needed."
         ) {
-            Button("Move to Trash", role: .destructive) {
-                Task {
-                    await deleteSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will move \(selectedSize) of files and folders to Trash. You can restore them from Trash if needed.")
+            Task { await deleteSelected() }
         }
     }
 
@@ -322,15 +298,11 @@ struct LargeFileRow: View {
     let onOpen: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Selection indicator
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isSelected ? .blue : .secondary)
-
+        SelectableItemRow(isSelected: isSelected) {
             // File icon
             FileIconView(url: item.path)
                 .frame(width: 40, height: 40)
-
+        } content: {
             // File info
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
@@ -352,9 +324,7 @@ struct LargeFileRow: View {
                         .truncationMode(.head)
                 }
             }
-
-            Spacer()
-
+        } trailing: {
             // Size and date
             VStack(alignment: .trailing, spacing: 2) {
                 Text(item.formattedSize)
@@ -385,7 +355,6 @@ struct LargeFileRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 
     private var categoryColor: Color {
