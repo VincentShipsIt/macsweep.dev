@@ -81,6 +81,7 @@ struct DockerModule: ScanModule {
 
     private let dockerPath: @Sendable () -> String?
     private let commandRunner: DockerCommandRunner
+    private static let diskUsageArguments = ["system", "df", "--format", "{{json .}}"]
 
     private static let actionCategories: [(action: DockerCleanupAction, dfType: String)] = [
         (.pruneBuildCache, "Build Cache"),
@@ -92,6 +93,16 @@ struct DockerModule: ScanModule {
     private static let dockerDFTypeByAction = Dictionary(
         uniqueKeysWithValues: actionCategories.map { ($0.action, $0.dfType) }
     )
+
+    // Containers run last because removing them can make images or volumes
+    // newly reclaimable. Earlier actions must not inflate a later prune after
+    // the single cleanup-time verification snapshot.
+    private static let safeExecutionOrder: [DockerCleanupAction] = [
+        .pruneBuildCache,
+        .pruneImages,
+        .pruneVolumes,
+        .pruneContainers,
+    ]
 
     init(
         dockerPath: @escaping @Sendable () -> String? = { DockerCLI.path },
@@ -166,12 +177,15 @@ struct DockerModule: ScanModule {
         // each carrying a human-readable `Reclaimable` field we parse into real
         // per-category byte estimates. ProcessRunner keeps this argv-only and
         // bounded; the injectable runner makes the exact command testable.
-        guard let result = try? await commandRunner(
-            executable,
-            ["system", "df", "--format", "{{json .}}"]
-        ), result.didSucceed else { return nil }
+        guard let data = await dockerDiskUsageData(executable: executable) else { return nil }
 
-        return Self.parseReclaimableByType(Data(result.output.utf8))
+        return Self.parseReclaimableByType(data)
+    }
+
+    private func dockerDiskUsageData(executable: String) async -> Data? {
+        guard let result = try? await commandRunner(executable, Self.diskUsageArguments),
+              result.didSucceed else { return nil }
+        return Data(result.output.utf8)
     }
 
     /// Parse `docker system df --format "{{json .}}"` output — one JSON object
@@ -194,16 +208,35 @@ struct DockerModule: ScanModule {
         return result
     }
 
-    func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        guard isDockerInstalled() else {
-            return CleanupResult(itemsProcessed: 0, bytesFreed: 0)
-        }
+    /// Parse the cleanup-time snapshot strictly. Scan presentation may skip a
+    /// malformed row, but destructive cleanup requires every reported row to be
+    /// well formed, known, and unique before any selected action can run.
+    private static func parseVerifiedReclaimableByType(_ data: Data) -> [String: Int64]? {
+        guard let text = String(data: data, encoding: .utf8),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 
+        let knownTypes = Set(actionCategories.map(\.dfType))
+        var result: [String: Int64] = [:]
+        for line in text.split(separator: "\n") {
+            guard let lineData = line.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let type = object["Type"] as? String,
+                  knownTypes.contains(type),
+                  result[type] == nil,
+                  let reclaimable = object["Reclaimable"] as? String else { return nil }
+            let sizeToken = reclaimable.split(separator: " ").first.map(String.init) ?? reclaimable
+            guard let byteCount = DockerCLI.parseVerifiedBytes(sizeToken) else { return nil }
+            result[type] = byteCount
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         var processed = 0
         var freed: Int64 = 0
         var errors: [CleanupError] = []
+        var candidates: [(item: CleanupItem, action: DockerCleanupAction)] = []
 
-        var executedActions: Set<DockerCleanupAction> = []
         for item in items where item.module == id {
             guard case .action(.docker(let action)) = item.target else {
                 errors.append(CleanupError(
@@ -222,54 +255,94 @@ struct DockerModule: ScanModule {
 
             if dryRun {
                 // item.size is the real reclaimable estimate from `docker system
-                // df` (see parseDockerDF), so this is an honest preview, not a
-                // synthetic echo. Actual runs below report the bytes Docker says
-                // it reclaimed.
+                // df` (see getDockerDiskUsage), so this is an honest preview,
+                // not a synthetic echo. Actual runs below bound Docker's
+                // reported reclaimed bytes by this guarded declaration.
                 processed += 1
                 freed += item.size
                 continue
             }
 
-            // A duplicated finding must not run the same destructive command
-            // twice. It still contributed to DeletionGuard's conservative sum.
-            guard executedActions.insert(action).inserted else {
+            candidates.append((item, action))
+        }
+
+        if dryRun || candidates.isEmpty {
+            return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        }
+
+        var uniqueCandidates: [(item: CleanupItem, action: DockerCleanupAction)] = []
+        var selectedActions: Set<DockerCleanupAction> = []
+        var hasDuplicate = false
+        for candidate in candidates {
+            guard selectedActions.insert(candidate.action).inserted else {
+                hasDuplicate = true
                 errors.append(CleanupError(
-                    path: item.path,
+                    path: candidate.item.path,
                     message: "Duplicate Docker cleanup action"
                 ))
                 continue
             }
+            uniqueCandidates.append(candidate)
+        }
 
-            // Each prune can run for minutes and can itself change the impact of
-            // a later action (for example, container prune can make a volume
-            // unused). Refresh the relevant category immediately before this
-            // command, after all preceding prunes, and require it to remain no
-            // larger than the declaration already approved by DeletionGuard.
-            // Docker can still change in the narrow interval between this query
-            // and the command, but no earlier or concurrent growth is knowingly
-            // executed from stale state.
-            let freshReclaimable = await getDockerReclaimableByType()
-            guard let dfType = Self.dockerDFTypeByAction[action],
-                  let currentReclaimable = freshReclaimable?[dfType]
-            else {
-                errors.append(CleanupError(
-                    path: item.path,
+        // Duplicate declarations make the per-action upper bound ambiguous.
+        // Reject the whole Docker batch before querying or pruning.
+        guard !hasDuplicate else {
+            return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: errors)
+        }
+
+        guard let executable = dockerPath(),
+              let liveData = await dockerDiskUsageData(executable: executable),
+              let liveImpact = Self.parseVerifiedReclaimableByType(liveData) else {
+            errors.append(contentsOf: uniqueCandidates.map {
+                CleanupError(
+                    path: $0.item.path,
+                    message: "Unable to verify current Docker cleanup impact; rescan before cleaning"
+                )
+            })
+            return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: errors)
+        }
+
+        var verificationErrors: [CleanupError] = []
+        for candidate in uniqueCandidates {
+            guard let dfType = Self.dockerDFTypeByAction[candidate.action],
+                  let currentReclaimable = liveImpact[dfType] else {
+                verificationErrors.append(CleanupError(
+                    path: candidate.item.path,
                     message: "Unable to verify current Docker cleanup impact; rescan before cleaning"
                 ))
                 continue
             }
-            guard currentReclaimable <= item.size else {
-                errors.append(CleanupError(
-                    path: item.path,
+            guard currentReclaimable <= candidate.item.size else {
+                verificationErrors.append(CleanupError(
+                    path: candidate.item.path,
                     message: "Docker cleanup impact increased after scanning; rescan before cleaning"
                 ))
                 continue
             }
+        }
 
-            let result = await runDockerCommand(action)
+        // Docker has no atomic measure-and-prune operation. Rechecking once here
+        // narrows but cannot eliminate external growth between this snapshot and
+        // Docker's command. The guarded declaration remains an upper bound, and
+        // containers execute last so this batch cannot inflate a later action.
+        guard verificationErrors.isEmpty else {
+            errors.append(contentsOf: verificationErrors)
+            return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: errors)
+        }
+
+        let candidatesByAction = Dictionary(uniqueKeysWithValues: uniqueCandidates.map { ($0.action, $0.item) })
+        for action in Self.safeExecutionOrder {
+            guard let item = candidatesByAction[action] else { continue }
+            let result = await runDockerCommand(action, executable: executable)
             if result.success {
                 processed += 1
-                freed += result.bytesFreed
+                // Subprocess output is untrusted and can race the verified
+                // snapshot. Never let reporting exceed the guarded declaration,
+                // and keep direct module callers overflow-safe as well.
+                let boundedFreed = min(result.bytesFreed, item.size)
+                let (newFreed, overflow) = freed.addingReportingOverflow(boundedFreed)
+                freed = overflow ? Int64.max : newFreed
             } else {
                 errors.append(CleanupError(
                     path: item.path,
@@ -282,11 +355,9 @@ struct DockerModule: ScanModule {
     }
 
     private func runDockerCommand(
-        _ action: DockerCleanupAction
+        _ action: DockerCleanupAction,
+        executable: String
     ) async -> (success: Bool, bytesFreed: Int64, error: String?) {
-        guard let executable = dockerPath() else {
-            return (false, 0, "Docker CLI is unavailable")
-        }
         do {
             let result = try await commandRunner(executable, action.arguments)
 

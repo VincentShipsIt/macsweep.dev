@@ -4,32 +4,20 @@ import AppKit
 /// View for finding and managing large files
 struct LargeFilesView: View {
     @EnvironmentObject var appState: AppState
-    @State private var isScanning = false
-    @State private var largeItems: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
-    @State private var errorMessage: String?
+    @StateObject private var model = ScanFeatureModel()
 
     // Filters
     @State private var sizeThreshold: Double = 100  // MB
     @State private var scanKind: LargeFilesModule.ScanKind = .both
     @State private var selectedCategory: String? = nil
-    @State private var sortOrder: SortOrder = .sizeDesc
-
-    enum SortOrder: String, CaseIterable {
-        case sizeDesc = "Largest First"
-        case sizeAsc = "Smallest First"
-        case dateDesc = "Newest First"
-        case dateAsc = "Oldest First"
-        case nameAsc = "Name A-Z"
-    }
+    @State private var sortOrder: CleanupSortOrder = .sizeDesc
 
     private let categories = ["All", "Folder", "Video", "Image", "Audio", "Archive", "Disk Image", "Document", "Code", "Application", "Other"]
 
     /// Default production initializer — empty on launch until the user scans.
     init() {}
 
-    /// Seeds the data-bearing `@State` so the headless snapshot harness (and Xcode
+    /// Seeds the shared model directly so the headless snapshot harness (and Xcode
     /// previews) can render the populated and error layouts, which otherwise only
     /// appear after a live scan. Not used by the app's normal navigation, which
     /// constructs the view with the no-arg initializer above.
@@ -38,29 +26,31 @@ struct LargeFilesView: View {
         snapshotSelection: Set<UUID> = [],
         snapshotError: String? = nil
     ) {
-        _largeItems = State(initialValue: snapshotItems)
-        _selectedItems = State(initialValue: snapshotSelection)
-        _errorMessage = State(initialValue: snapshotError)
+        _model = StateObject(wrappedValue: ScanFeatureModel(
+            items: snapshotItems,
+            selectedItems: snapshotSelection,
+            errorMessage: snapshotError
+        ))
     }
 
     var body: some View {
         FeaturePageShell(
             title: "Large & Old Files",
             subtitle: "Find large files and folders by size and age.",
-            trailing: largeItems.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: isScanning) { Task { await scanLargeFiles() } }
+            trailing: model.items.isEmpty ? nil : AnyView(
+                RescanButton(isScanning: model.isScanning) { Task { await scanLargeFiles() } }
             ),
-            hidesChrome: largeItems.isEmpty,
-            scrolls: largeItems.isEmpty
+            hidesChrome: model.items.isEmpty,
+            scrolls: model.items.isEmpty
         ) {
             VStack(spacing: 0) {
-                if let errorMessage {
+                if let errorMessage = model.errorMessage {
                     MacSweepErrorBanner(message: errorMessage) {
-                        self.errorMessage = nil
+                        model.errorMessage = nil
                     }
                 }
 
-                if largeItems.isEmpty {
+                if model.items.isEmpty {
                     ScanLandingView(
                         icon: "doc.badge.clock",
                         title: "Find Large & Old Files",
@@ -71,7 +61,7 @@ struct LargeFilesView: View {
                             ScanBenefit("clock.badge.questionmark", "Surfaces forgotten files", "Flags large items you haven't touched in ages, like old videos, disk images, and archives you can safely let go."),
                         ],
                         illustration: "internaldrive",
-                        isScanning: isScanning,
+                        isScanning: model.isScanning,
                         action: { Task { await scanLargeFiles() } }
                     )
                 } else {
@@ -87,6 +77,7 @@ struct LargeFilesView: View {
                 }
             }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     // MARK: - Filter Bar
@@ -147,7 +138,7 @@ struct LargeFilesView: View {
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
+                    ForEach(CleanupSortOrder.largeFileCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -168,11 +159,11 @@ struct LargeFilesView: View {
     // MARK: - Files List
 
     private var itemsList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             ForEach(filteredItems) { item in
                 LargeFileRow(
                     item: item,
-                    isSelected: selectedItems.contains(item.id),
+                    isSelected: model.selectedItems.contains(item.id),
                     onOpen: {
                         if item.type == .directory {
                             NSWorkspace.shared.open(item.path)
@@ -192,16 +183,16 @@ struct LargeFilesView: View {
 
     private var footer: some View {
         CleanupFooter(
-            selectedCount: selectedItems.count,
+            selectedCount: model.selectedItems.count,
             summary: "Will free \(selectedSize)",
-            onSelectAll: { selectedItems = Set(filteredItems.map(\.id)) },
+            onSelectAll: { model.selectAll(filteredItems) },
             actionTitle: "Move to Trash",
-            actionDisabled: selectedItems.isEmpty,
-            onAction: { showingConfirmation = true }
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
         )
         .deleteConfirmation(
-            "Move \(selectedItems.count) items to Trash?",
-            isPresented: $showingConfirmation,
+            "Move \(model.selectedItems.count) items to Trash?",
+            isPresented: $model.showingConfirmation,
             confirmTitle: "Move to Trash",
             message: "This will move \(selectedSize) of files and folders to Trash. You can restore them from Trash if needed."
         ) {
@@ -212,38 +203,37 @@ struct LargeFilesView: View {
     // MARK: - Actions
 
     private func scanLargeFiles() async {
-        isScanning = true
-        largeItems = []
-        selectedItems = []
-        errorMessage = nil
-
-        defer { isScanning = false }
-
-        var module = LargeFilesModule()
-        module.threshold = Int64(sizeThreshold * 1_048_576)  // Convert MB to bytes
-        module.scanKind = scanKind
-
-        do {
-            largeItems = try await module.scan()
-        } catch {
-            errorMessage = "Couldn't scan for large files: \(error.localizedDescription)"
+        // Large Files starts with nothing selected (unlike the size/date lists that
+        // select-all on completion).
+        let thresholdBytes = Int64(sizeThreshold * 1_048_576)  // Convert MB to bytes
+        let kind = scanKind
+        await model.scan(
+            selectAllOnCompletion: false,
+            onError: { "Couldn't scan for large files: \($0.localizedDescription)" }
+        ) {
+            var module = LargeFilesModule()
+            module.threshold = thresholdBytes
+            module.scanKind = kind
+            return try await module.scan()
         }
     }
 
     private func deleteSelected() async {
-        let itemsToDelete = filteredItems.filter { selectedItems.contains($0.id) }
+        let itemsToDelete = filteredItems.filter { model.selectedItems.contains($0.id) }
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. The aggregate DeletionGuard veto throws; per-item
         // SafetyChecker failures come back in result.errors and nothing is deleted
-        // for those, so we must not blindly clear them from the list.
+        // for those, so we must not blindly clear them from the list. This keeps
+        // its own epilogue (blocked-path bookkeeping + a bespoke banner) rather
+        // than the shared prune, so it does not use `model.clean`.
         let engine = ScanEngine()
         let result: CleanupResult
         do {
             result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
         } catch {
-            errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
+            model.errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
             return
         }
 
@@ -253,21 +243,21 @@ struct LargeFilesView: View {
         let blockedPaths = Set(result.errors.map(\.path))
         let deletedIDs = Set(itemsToDelete.filter { !blockedPaths.contains($0.path) }.map(\.id))
 
-        largeItems.removeAll { deletedIDs.contains($0.id) }
-        selectedItems.subtract(deletedIDs)
+        model.items.removeAll { deletedIDs.contains($0.id) }
+        model.selectedItems.subtract(deletedIDs)
 
         if blockedPaths.isEmpty {
-            errorMessage = nil
+            model.errorMessage = nil
         } else {
             let count = blockedPaths.count
-            errorMessage = "\(count) item\(count == 1 ? "" : "s") couldn't be moved to Trash and were kept."
+            model.errorMessage = "\(count) item\(count == 1 ? "" : "s") couldn't be moved to Trash and were kept."
         }
     }
 
     // MARK: - Computed
 
     private var filteredItems: [CleanupItem] {
-        var items = largeItems
+        var items = model.items
 
         // Filter by size
         let thresholdBytes = Int64(sizeThreshold * 1_048_576)
@@ -288,21 +278,7 @@ struct LargeFilesView: View {
             items = items.filter { $0.moduleName == category }
         }
 
-        // Sort
-        switch sortOrder {
-        case .sizeDesc:
-            items.sort { $0.size > $1.size }
-        case .sizeAsc:
-            items.sort { $0.size < $1.size }
-        case .dateDesc:
-            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
-        case .dateAsc:
-            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
-        case .nameAsc:
-            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
-        }
-
-        return items
+        return items.sorted(using: sortOrder)
     }
 
     private var totalSize: String {
@@ -310,7 +286,7 @@ struct LargeFilesView: View {
     }
 
     private var selectedSize: String {
-        filteredItems.formattedTotalSize(selected: selectedItems)
+        filteredItems.formattedTotalSize(selected: model.selectedItems)
     }
 }
 

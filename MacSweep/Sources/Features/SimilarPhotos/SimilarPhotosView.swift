@@ -3,37 +3,26 @@ import AppKit
 
 /// View for finding visually similar photos.
 struct SimilarPhotosView: View {
-    @State private var isScanning = false
-    @State private var photoItems: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
-    @State private var sortOrder: SortOrder = .sizeDesc
-    @State private var errorMessage: String?
-
-    enum SortOrder: String, CaseIterable {
-        case sizeDesc = "Largest First"
-        case dateAsc = "Oldest First"
-        case dateDesc = "Newest First"
-        case nameAsc = "Name A-Z"
-    }
+    @StateObject private var model = ScanFeatureModel()
+    @State private var sortOrder: CleanupSortOrder = .sizeDesc
 
     var body: some View {
         FeaturePageShell(
             title: "Similar Photos",
             subtitle: "Detect look-alike images and keep the best shot.",
-            trailing: photoItems.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: isScanning) { Task { await scanPhotos() } }
+            trailing: model.items.isEmpty ? nil : AnyView(
+                RescanButton(isScanning: model.isScanning) { Task { await scanPhotos() } }
             ),
-            hidesChrome: photoItems.isEmpty,
-            scrolls: photoItems.isEmpty
+            hidesChrome: model.items.isEmpty,
+            scrolls: model.items.isEmpty
         ) {
-            if let errorMessage {
+            if let errorMessage = model.errorMessage {
                 MacSweepErrorBanner(message: errorMessage) {
-                    self.errorMessage = nil
+                    model.errorMessage = nil
                 }
             }
 
-            if photoItems.isEmpty {
+            if model.items.isEmpty {
                 ScanLandingView(
                     icon: "photo.stack",
                     title: "Find Similar Photos",
@@ -44,7 +33,7 @@ struct SimilarPhotosView: View {
                         ScanBenefit("star", "Keeps your best shot", "Compares each photo so you always choose the sharpest, best-framed version before anything is removed."),
                     ],
                     illustration: "photo.on.rectangle.angled",
-                    isScanning: isScanning,
+                    isScanning: model.isScanning,
                     action: { Task { await scanPhotos() } }
                 )
             } else {
@@ -55,6 +44,7 @@ struct SimilarPhotosView: View {
                 footer
             }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     private var filterBar: some View {
@@ -65,7 +55,7 @@ struct SimilarPhotosView: View {
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
+                    ForEach(CleanupSortOrder.standardCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -84,9 +74,9 @@ struct SimilarPhotosView: View {
     }
 
     private var itemsList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             ForEach(sortedItems) { item in
-                SimilarPhotoRow(item: item, isSelected: selectedItems.contains(item.id))
+                SimilarPhotoRow(item: item, isSelected: model.selectedItems.contains(item.id))
                     .tag(item.id)
             }
         }
@@ -96,16 +86,16 @@ struct SimilarPhotosView: View {
 
     private var footer: some View {
         CleanupFooter(
-            selectedCount: selectedItems.count,
+            selectedCount: model.selectedItems.count,
             summary: "Will recover \(selectedSize)",
-            onSelectAll: { selectedItems = Set(sortedItems.map(\.id)) },
+            onSelectAll: { model.selectAll(sortedItems) },
             actionTitle: "Move to Trash",
-            actionDisabled: selectedItems.isEmpty,
-            onAction: { showingConfirmation = true }
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
         )
         .deleteConfirmation(
-            "Move \(selectedItems.count) similar photos to Trash?",
-            isPresented: $showingConfirmation,
+            "Move \(model.selectedItems.count) similar photos to Trash?",
+            isPresented: $model.showingConfirmation,
             confirmTitle: "Move to Trash",
             message: "The selected similar photos will be moved to Trash so you can restore them if needed."
         ) {
@@ -114,58 +104,20 @@ struct SimilarPhotosView: View {
     }
 
     private func scanPhotos() async {
-        isScanning = true
-        photoItems = []
-        selectedItems = []
-        errorMessage = nil
-        defer { isScanning = false }
-
-        do {
-            let module = SimilarPhotosModule()
-            photoItems = try await module.scan()
-            selectedItems = Set(photoItems.map(\.id))
-        } catch {
-            errorMessage = "Couldn't scan for similar photos: \(error.localizedDescription)"
+        await model.scan(onError: { "Couldn't scan for similar photos: \($0.localizedDescription)" }) {
+            try await SimilarPhotosModule().scan()
         }
     }
 
     private func cleanSelected() async {
-        let itemsToClean = sortedItems.filter { selectedItems.contains($0.id) }
-
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. A blocked delete throws and is caught here.
-        let engine = ScanEngine()
-        let result: CleanupResult
-        do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
-        } catch {
-            errorMessage = "Couldn't move photos to Trash: \(error.localizedDescription)"
-            return
-        }
-        // Per-item failures come back in result.errors (not thrown). Only drop
-        // the photos that actually left disk; keep failed ones visible.
-        let failedPaths = Set(result.errors.map(\.path))
-        photoItems.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
-        selectedItems = selectedItems.filter { id in photoItems.contains(where: { $0.id == id }) }
-        errorMessage = result.failureSummaryMessage
+        // The shared model routes through ScanEngine (per-item SafetyChecker +
+        // aggregate DeletionGuard cap), then prunes only the photos that left disk.
+        let itemsToClean = sortedItems.filter { model.selectedItems.contains($0.id) }
+        await model.clean(itemsToClean) { "Couldn't move photos to Trash: \($0.localizedDescription)" }
     }
 
     private var sortedItems: [CleanupItem] {
-        var items = photoItems
-
-        switch sortOrder {
-        case .sizeDesc:
-            items.sort { $0.size > $1.size }
-        case .dateAsc:
-            items.sort { ($0.lastModified ?? .distantPast) < ($1.lastModified ?? .distantPast) }
-        case .dateDesc:
-            items.sort { ($0.lastModified ?? .distantPast) > ($1.lastModified ?? .distantPast) }
-        case .nameAsc:
-            items.sort { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
-        }
-
-        return items
+        model.items.sorted(using: sortOrder)
     }
 
     private var totalSize: String {
@@ -173,7 +125,7 @@ struct SimilarPhotosView: View {
     }
 
     private var selectedSize: String {
-        sortedItems.formattedTotalSize(selected: selectedItems)
+        sortedItems.formattedTotalSize(selected: model.selectedItems)
     }
 }
 
