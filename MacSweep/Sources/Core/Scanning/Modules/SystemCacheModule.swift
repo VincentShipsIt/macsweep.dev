@@ -42,15 +42,30 @@ struct SystemCacheModule: ScanModule {
     /// Injectable only to make deletion failures deterministic in regression tests.
     /// Production always uses the audited central remover.
     private let permanentRemover: PermanentRemover
+    private let emptyDirectoryRemover: PermanentRemover
 
     init() {
         permanentRemover = { url, module in
             try CleanupFileRemover.permanent(url, module: module)
         }
+        emptyDirectoryRemover = { url, module in
+            try CleanupFileRemover.permanentEmptyDirectory(url, module: module)
+        }
     }
 
     init(permanentRemover: @escaping PermanentRemover) {
         self.permanentRemover = permanentRemover
+        emptyDirectoryRemover = { url, module in
+            try CleanupFileRemover.permanentEmptyDirectory(url, module: module)
+        }
+    }
+
+    init(
+        permanentRemover: @escaping PermanentRemover,
+        emptyDirectoryRemover: @escaping PermanentRemover
+    ) {
+        self.permanentRemover = permanentRemover
+        self.emptyDirectoryRemover = emptyDirectoryRemover
     }
 
     func scan() async throws -> [CleanupItem] {
@@ -327,7 +342,14 @@ struct SystemCacheModule: ScanModule {
         }
 
         do {
-            try permanentRemover(url, id)
+            if isDirectory {
+                // This must stay non-recursive. A child can appear after the
+                // validated enumeration above; rmdir fails closed in that case
+                // instead of deleting the unvalidated arrival.
+                try emptyDirectoryRemover(url, id)
+            } else {
+                try permanentRemover(url, id)
+            }
             result.bytesFreed += values.diskSize
             return result
         } catch {

@@ -294,6 +294,46 @@ final class SystemCacheModuleTests {
         #expect(result.errors.map(\.message) == ["Failed to delete: simulated removal failure"])
     }
 
+    @Test func cleanLateArrivalPreventsRecursiveDirectoryPruning() async throws {
+        let cacheRoot = testDirectory.appendingPathComponent("late-arrival-cache")
+        let nestedDirectory = cacheRoot.appendingPathComponent("nested")
+        let lateProtectedFile = nestedDirectory.appendingPathComponent("CloudKit/keep.cache")
+        let resolvedNestedPath = nestedDirectory.resolvingSymlinksInPath().path
+        try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
+
+        let module = SystemCacheModule(
+            permanentRemover: { url, moduleID in
+                try CleanupFileRemover.permanent(url, module: moduleID)
+            },
+            emptyDirectoryRemover: { url, moduleID in
+                if url.resolvingSymlinksInPath().path == resolvedNestedPath {
+                    try FileManager.default.createDirectory(
+                        at: lateProtectedFile.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try Data("protected late arrival".utf8).write(to: lateProtectedFile)
+                }
+                try CleanupFileRemover.permanentEmptyDirectory(url, module: moduleID)
+            }
+        )
+        let item = CleanupItem(
+            id: UUID(),
+            path: cacheRoot,
+            size: 999_999,
+            type: .directory,
+            module: "system-cache",
+            moduleName: "System Caches - Test"
+        )
+
+        let result = try await module.clean(items: [item], dryRun: false)
+
+        #expect(FileManager.default.fileExists(atPath: lateProtectedFile.path))
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.hasPrefix("Failed to delete:") == true)
+    }
+
     @Test func cleanMixedResultsCreditsSafeItemsWithoutClaimingFailedOrProtectedBytes() async throws {
         let safeFile = testDirectory.appendingPathComponent("safe.cache")
         try Data(repeating: 1, count: 2_048).write(to: safeFile)
