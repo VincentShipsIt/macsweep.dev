@@ -33,12 +33,50 @@ struct SafetyChecker: Sendable {
         validate(url, context: .scan(moduleID: moduleID, itemType: nil))
     }
 
+    /// Validate a complete finding while preserving the distinction between a
+    /// filesystem target and a closed, non-filesystem action. Action validation
+    /// never consults or relaxes protected-path rules because there is no path to
+    /// delete; it only verifies canonical module ownership.
+    func validateForScan(_ item: CleanupItem, moduleID: String? = nil) -> ValidationResult {
+        validate(item, moduleID: moduleID, mode: .scan)
+    }
+
     func validateForCleanup(
         _ url: URL,
         moduleID: String? = nil,
         itemType: CleanupItem.ItemType? = nil
     ) -> ValidationResult {
         validate(url, context: .cleanup(moduleID: moduleID, itemType: itemType))
+    }
+
+    func validateForCleanup(_ item: CleanupItem, moduleID: String? = nil) -> ValidationResult {
+        validate(item, moduleID: moduleID, mode: .cleanup)
+    }
+
+    private func validate(
+        _ item: CleanupItem,
+        moduleID: String?,
+        mode: ValidationContext.Mode
+    ) -> ValidationResult {
+        let owner = moduleID ?? item.module
+        guard item.module == owner else {
+            return .unknown(reason: "Finding ownership does not match its scanning module")
+        }
+
+        switch item.target {
+        case .fileSystem(let path, let type):
+            switch mode {
+            case .scan:
+                return validate(path, context: .scan(moduleID: owner, itemType: type))
+            case .cleanup:
+                return validate(path, context: .cleanup(moduleID: owner, itemType: type))
+            }
+        case .action(let action):
+            guard action.moduleID == owner else {
+                return .unknown(reason: "Cleanup action is not allowlisted for this module")
+            }
+            return .safe
+        }
     }
 
     /// Validate a path the user has *explicitly* selected for secure shredding.
@@ -755,7 +793,24 @@ struct DeletionGuard {
     var dryRunDefault: Bool = true
 
     func preflightCheck(items: [CleanupItem]) -> PreflightResult {
-        let totalSize = items.reduce(0) { $0 + $1.size }
+        // Cleanup actions carry a declared impact measured by their scanner
+        // (Docker uses live `docker system df` reclaimable bytes). Count it just
+        // like filesystem impact, but fail closed on malformed negative values or
+        // integer overflow instead of letting either understate the aggregate.
+        var totalSize: Int64 = 0
+        for item in items {
+            if case .action = item.target, item.size <= 0 {
+                return .blocked(reason: "Cleanup action impact must be a positive verified size")
+            }
+            guard item.size >= 0 else {
+                return .blocked(reason: "Cleanup impact cannot be negative")
+            }
+            let (nextTotal, overflowed) = totalSize.addingReportingOverflow(item.size)
+            guard !overflowed else {
+                return .blocked(reason: "Cleanup impact exceeds the supported size range")
+            }
+            totalSize = nextTotal
+        }
 
         if totalSize > maxTotalSize {
             return .blocked(reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))")
