@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D68890670C804804AB31A9AB /* ScanResultComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CED12DCAD5E410BAFB60485 /* ScanResultComponents.swift */; };
 		0038F9B41DAC996AFBE4C743 /* LoginItemsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCD0CC4ACDF8972E6B76FCAC /* LoginItemsService.swift */; };
 		0127AF393968732AB08CE761 /* MalwareScannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8596547FDDFCC2EE1391ED19 /* MalwareScannerModels.swift */; };
 		03EBD31E04C348BF40969755 /* LargeFilesModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9707242D207A71DE755D6A6D /* LargeFilesModule.swift */; };
@@ -184,6 +185,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0CED12DCAD5E410BAFB60485 /* ScanResultComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResultComponents.swift; sourceTree = "<group>"; };
 		003DF9FFDB5B4302F946766A /* ConnectedDevicesDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedDevicesDetailView.swift; sourceTree = "<group>"; };
 		031558E885A43C88426F8768 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
 		07F1D95CD47B7794021C6223 /* CloudCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCleanupView.swift; sourceTree = "<group>"; };
@@ -401,6 +403,7 @@
 		33CE0DD96FB89126E5A80514 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				0CED12DCAD5E410BAFB60485 /* ScanResultComponents.swift */,
 				A21196A20EFEB966BDB7158A /* FeaturePageShell.swift */,
 			);
 			path = Shared;
@@ -948,6 +951,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D68890670C804804AB31A9AB /* ScanResultComponents.swift in Sources */,
 				FBAEB1548D9A5FAE2CBDA6B0 /* AIAnalysisModels.swift in Sources */,
 				3E949DE17BC45A0CAC9CE86C /* AIAnalysisService.swift in Sources */,
 				FDF4C40E01581E125EF77BFB /* AIAnalysisView.swift in Sources */,
