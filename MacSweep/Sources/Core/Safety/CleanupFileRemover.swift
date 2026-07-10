@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Centralizes how cleanup modules dispose of files.
@@ -31,6 +32,20 @@ enum CleanupFileRemover {
         do {
             try FileManager.default.removeItem(at: url)
         } catch {
+            Log.deletion(path: url, module: module, disposition: .delete, error: error)
+            throw error
+        }
+        Log.deletion(path: url, module: module, disposition: .delete)
+    }
+
+    /// Permanently remove an empty directory without recursively deleting any
+    /// children that may arrive after the caller's safety validation. `rmdir` is
+    /// atomic with respect to emptiness: it fails rather than removing a late
+    /// arrival, including a protected descendant.
+    static func permanentEmptyDirectory(_ url: URL, module: String) throws {
+        let status = url.path.withCString { Darwin.rmdir($0) }
+        guard status == 0 else {
+            let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             Log.deletion(path: url, module: module, disposition: .delete, error: error)
             throw error
         }
