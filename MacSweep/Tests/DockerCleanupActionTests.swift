@@ -13,16 +13,28 @@ struct DockerCleanupActionTests {
         }
 
         private var invocations: [Invocation] = []
-        private let dockerDFOutput: String
+        private var dockerDFOutputs: [String]
 
-        init(dockerDFOutput: String = "") {
-            self.dockerDFOutput = dockerDFOutput
+        private static let zeroUsage = [
+            #"{"Reclaimable":"0B","Type":"Build Cache"}"#,
+            #"{"Reclaimable":"0B","Type":"Images"}"#,
+            #"{"Reclaimable":"0B","Type":"Containers"}"#,
+            #"{"Reclaimable":"0B","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+
+        init(dockerDFOutput: String = zeroUsage) {
+            dockerDFOutputs = [dockerDFOutput]
+        }
+
+        init(dockerDFOutputs: [String]) {
+            self.dockerDFOutputs = dockerDFOutputs
         }
 
         func run(executable: String, arguments: [String]) -> ProcessResult {
             invocations.append(Invocation(executable: executable, arguments: arguments))
             if arguments == ["system", "df", "--format", "{{json .}}"] {
-                return ProcessResult(status: 0, output: dockerDFOutput, error: "")
+                let output = dockerDFOutputs.isEmpty ? "" : dockerDFOutputs.removeFirst()
+                return ProcessResult(status: 0, output: output, error: "")
             }
             return ProcessResult(
                 status: 0,
@@ -63,14 +75,14 @@ struct DockerCleanupActionTests {
         #expect(actions.allSatisfy { $0.path.scheme == "macsweep-action" })
         #expect(actions.allSatisfy { $0.module == "docker" && $0.moduleName == $0.displayName })
         #expect(Dictionary(uniqueKeysWithValues: actions.map { ($0.displayName, $0.size) }) == [
-            "Docker Build Cache": 268_435_456,
-            "Docker Images": 1_610_612_736,
-            "Docker Volumes": 33_554_432,
+            "Docker Build Cache": 256_000_000,
+            "Docker Images": 1_500_000_000,
+            "Docker Volumes": 32_000_000,
         ])
 
         let preview = try await engine.clean(items: actions, dryRun: true)
         #expect(preview.itemsProcessed == 3)
-        #expect(preview.bytesFreed == 1_912_602_624)
+        #expect(preview.bytesFreed == 1_788_000_000)
     }
 
     @Test func everyTypedActionMapsToOneFixedAllowlistedCommand() async throws {
@@ -86,9 +98,10 @@ struct DockerCleanupActionTests {
         #expect(result.itemsProcessed == DockerCleanupAction.allCases.count)
         #expect(invocations.map(\.executable) == Array(
             repeating: "/test/bin/docker",
-            count: DockerCleanupAction.allCases.count
+            count: DockerCleanupAction.allCases.count + 1
         ))
         #expect(invocations.map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
             ["builder", "prune", "-f"],
             ["image", "prune", "-f"],
             ["container", "prune", "-f"],
@@ -144,5 +157,83 @@ struct DockerCleanupActionTests {
 
         let invocations = await recorder.recordedInvocations()
         #expect(invocations.isEmpty)
+    }
+
+    @Test func terabyteScanEstimateIsBlockedBeforeDockerPrune() async throws {
+        let output = #"{"Reclaimable":"12TB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutput: output)
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let items = try await engine.scan(modules: ["docker"])
+        let actions = items.filter { $0.type == .action }
+        #expect(actions.count == 1)
+        #expect(actions.first?.size == 12_000_000_000_000)
+
+        do {
+            _ = try await engine.clean(items: actions, dryRun: false)
+            Issue.record("Expected parsed 12TB Docker impact to exceed the 10GiB hard cap")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected ScanEngineError, got \(error)")
+        }
+
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func unknownDockerSizeUnitProducesNoCleanupAction() async throws {
+        let output = #"{"Reclaimable":"12XB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutput: output)
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let items = try await engine.scan(modules: ["docker"])
+
+        #expect(items.allSatisfy { $0.type != .action })
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func cleanupRefusesImpactThatGrewAfterScanBeforePrune() async throws {
+        let scanned = #"{"Reclaimable":"1GB (100%)","Type":"Images"}"#
+        let grown = #"{"Reclaimable":"12TB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutputs: [scanned, grown])
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let actions = try await engine.scan(modules: ["docker"])
+        let result = try await engine.clean(items: actions, dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func cleanupRefusesUnverifiableFreshImpactBeforePrune() async throws {
+        let scanned = #"{"Reclaimable":"1GB (100%)","Type":"Images"}"#
+        let malformed = #"{"Reclaimable":"12XB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutputs: [scanned, malformed])
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let actions = try await engine.scan(modules: ["docker"])
+        let result = try await engine.clean(items: actions, dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("verify") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
     }
 }
