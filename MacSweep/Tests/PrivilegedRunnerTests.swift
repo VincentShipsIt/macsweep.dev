@@ -215,6 +215,144 @@ struct PrivilegedRunnerTests {
         #expect(!FileManager.default.fileExists(atPath: recordedStateDirectory))
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func rootSupervisorNeverDeletesThroughReplacedKeepaliveParent() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macsweep-admin-sentinel-swap-\(UUID().uuidString)")
+        let sentinelParent = directory.appendingPathComponent("sentinel")
+        let savedSentinelParent = directory.appendingPathComponent("saved-sentinel")
+        let protectedDirectory = directory.appendingPathComponent("protected")
+        let keepalive = sentinelParent.appendingPathComponent("keepalive")
+        let protectedKeepalive = protectedDirectory.appendingPathComponent("keepalive")
+        let ready = directory.appendingPathComponent("ready")
+        try FileManager.default.createDirectory(at: sentinelParent, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: protectedDirectory, withIntermediateDirectories: false)
+        #expect(FileManager.default.createFile(atPath: keepalive.path, contents: Data()))
+        #expect(FileManager.default.createFile(atPath: protectedKeepalive.path, contents: Data("protected".utf8)))
+
+        let supervisor = Process()
+        defer {
+            if supervisor.isRunning {
+                _ = Darwin.kill(supervisor.processIdentifier, SIGKILL)
+            }
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let trustedScript = """
+        /usr/bin/printf '%s\n' ready > \(shellQuote(ready.path))
+        trap '' TERM HUP
+        exec /bin/sleep 8
+        """
+        supervisor.executableURL = URL(fileURLWithPath: "/bin/sh")
+        supervisor.arguments = [
+            "-c",
+            PrivilegedRunner.makeSupervisedShellScript(
+                trustedScript,
+                keepalivePath: keepalive.path,
+                timeout: 0.1,
+                timeoutMarker: "__MACSWEEP_TEST_TIMEOUT__"
+            )
+        ]
+        supervisor.standardOutput = FileHandle.nullDevice
+        supervisor.standardError = FileHandle.nullDevice
+        try supervisor.run()
+
+        let readyDeadline = Date().addingTimeInterval(2)
+        while !FileManager.default.fileExists(atPath: ready.path), Date() < readyDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard FileManager.default.fileExists(atPath: ready.path) else {
+            Issue.record("Supervisor command did not become ready")
+            return
+        }
+
+        try FileManager.default.moveItem(at: sentinelParent, to: savedSentinelParent)
+        try FileManager.default.createSymbolicLink(
+            at: sentinelParent,
+            withDestinationURL: protectedDirectory
+        )
+
+        let exitDeadline = Date().addingTimeInterval(5)
+        while supervisor.isRunning, Date() < exitDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(!supervisor.isRunning)
+        #expect(FileManager.default.fileExists(atPath: protectedKeepalive.path))
+        #expect(try Data(contentsOf: protectedKeepalive) == Data("protected".utf8))
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func rootAnchorCleansStateAfterSupervisorDiesPostCancellation() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macsweep-admin-post-cancel-crash-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let keepalive = directory.appendingPathComponent("keepalive")
+        let ready = directory.appendingPathComponent("ready")
+        let stateDirectoryFile = directory.appendingPathComponent("state-directory")
+        #expect(FileManager.default.createFile(atPath: keepalive.path, contents: Data()))
+
+        let supervisor = Process()
+        var recordedStateDirectory: String?
+        defer {
+            if supervisor.isRunning {
+                _ = Darwin.kill(supervisor.processIdentifier, SIGKILL)
+            }
+            if let recordedStateDirectory {
+                try? FileManager.default.removeItem(atPath: recordedStateDirectory)
+            }
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let trustedScript = """
+        /usr/bin/printf '%s\n' "$state_dir" > \(shellQuote(stateDirectoryFile.path))
+        /usr/bin/printf '%s\n' ready > \(shellQuote(ready.path))
+        trap '' TERM HUP
+        exec /bin/sleep 8
+        """
+        supervisor.executableURL = URL(fileURLWithPath: "/bin/sh")
+        supervisor.arguments = [
+            "-c",
+            PrivilegedRunner.makeSupervisedShellScript(
+                trustedScript,
+                keepalivePath: keepalive.path,
+                timeout: 30,
+                timeoutMarker: "__MACSWEEP_TEST_TIMEOUT__"
+            )
+        ]
+        supervisor.standardOutput = FileHandle.nullDevice
+        supervisor.standardError = FileHandle.nullDevice
+        try supervisor.run()
+
+        let readyDeadline = Date().addingTimeInterval(2)
+        while !FileManager.default.fileExists(atPath: ready.path), Date() < readyDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard FileManager.default.fileExists(atPath: ready.path),
+              let statePath = try? String(contentsOf: stateDirectoryFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !statePath.isEmpty
+        else {
+            Issue.record("Supervisor command did not publish its root state directory")
+            return
+        }
+        recordedStateDirectory = statePath
+        #expect(FileManager.default.fileExists(atPath: statePath))
+
+        #expect(Darwin.kill(supervisor.processIdentifier, SIGSTOP) == 0)
+        try FileManager.default.removeItem(at: keepalive)
+        #expect(Darwin.kill(supervisor.processIdentifier, SIGKILL) == 0)
+
+        let supervisorExitDeadline = Date().addingTimeInterval(1)
+        while supervisor.isRunning, Date() < supervisorExitDeadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(!supervisor.isRunning)
+
+        let cleanupDeadline = Date().addingTimeInterval(4)
+        while FileManager.default.fileExists(atPath: statePath), Date() < cleanupDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(!FileManager.default.fileExists(atPath: statePath))
+    }
+
     private func shellQuote(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }

@@ -223,7 +223,10 @@ enum PrivilegedRunner {
         stdout_file="$state_dir/stdout"
         stderr_file="$state_dir/stderr"
         release_file="$state_dir/release"
+        cancel_file="$state_dir/cancelled"
+        timeout_reader_ready="$state_dir/timeout-reader-ready"
         if [ ! -e \(keepalive) ]; then
+          : >"$cancel_file"
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
           exit 124
         fi
@@ -232,11 +235,17 @@ enum PrivilegedRunner {
           trap '' TERM HUP
           set +m
           terminate_group() {
+            wait_for_reader="${1:-yes}"
             /bin/kill -TERM 0 2>/dev/null
             /bin/sleep 0.5
-            if [ -e \(keepalive) ]; then
-              /bin/rm -rf "$state_dir"
+            if [ "$wait_for_reader" = yes ]; then
+              handoff_tick=0
+              while [ -d "$state_dir" ] && [ ! -e "$timeout_reader_ready" ] && [ "$handoff_tick" -lt 10 ]; do
+                /bin/sleep 0.1
+                handoff_tick=$((handoff_tick + 1))
+              done
             fi
+            /bin/rm -rf "$state_dir"
             /bin/kill -KILL 0 2>/dev/null
           }
           (
@@ -253,12 +262,23 @@ enum PrivilegedRunner {
             exit "$command_status"
           ) >"$stdout_file" 2>"$stderr_file" &
           anchor_tick=0
-          while [ ! -s "$status_file" ] && [ -d "$state_dir" ] && [ -e \(keepalive) ] && [ "$anchor_tick" -lt \(anchorFallbackTicks) ]; do
+          while [ ! -s "$status_file" ] && [ -d "$state_dir" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$anchor_tick" -lt \(anchorFallbackTicks) ]; do
             /bin/sleep 0.1
             anchor_tick=$((anchor_tick + 1))
           done
-          if [ ! -e \(keepalive) ] || [ ! -d "$state_dir" ] || [ "$anchor_tick" -ge \(anchorFallbackTicks) ]; then
-            terminate_group
+          orphaned_supervisor=no
+          if [ "$anchor_tick" -ge \(anchorFallbackTicks) ] && [ -e \(keepalive) ] && [ ! -e "$cancel_file" ]; then
+            orphaned_supervisor=yes
+          fi
+          if [ ! -e \(keepalive) ] || [ "$anchor_tick" -ge \(anchorFallbackTicks) ]; then
+            : >"$cancel_file"
+          fi
+          if [ -e "$cancel_file" ] || [ ! -d "$state_dir" ]; then
+            if [ "$orphaned_supervisor" = yes ]; then
+              terminate_group no
+            else
+              terminate_group yes
+            fi
           fi
           if [ -s "$status_file" ]; then
             IFS= read -r command_status <"$status_file"
@@ -277,15 +297,20 @@ enum PrivilegedRunner {
         ) &
         set +m
         tick=0
-        while [ ! -s "$status_file" ] && [ -e \(keepalive) ] && [ "$tick" -lt \(fallbackTicks) ]; do
+        while [ ! -s "$status_file" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$tick" -lt \(fallbackTicks) ]; do
           /bin/sleep 0.1
           tick=$((tick + 1))
         done
-        if [ ! -e \(keepalive) ] || [ "$tick" -ge \(fallbackTicks) ]; then
-          /bin/rm -f \(keepalive)
+        if [ -e "$cancel_file" ] || [ ! -e \(keepalive) ] || [ "$tick" -ge \(fallbackTicks) ]; then
+          : >"$cancel_file"
           /bin/sleep 0.7
-          /bin/cat "$stdout_file" >&2
-          /bin/cat "$stderr_file" >&2
+          if exec 3<"$stdout_file" 4<"$stderr_file"; then
+            : >"$timeout_reader_ready"
+            /bin/cat <&3 >&2
+            /bin/cat <&4 >&2
+          else
+            : >"$timeout_reader_ready" 2>/dev/null
+          fi
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
           exit 124
         fi
