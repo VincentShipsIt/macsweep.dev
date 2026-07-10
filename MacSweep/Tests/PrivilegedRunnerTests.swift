@@ -6,6 +6,7 @@ import Darwin
 /// Exercises PrivilegedRunner's lifecycle/error mapping through its non-privileged
 /// invocation seams. One test launches ordinary `osascript`, but none request
 /// administrator privileges or display an authorization prompt.
+@Suite(.serialized)
 struct PrivilegedRunnerTests {
     private func makeExecutable(_ body: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -56,7 +57,7 @@ struct PrivilegedRunnerTests {
 
         do {
             let script = try String(contentsOf: scriptURL, encoding: .utf8)
-            try await PrivilegedRunner.runSupervisedShellScriptForTesting(script, timeout: 2)
+            try await PrivilegedRunner.runSupervisedShellScriptForTesting(script, timeout: 10)
             Issue.record("Expected the privileged invocation to fail")
         } catch let error as PrivilegedRunner.EscalationError {
             switch error {

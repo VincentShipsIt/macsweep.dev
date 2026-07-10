@@ -196,8 +196,8 @@ enum PrivilegedRunner {
     /// a PGID equal to its leader PID; the supervisor stays outside that group and
     /// can therefore enforce TERM/grace/KILL even when the app cannot signal root.
     /// Internal shell-construction seam used by lifecycle tests. Entry points
-    /// validate `timeout` before calling this helper so tick conversion cannot
-    /// trap on non-finite or out-of-range values.
+    /// validate `timeout` before calling this helper so elapsed-time conversion
+    /// cannot trap on non-finite or out-of-range values.
     static func makeSupervisedShellScript(
         _ script: String,
         keepalivePath: String,
@@ -206,10 +206,10 @@ enum PrivilegedRunner {
     ) -> String {
         // The keepalive removal enforces the caller's exact monotonic deadline.
         // This longer fallback bounds elevated work if the app crashes first.
-        let fallbackTicks = max(1, Int(ceil((timeout + 2) * 10)))
+        let fallbackSeconds = max(1, Int(ceil(timeout + 2)))
         // Give a live outer supervisor one extra second to remove the keepalive
         // before the anchor treats a full fallback as an orphaned-supervisor path.
-        let anchorFallbackTicks = fallbackTicks + 10
+        let anchorFallbackSeconds = fallbackSeconds + 1
         let keepalive = shellQuote(keepalivePath)
 
         return """
@@ -225,6 +225,10 @@ enum PrivilegedRunner {
         release_file="$state_dir/release"
         cancel_file="$state_dir/cancelled"
         timeout_reader_ready="$state_dir/timeout-reader-ready"
+        # macOS /bin/sh provides SECONDS as an elapsed wall-clock counter. Use
+        # one origin for every supervisor loop so scheduler-delayed polling can
+        # never multiply the intended fallback or release bounds.
+        SECONDS=0
         if [ ! -e \(keepalive) ]; then
           : >"$cancel_file"
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
@@ -239,10 +243,9 @@ enum PrivilegedRunner {
             /bin/kill -TERM 0 2>/dev/null
             /bin/sleep 0.5
             if [ "$wait_for_reader" = yes ]; then
-              handoff_tick=0
-              while [ -d "$state_dir" ] && [ ! -e "$timeout_reader_ready" ] && [ "$handoff_tick" -lt 10 ]; do
+              handoff_deadline=$((SECONDS + 1))
+              while [ -d "$state_dir" ] && [ ! -e "$timeout_reader_ready" ] && [ "$SECONDS" -lt "$handoff_deadline" ]; do
                 /bin/sleep 0.1
-                handoff_tick=$((handoff_tick + 1))
               done
             fi
             /bin/rm -rf "$state_dir"
@@ -261,16 +264,14 @@ enum PrivilegedRunner {
             /usr/bin/printf '%s\n' "$command_status" >"$status_file"
             exit "$command_status"
           ) >"$stdout_file" 2>"$stderr_file" &
-          anchor_tick=0
-          while [ ! -s "$status_file" ] && [ -d "$state_dir" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$anchor_tick" -lt \(anchorFallbackTicks) ]; do
+          while [ ! -s "$status_file" ] && [ -d "$state_dir" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$SECONDS" -lt \(anchorFallbackSeconds) ]; do
             /bin/sleep 0.1
-            anchor_tick=$((anchor_tick + 1))
           done
           orphaned_supervisor=no
-          if [ "$anchor_tick" -ge \(anchorFallbackTicks) ] && [ -e \(keepalive) ] && [ ! -e "$cancel_file" ]; then
+          if [ "$SECONDS" -ge \(anchorFallbackSeconds) ] && [ -e \(keepalive) ] && [ ! -e "$cancel_file" ]; then
             orphaned_supervisor=yes
           fi
-          if [ ! -e \(keepalive) ] || [ "$anchor_tick" -ge \(anchorFallbackTicks) ]; then
+          if [ ! -e \(keepalive) ] || [ "$SECONDS" -ge \(anchorFallbackSeconds) ]; then
             : >"$cancel_file"
           fi
           if [ -e "$cancel_file" ] || [ ! -d "$state_dir" ]; then
@@ -285,10 +286,8 @@ enum PrivilegedRunner {
           else
             command_status=124
           fi
-          release_tick=0
-          while [ ! -e "$release_file" ] && [ -d "$state_dir" ] && [ -e \(keepalive) ] && [ "$release_tick" -lt \(anchorFallbackTicks) ]; do
+          while [ ! -e "$release_file" ] && [ -d "$state_dir" ] && [ -e \(keepalive) ] && [ "$SECONDS" -lt \(anchorFallbackSeconds) ]; do
             /bin/sleep 0.1
-            release_tick=$((release_tick + 1))
           done
           if [ ! -e "$release_file" ]; then
             terminate_group
@@ -296,12 +295,10 @@ enum PrivilegedRunner {
           exit "$command_status"
         ) &
         set +m
-        tick=0
-        while [ ! -s "$status_file" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$tick" -lt \(fallbackTicks) ]; do
+        while [ ! -s "$status_file" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$SECONDS" -lt \(fallbackSeconds) ]; do
           /bin/sleep 0.1
-          tick=$((tick + 1))
         done
-        if [ -e "$cancel_file" ] || [ ! -e \(keepalive) ] || [ "$tick" -ge \(fallbackTicks) ]; then
+        if [ -e "$cancel_file" ] || [ ! -e \(keepalive) ] || [ "$SECONDS" -ge \(fallbackSeconds) ]; then
           : >"$cancel_file"
           /bin/sleep 0.7
           if exec 3<"$stdout_file" 4<"$stderr_file"; then
