@@ -133,7 +133,7 @@ actor ScanEngine {
         let items = try await module.scan()
 
         return items.filter { item in
-            safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
+            safetyChecker.validateForScan(item, moduleID: module.id).isSafe
         }
     }
 
@@ -188,7 +188,7 @@ actor ScanEngine {
                         let items = try await module.scan()
                         // Filter through safety checker
                         let safe = items.filter { item in
-                            self.safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
+                            self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
                     } catch {
@@ -268,11 +268,7 @@ actor ScanEngine {
             }
 
             let safeItems = moduleItems.filter { item in
-                let validation = safetyChecker.validateForCleanup(
-                    item.path,
-                    moduleID: item.module,
-                    itemType: item.type
-                )
+                let validation = safetyChecker.validateForCleanup(item, moduleID: moduleID)
 
                 if !validation.isSafe {
                     errors.append(CleanupError(

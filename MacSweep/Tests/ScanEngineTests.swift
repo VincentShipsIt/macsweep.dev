@@ -362,6 +362,38 @@ struct ScanEngineTests {
         #expect(result.failures.isEmpty)
     }
 
+    @Test func dockerActionsSurviveScanFilteringWithoutAllowingProtectedDockerPaths() async {
+        let action = CleanupItem(
+            id: UUID(),
+            action: .docker(.pruneImages),
+            size: 4096
+        )
+        let protectedPath = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/var/lib/docker/attacker-controlled"),
+            size: 8192,
+            type: .directory,
+            module: "docker",
+            moduleName: "Docker Images"
+        )
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(
+                id: "docker",
+                name: "Docker",
+                description: "Docker",
+                shouldThrow: false,
+                itemsToReturn: [action, protectedPath]
+            ),
+        ])
+
+        let result = await engine.scanWithDiagnostics()
+
+        #expect(result.items == [action])
+        #expect(result.items.first?.displayName == "Docker Images")
+        #expect(result.items.first?.size == 4096)
+        #expect(result.items.first?.path.isFileURL == false)
+    }
+
     @Test func scanShimDropsFailedModulesSilently() async throws {
         let tmp = FileManager.default.temporaryDirectory
         let healthyItem = CleanupItem(

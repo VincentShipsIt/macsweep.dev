@@ -54,7 +54,8 @@ extension ScanModule {
                 continue
             }
 
-            guard checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe else {
+            guard case .fileSystem = item.target,
+                  checker.validateForCleanup(item, moduleID: id).isSafe else {
                 errors.append(CleanupError(
                     path: item.path,
                     message: blockedMessage
@@ -81,19 +82,87 @@ extension ScanModule {
 
 // MARK: - Cleanup Item
 
+/// A cleanup operation that is intentionally not a filesystem deletion.
+///
+/// The enum is closed so scanned data can select only actions compiled into the
+/// app. It carries no paths or free-form arguments that could be reinterpreted by
+/// a subprocess launcher.
+enum CleanupAction: Hashable, Sendable {
+    case docker(DockerCleanupAction)
+
+    var moduleID: String {
+        switch self {
+        case .docker: return "docker"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .docker(let action): return action.displayName
+        }
+    }
+
+    var identifier: String {
+        switch self {
+        case .docker(let action): return action.rawValue
+        }
+    }
+
+    /// A stable presentation URL for existing UI and error-reporting surfaces.
+    /// This is deliberately not a file URL and is never passed to FileManager.
+    var presentationURL: URL {
+        // moduleID and identifier come exclusively from closed enums, so this
+        // constant-form URL cannot fail to parse.
+        URL(string: "macsweep-action://\(moduleID)/\(identifier)")!
+    }
+}
+
+/// The complete allowlist of Docker cleanup operations MacSweep can execute.
+enum DockerCleanupAction: String, CaseIterable, Hashable, Sendable {
+    case pruneBuildCache = "prune-build-cache"
+    case pruneImages = "prune-images"
+    case pruneContainers = "prune-containers"
+    case pruneVolumes = "prune-volumes"
+
+    var displayName: String {
+        switch self {
+        case .pruneBuildCache: return "Docker Build Cache"
+        case .pruneImages: return "Docker Images"
+        case .pruneContainers: return "Docker Containers"
+        case .pruneVolumes: return "Docker Volumes"
+        }
+    }
+
+    /// Fixed argv for the Docker CLI. There is no string-bearing enum case, so
+    /// paths, labels, and scan output can never become command arguments.
+    var arguments: [String] {
+        switch self {
+        case .pruneBuildCache: return ["builder", "prune", "-f"]
+        case .pruneImages: return ["image", "prune", "-f"]
+        case .pruneContainers: return ["container", "prune", "-f"]
+        case .pruneVolumes: return ["volume", "prune", "-f"]
+        }
+    }
+}
+
 struct CleanupItem: Identifiable, Hashable, Sendable {
     let id: UUID
-    let path: URL
+    let target: Target
     let size: Int64
-    let type: ItemType
     let module: String
     let moduleName: String
     let lastModified: Date?
+
+    enum Target: Hashable, Sendable {
+        case fileSystem(path: URL, type: ItemType)
+        case action(CleanupAction)
+    }
 
     enum ItemType: String, Sendable {
         case file
         case directory
         case symbolicLink
+        case action
     }
 
     init(
@@ -106,16 +175,50 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         lastModified: Date? = nil
     ) {
         self.id = id
-        self.path = path
+        self.target = .fileSystem(path: path, type: type)
         self.size = size
-        self.type = type
         self.module = module
         self.moduleName = moduleName
         self.lastModified = lastModified
     }
 
+    /// Builds a non-filesystem cleanup finding with canonical ownership and
+    /// labeling derived from the closed action enum.
+    init(
+        id: UUID,
+        action: CleanupAction,
+        size: Int64,
+        lastModified: Date? = nil
+    ) {
+        self.id = id
+        self.target = .action(action)
+        self.size = size
+        self.module = action.moduleID
+        self.moduleName = action.displayName
+        self.lastModified = lastModified
+    }
+
+    /// Compatibility projection for UI/error surfaces. Action URLs use the
+    /// `macsweep-action` scheme and must never be treated as filesystem paths.
+    var path: URL {
+        switch target {
+        case .fileSystem(let path, _): return path
+        case .action(let action): return action.presentationURL
+        }
+    }
+
+    var type: ItemType {
+        switch target {
+        case .fileSystem(_, let type): return type
+        case .action: return .action
+        }
+    }
+
     var displayName: String {
-        path.lastPathComponent
+        switch target {
+        case .fileSystem(let path, _): return path.lastPathComponent
+        case .action(let action): return action.displayName
+        }
     }
 
     var formattedSize: String {
@@ -127,6 +230,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         case .file: return "doc"
         case .directory: return "folder"
         case .symbolicLink: return "link"
+        case .action: return "shippingbox"
         }
     }
 

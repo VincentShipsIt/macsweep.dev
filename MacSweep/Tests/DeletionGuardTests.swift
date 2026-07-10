@@ -23,6 +23,10 @@ struct DeletionGuardTests {
         )
     }
 
+    private func dockerAction(size: Int64) -> CleanupItem {
+        CleanupItem(id: UUID(), action: .docker(.pruneVolumes), size: size)
+    }
+
     @Test func emptyBatchIsAllowed() {
         #expect(guardUnit.preflightCheck(items: []) == .allowed)
     }
@@ -74,5 +78,39 @@ struct DeletionGuardTests {
         let items = [item(size: 629_145_600), item(size: 629_145_600)]
         let total: Int64 = 1_258_291_200
         #expect(guardUnit.preflightCheck(items: items) == .requiresConfirmation(size: total))
+    }
+
+    @Test func dockerActionBytesCountTowardHardCap() {
+        let items = [
+            item(size: 5_368_709_120),
+            dockerAction(size: 5_368_709_121),
+        ]
+
+        guard case .blocked = guardUnit.preflightCheck(items: items) else {
+            Issue.record("Expected filesystem plus Docker action impact over 10GB to be blocked")
+            return
+        }
+    }
+
+    @Test func invalidNegativeImpactFailsClosed() {
+        guard case .blocked = guardUnit.preflightCheck(items: [dockerAction(size: -1)]) else {
+            Issue.record("Expected a negative declared impact to be blocked")
+            return
+        }
+    }
+
+    @Test func zeroSizedDockerActionFailsClosedAsUnverified() {
+        guard case .blocked = guardUnit.preflightCheck(items: [dockerAction(size: 0)]) else {
+            Issue.record("Expected an action with no verified impact to be blocked")
+            return
+        }
+    }
+
+    @Test func overflowingAggregateFailsClosed() {
+        let items = [dockerAction(size: Int64.max), item(size: 1)]
+        guard case .blocked = guardUnit.preflightCheck(items: items) else {
+            Issue.record("Expected an overflowing impact aggregate to be blocked")
+            return
+        }
     }
 }

@@ -42,4 +42,10 @@ struct DockerModuleReclaimableTests {
         #expect(result.count == 1)
         #expect(result["Build Cache"] == Int64(2 * 1_073_741_824))
     }
+
+    @Test func invalidOrOutOfRangeSizesFailClosedWithoutTrapping() {
+        #expect(DockerCLI.parseBytes("-1GB") == 0)
+        #expect(DockerCLI.parseBytes("999999999999999999999999GB") == 0)
+        #expect(DockerCLI.parseBytes("not-a-size") == 0)
+    }
 }
