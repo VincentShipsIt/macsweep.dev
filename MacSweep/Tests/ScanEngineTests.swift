@@ -39,6 +39,25 @@ struct ScanEngineTests {
         }
     }
 
+    struct GrowingTestModule: ScanModule {
+        let id: String
+        let name: String
+        let description: String
+        let icon: String = "testtube.2"
+        let recorder: CleanupRecorder
+        let targetToGrow: URL
+
+        func scan() async throws -> [CleanupItem] { [] }
+
+        func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+            await recorder.record(moduleID: id, items: items)
+            if !dryRun {
+                try Data(repeating: 0xE7, count: 2_097_152).write(to: targetToGrow)
+            }
+            return CleanupResult(itemsProcessed: items.count, bytesFreed: 0)
+        }
+    }
+
     @Test func cleanDispatchesItemsToOwningModules() async throws {
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
@@ -176,17 +195,24 @@ struct ScanEngineTests {
         #expect(order == ["trash-bins", "system-cache"])
     }
 
-    @Test func cleanThrowsWhenAggregateExceedsHardLimitOnRealDelete() async {
+    @Test func cleanThrowsWhenAggregateExceedsHardLimitOnRealDelete() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineHardCap")
+        try Data(repeating: 0xA5, count: 2_097_152)
+            .write(to: temp.appendingPathComponent("huge.cache"))
+
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
-        ])
+        ], deletionGuard: DeletionGuard(
+            maxTotalSize: 1_048_576,
+            confirmationThreshold: 524_288,
+            dryRunDefault: true
+        ))
 
-        let tmp = FileManager.default.temporaryDirectory
         let hugeItem = CleanupItem(
             id: UUID(),
-            path: tmp.appendingPathComponent("huge.cache"),
-            size: 11_000_000_000,  // > 10GB hard limit
+            path: temp.appendingPathComponent("huge.cache"),
+            size: 0,
             type: .file,
             module: "system-cache",
             moduleName: "System Cache"
@@ -196,10 +222,11 @@ struct ScanEngineTests {
             _ = try await engine.clean(items: [hugeItem], dryRun: false)
             Issue.record("Expected deletionBlocked to be thrown")
         } catch let error as ScanEngineError {
-            guard case .deletionBlocked = error else {
+            guard case .deletionBlocked(let reason) = error else {
                 Issue.record("Expected .deletionBlocked, got \(error)")
                 return
             }
+            #expect(reason.contains("exceeds maximum"))
         } catch {
             Issue.record("Expected ScanEngineError, got \(error)")
         }
@@ -211,33 +238,48 @@ struct ScanEngineTests {
 
     // MARK: - Confirmation threshold (#78)
 
-    /// An item sized between the 1GB confirmation threshold and the 10GB hard cap.
-    private func largeSystemCacheItem() -> CleanupItem {
+    private func systemCacheItem(at path: URL, storedSize: Int64 = 0) -> CleanupItem {
         CleanupItem(
             id: UUID(),
-            path: FileManager.default.temporaryDirectory.appendingPathComponent("large.cache"),
-            size: 2_000_000_000,  // > 1GB threshold, < 10GB hard cap
+            path: path,
+            size: storedSize,
             type: .file,
             module: "system-cache",
             moduleName: "System Cache"
         )
     }
 
-    @Test func cleanRequiresConfirmationOverThresholdWhenNotConfirmed() async {
+    private var lowConfirmationGuard: DeletionGuard {
+        DeletionGuard(
+            maxTotalSize: 8_388_608,
+            confirmationThreshold: 1_048_576,
+            dryRunDefault: true
+        )
+    }
+
+    @Test func cleanRequiresConfirmationOverThresholdWhenNotConfirmed() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineConfirmation")
+        try Data(repeating: 0x5A, count: 2_097_152)
+            .write(to: temp.appendingPathComponent("large.cache"))
+
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
-        ])
+        ], deletionGuard: lowConfirmationGuard)
 
         do {
-            _ = try await engine.clean(items: [largeSystemCacheItem()], dryRun: false)
+            _ = try await engine.clean(
+                items: [systemCacheItem(at: temp.appendingPathComponent("large.cache"))],
+                dryRun: false
+            )
             Issue.record("Expected .confirmationRequired to be thrown")
         } catch let error as ScanEngineError {
             guard case .confirmationRequired(let size) = error else {
                 Issue.record("Expected .confirmationRequired, got \(error)")
                 return
             }
-            #expect(size == 2_000_000_000)
+            #expect(size > lowConfirmationGuard.confirmationThreshold)
+            #expect(size <= lowConfirmationGuard.maxTotalSize)
         } catch {
             Issue.record("Expected ScanEngineError, got \(error)")
         }
@@ -248,13 +290,17 @@ struct ScanEngineTests {
     }
 
     @Test func cleanProceedsOverThresholdWhenConfirmed() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineConfirmed")
+        let file = temp.appendingPathComponent("large.cache")
+        try Data(repeating: 0xC3, count: 2_097_152).write(to: file)
+
         let recorder = CleanupRecorder()
         let engine = ScanEngine(modules: [
             TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
-        ])
+        ], deletionGuard: lowConfirmationGuard)
 
         let result = try await engine.clean(
-            items: [largeSystemCacheItem()],
+            items: [systemCacheItem(at: file)],
             dryRun: false,
             confirmedLargeDeletion: true
         )
@@ -271,8 +317,114 @@ struct ScanEngineTests {
         ])
 
         // A preview touches nothing, so it is never gated regardless of size.
-        let result = try await engine.clean(items: [largeSystemCacheItem()], dryRun: true)
+        let result = try await engine.clean(
+            items: [systemCacheItem(
+                at: FileManager.default.temporaryDirectory.appendingPathComponent("large.cache"),
+                storedSize: 2_000_000_000
+            )],
+            dryRun: true
+        )
         #expect(result.itemsProcessed == 1)
+    }
+
+    @Test func cleanBlocksContentThatGrewAfterScanBeforeModuleDispatch() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineGrowth")
+        let file = temp.appendingPathComponent("growing.cache")
+        try Data(repeating: 0x11, count: 262_144).write(to: file)
+        let scannedItem = systemCacheItem(at: file, storedSize: 262_144)
+
+        // Simulate content growth after scan metadata was captured.
+        try Data(repeating: 0x22, count: 2_097_152).write(to: file)
+
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            TestModule(id: "system-cache", name: "System Cache", description: "System Cache", recorder: recorder),
+        ], deletionGuard: DeletionGuard(
+            maxTotalSize: 1_048_576,
+            confirmationThreshold: 524_288,
+            dryRunDefault: true
+        ))
+
+        do {
+            _ = try await engine.clean(
+                items: [scannedItem],
+                dryRun: false,
+                confirmedLargeDeletion: true
+            )
+            Issue.record("Expected live post-scan growth to block deletion")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked(let reason) = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+            #expect(reason.contains("exceeds maximum"))
+        }
+
+        #expect(await recorder.items(for: "system-cache").isEmpty)
+    }
+
+    @Test func cleanRemeasuresLaterModuleAndCarriesForwardEarlierImpact() async throws {
+        let temp = try TempTestDirectory(prefix: "ScanEngineSequentialGrowth")
+        let cacheDirectory = temp.appendingPathComponent("Caches")
+        try FileManager.default.createDirectory(
+            at: cacheDirectory,
+            withIntermediateDirectories: false
+        )
+        let first = cacheDirectory.appendingPathComponent("first.cache")
+        let later = cacheDirectory.appendingPathComponent("later.cache")
+        try Data(repeating: 0x11, count: 65_536).write(to: first)
+        try Data(repeating: 0x22, count: 65_536).write(to: later)
+
+        let recorder = CleanupRecorder()
+        let engine = ScanEngine(modules: [
+            GrowingTestModule(
+                id: "alpha",
+                name: "Alpha",
+                description: "Alpha",
+                recorder: recorder,
+                targetToGrow: later
+            ),
+            TestModule(id: "beta", name: "Beta", description: "Beta", recorder: recorder),
+        ], deletionGuard: DeletionGuard(
+            maxTotalSize: 1_048_576,
+            confirmationThreshold: 1_048_576,
+            dryRunDefault: true
+        ))
+
+        let firstItem = CleanupItem(
+            id: UUID(),
+            path: first,
+            size: 65_536,
+            type: .file,
+            module: "alpha",
+            moduleName: "Alpha"
+        )
+        let laterItem = CleanupItem(
+            id: UUID(),
+            path: later,
+            size: 65_536,
+            type: .file,
+            module: "beta",
+            moduleName: "Beta"
+        )
+
+        do {
+            _ = try await engine.clean(
+                items: [firstItem, laterItem],
+                dryRun: false,
+                confirmedLargeDeletion: true
+            )
+            Issue.record("Expected later growth to exceed the cumulative hard cap")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked(let reason) = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+            #expect(reason.contains("exceeds maximum"))
+        }
+
+        #expect(await recorder.items(for: "alpha") == [firstItem])
+        #expect(await recorder.items(for: "beta").isEmpty)
     }
 
     // MARK: - Partial-scan diagnostics
@@ -360,6 +512,38 @@ struct ScanEngineTests {
         #expect(result.items == [healthyItem])
         #expect(!result.isPartial)
         #expect(result.failures.isEmpty)
+    }
+
+    @Test func dockerActionsSurviveScanFilteringWithoutAllowingProtectedDockerPaths() async {
+        let action = CleanupItem(
+            id: UUID(),
+            action: .docker(.pruneImages),
+            size: 4096
+        )
+        let protectedPath = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/var/lib/docker/attacker-controlled"),
+            size: 8192,
+            type: .directory,
+            module: "docker",
+            moduleName: "Docker Images"
+        )
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(
+                id: "docker",
+                name: "Docker",
+                description: "Docker",
+                shouldThrow: false,
+                itemsToReturn: [action, protectedPath]
+            ),
+        ])
+
+        let result = await engine.scanWithDiagnostics()
+
+        #expect(result.items == [action])
+        #expect(result.items.first?.displayName == "Docker Images")
+        #expect(result.items.first?.size == 4096)
+        #expect(result.items.first?.path.isFileURL == false)
     }
 
     @Test func scanShimDropsFailedModulesSilently() async throws {

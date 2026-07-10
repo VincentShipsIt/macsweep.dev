@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 /// Secure file deletion with multiple overwrite passes.
 ///
@@ -46,93 +47,14 @@ enum SecureDelete {
         }
     }
 
-    /// Securely delete a file
+    /// Securely delete a regular file through a pinned descriptor.
+    @discardableResult
     static func shred(
         file url: URL,
         level: ShredLevel = .standard,
         progress: ((Double) -> Void)? = nil
-    ) async throws {
-        // Refuse symlinks BEFORE any fileExists check (which follows links):
-        // FileHandle(forWritingTo:) opens through the link and would overwrite
-        // the target's bytes — destroying unrelated data the user never selected.
-        if (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path)) != nil {
-            throw ShredError.refusedSymlink(url)
-        }
-
-        // Verify file exists and is a regular file
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              !isDirectory.boolValue
-        else {
-            throw ShredError.notAFile(url)
-        }
-
-        // Get file size
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        guard let fileSize = attributes[.size] as? Int64, fileSize > 0 else {
-            // Empty file, just delete
-            try FileManager.default.removeItem(at: url)
-            Log.deletion(path: url, module: "shredder", disposition: .shred)
-            return
-        }
-
-        // Open file for writing. No `defer`-close: the handle is closed explicitly
-        // below, before the rename loop, and a deferred second close would just
-        // double-close (benign EBADF) the already-closed handle. On an error path
-        // the local handle is released and its fd closed at scope exit anyway.
-        let handle: FileHandle
-        do {
-            handle = try FileHandle(forWritingTo: url)
-        } catch {
-            throw ShredError.cannotOpenFile(url)
-        }
-
-        let totalPasses = level.passes
-        let bufferSize = 65536  // 64KB buffer
-
-        for pass in 0..<totalPasses {
-            try handle.seek(toOffset: 0)
-
-            var bytesWritten: Int64 = 0
-
-            while bytesWritten < fileSize {
-                let remaining = fileSize - bytesWritten
-                let writeSize = min(Int(remaining), bufferSize)
-
-                // Generate overwrite data based on pass pattern
-                let data = generateOverwriteData(pass: pass, totalPasses: totalPasses, size: writeSize)
-
-                try handle.write(contentsOf: data)
-                bytesWritten += Int64(writeSize)
-
-                // Report progress
-                let overallProgress = (Double(pass) + Double(bytesWritten) / Double(fileSize)) / Double(totalPasses)
-                progress?(overallProgress)
-            }
-
-            // Flush to disk
-            try handle.synchronize()
-        }
-
-        // Close file
-        try handle.close()
-
-        // Rename file multiple times before deletion to obscure original name
-        var currentURL = url
-        for _ in 0..<3 {
-            let randomName = UUID().uuidString
-            let newURL = url.deletingLastPathComponent().appending(path: randomName)
-            try FileManager.default.moveItem(at: currentURL, to: newURL)
-            currentURL = newURL
-        }
-
-        // Finally delete
-        try FileManager.default.removeItem(at: currentURL)
-        // Log the ORIGINAL selected path (not the randomized temp name) so the
-        // audit line matches what the user chose to destroy.
-        Log.deletion(path: url, module: "shredder", disposition: .shred)
-
-        progress?(1.0)
+    ) async throws -> Int64 {
+        try DescriptorSecureDelete.shredFile(at: url, level: level, progress: progress)
     }
 
     /// Securely delete a directory and all contents
@@ -141,72 +63,31 @@ enum SecureDelete {
         level: ShredLevel = .standard,
         progress: ((String, Double) -> Void)? = nil
     ) async throws -> ShredResult {
-        var filesShredded = 0
-        var bytesShredded: Int64 = 0
-        var errors: [ShredError] = []
-
-        // Enumerate all files. Hidden files are INCLUDED (no .skipsHiddenFiles):
-        // skipping them would leave dotfiles to be merely unlinked by the final
-        // removeItem instead of overwritten — defeating the point for things like
-        // ~/Documents/secret/.env. Symlinks are skipped (see loop below).
-        guard let enumerator = FileManager.default.enumerator(
+        try await DescriptorSecureDelete.shredDirectory(
             at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey],
-            options: []
-        ) else {
-            throw ShredError.cannotEnumerateDirectory(url)
-        }
+            level: level,
+            progress: progress,
+            injectedFileShredder: nil
+        )
+    }
 
-        var files: [(URL, Int64)] = []
-
-        while let fileURL = enumerator.nextObject() as? URL {
-            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey])
-            // Skip symlinks: shred(file:) would follow them to their target. The
-            // final removeItem unlinks them safely without touching the target.
-            if values?.isSymbolicLink == true { continue }
-            if values?.isDirectory == false {
-                let size = Int64(values?.fileSize ?? 0)
-                files.append((fileURL, size))
-                bytesShredded += size
-            }
-        }
-
-        let totalFiles = files.count
-
-        // Shred each file
-        for (index, (fileURL, _)) in files.enumerated() {
-            do {
-                progress?(fileURL.lastPathComponent, Double(index) / Double(totalFiles))
-                try await shred(file: fileURL, level: level)
-                filesShredded += 1
-            } catch let error as ShredError {
-                errors.append(error)
-            } catch {
-                errors.append(.unknown(error.localizedDescription))
-            }
-        }
-
-        // Remove the now-shredded directory tree. Log the outcome instead of
-        // silently swallowing it: this is the container removal after every file
-        // inside was individually shredded (and logged) above.
-        do {
-            try FileManager.default.removeItem(at: url)
-            Log.deletion(path: url, module: "shredder", disposition: .shred)
-        } catch {
-            Log.deletion(path: url, module: "shredder", disposition: .shred, error: error)
-        }
-
-        progress?("Complete", 1.0)
-
-        return ShredResult(
-            filesShredded: filesShredded,
-            bytesShredded: bytesShredded,
-            errors: errors
+    /// Internal injection seam used by deterministic partial-failure tests.
+    static func shredDirectory(
+        at url: URL,
+        level: ShredLevel,
+        progress: ((String, Double) -> Void)?,
+        fileShredder: @escaping DescriptorSecureDelete.InjectedFileShredder
+    ) async throws -> ShredResult {
+        try await DescriptorSecureDelete.shredDirectory(
+            at: url,
+            level: level,
+            progress: progress,
+            injectedFileShredder: fileShredder
         )
     }
 
     /// Generate overwrite data for a specific pass
-    private static func generateOverwriteData(pass: Int, totalPasses: Int, size: Int) -> Data {
+    static func generateOverwriteData(pass: Int, totalPasses: Int, size: Int) -> Data {
         switch totalPasses {
         case 1:
             // Quick: random data
@@ -300,8 +181,21 @@ struct ShredResult {
 
 enum ShredError: LocalizedError {
     case notAFile(URL)
+    case notADirectory(URL)
     case cannotOpenFile(URL)
+    case cannotOpenDirectory(URL, String)
     case cannotEnumerateDirectory(URL)
+    case cannotInspectItem(URL, String)
+    case unsupportedFileType(URL)
+    case hardLinkedFile(URL)
+    case identityChanged(URL, String)
+    case failedToShred(URL, String)
+    case verificationFailed(URL)
+    case fileChangedDuringShred(URL)
+    case cannotRemoveItem(URL, String)
+    case cannotRemoveDirectory(URL, String)
+    case unexpectedRetainedItem(URL)
+    case byteCountOverflow(URL)
     case writeFailed(URL)
     case refusedSymlink(URL)
     case unknown(String)
@@ -310,14 +204,40 @@ enum ShredError: LocalizedError {
         switch self {
         case .notAFile(let url):
             return "Not a file: \(url.lastPathComponent)"
+        case .notADirectory(let url):
+            return "Not a directory: \(url.path)"
         case .cannotOpenFile(let url):
-            return "Cannot open file: \(url.lastPathComponent)"
+            return "Cannot open file; left in place: \(url.path)"
+        case .cannotOpenDirectory(let url, let reason):
+            return "Cannot open directory; left in place: \(url.path) (\(reason))"
         case .cannotEnumerateDirectory(let url):
             return "Cannot enumerate directory: \(url.lastPathComponent)"
+        case .cannotInspectItem(let url, let reason):
+            return "Cannot inspect item; left in place: \(url.path) (\(reason))"
+        case .unsupportedFileType(let url):
+            return "Unsupported file type; left in place: \(url.path)"
+        case .hardLinkedFile(let url):
+            return "Hard-linked file was not shredded or unlinked: \(url.path)"
+        case .identityChanged(let url, let reason):
+            return "Selected item changed identity and was retained: \(url.path) (\(reason))"
+        case .failedToShred(let url, let reason):
+            return "Shredding did not complete for \(url.path): \(reason)"
+        case .verificationFailed(let url):
+            return "Overwrite verification failed; file was retained: \(url.path)"
+        case .fileChangedDuringShred(let url):
+            return "File size or identity changed during overwrite; file was retained: \(url.path)"
+        case .cannotRemoveItem(let url, let reason):
+            return "Cannot unlink shredded file; retained at \(url.path) (\(reason))"
+        case .cannotRemoveDirectory(let url, let reason):
+            return "Cannot remove directory \(url.path): \(reason)"
+        case .unexpectedRetainedItem(let url):
+            return "Item appeared during shredding and was not processed; left in place: \(url.path)"
+        case .byteCountOverflow(let url):
+            return "Shredded byte count overflow near \(url.path); reported total was saturated"
         case .writeFailed(let url):
-            return "Write failed: \(url.lastPathComponent)"
+            return "Write failed; file was retained: \(url.path)"
         case .refusedSymlink(let url):
-            return "Refused symlink (would destroy its target, not the link): \(url.lastPathComponent)"
+            return "Refused symlink; left in place to avoid following its target: \(url.path)"
         case .unknown(let message):
             return message
         }

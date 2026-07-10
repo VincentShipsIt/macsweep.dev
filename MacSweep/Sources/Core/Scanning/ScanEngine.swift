@@ -57,7 +57,7 @@ typealias ScanProgressHandler = @Sendable (ScanProgressUpdate) async -> Void
 actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
-    private let deletionGuard = DeletionGuard()
+    private let deletionGuard: DeletionGuard
     private static let cleanupPriority: [String] = [
         "trash-bins",
         "system-cache",
@@ -79,8 +79,12 @@ actor ScanEngine {
         "service-workers",
     ]
 
-    init(modules: [any ScanModule]? = nil) {
+    init(
+        modules: [any ScanModule]? = nil,
+        deletionGuard: DeletionGuard = DeletionGuard()
+    ) {
         self.modules = modules ?? Self.defaultModules()
+        self.deletionGuard = deletionGuard
     }
 
     private static func defaultModules() -> [any ScanModule] {
@@ -133,7 +137,7 @@ actor ScanEngine {
         let items = try await module.scan()
 
         return items.filter { item in
-            safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
+            safetyChecker.validateForScan(item, moduleID: module.id).isSafe
         }
     }
 
@@ -188,7 +192,7 @@ actor ScanEngine {
                         let items = try await module.scan()
                         // Filter through safety checker
                         let safe = items.filter { item in
-                            self.safetyChecker.validateForScan(item.path, moduleID: item.module).isSafe
+                            self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
                     } catch {
@@ -268,11 +272,7 @@ actor ScanEngine {
             }
 
             let safeItems = moduleItems.filter { item in
-                let validation = safetyChecker.validateForCleanup(
-                    item.path,
-                    moduleID: item.module,
-                    itemType: item.type
-                )
+                let validation = safetyChecker.validateForCleanup(item, moduleID: moduleID)
 
                 if !validation.isSafe {
                     errors.append(CleanupError(
@@ -288,11 +288,12 @@ actor ScanEngine {
             plan.append((module, safeItems))
         }
 
-        // Deletion guard: a hard backstop against runaway deletes. Enforced only
-        // for real deletions — a dry run touches nothing, so previews of any size
-        // are always permitted. Both the hard cap (.blocked) and the confirmation
-        // threshold (.requiresConfirmation) are enforced here; the latter demands
-        // the caller pass `confirmedLargeDeletion` (a GUI dialog or CLI --yes).
+        // Deletion guard: the last operation before destructive module dispatch.
+        // It remeasures every selected filesystem path now (including hidden
+        // descendants, without following final-component symlinks), deduplicates
+        // overlaps, and fails closed on incomplete/overflowing measurement. A dry
+        // run touches nothing, so previews remain exempt. Both the hard cap and
+        // confirmation threshold use this live total.
         if !dryRun {
             let aggregate = plan.flatMap { $0.items }
             switch deletionGuard.preflightCheck(items: aggregate) {
@@ -307,8 +308,31 @@ actor ScanEngine {
             }
         }
 
-        // Second pass: execute cleanup in priority order.
+        // Second pass: execute cleanup in priority order. Remeasure each module's
+        // targets immediately before dispatch because an earlier module (or an
+        // external process) can change a later target after the aggregate gate.
+        // Carry forward the measured impact of earlier dispatches so the 10 GiB
+        // cap applies to the whole operation, even when modules return incomplete
+        // or stale bytes-freed accounting.
+        var authorizedImpact: Int64 = 0
         for entry in plan {
+            if !dryRun {
+                switch deletionGuard.evaluate(
+                    items: entry.items,
+                    alreadyAuthorizedSize: authorizedImpact
+                ) {
+                case .blocked(let reason):
+                    throw ScanEngineError.deletionBlocked(reason: reason)
+                case .requiresConfirmation(let cumulativeSize):
+                    guard confirmedLargeDeletion else {
+                        throw ScanEngineError.confirmationRequired(size: cumulativeSize)
+                    }
+                    authorizedImpact = cumulativeSize
+                case .allowed(let cumulativeSize):
+                    authorizedImpact = cumulativeSize
+                }
+            }
+
             let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
             processedCount += result.itemsProcessed
             bytesFreed += result.bytesFreed

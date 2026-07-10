@@ -2,6 +2,8 @@ import Foundation
 
 /// Module for cleaning system caches, logs, and crash reports
 struct SystemCacheModule: ScanModule {
+    typealias PermanentRemover = @Sendable (URL, String) throws -> Void
+
     let id = "system-cache"
     let name = "System Caches"
     let description = "Application caches, logs, and crash reports"
@@ -36,6 +38,35 @@ struct SystemCacheModule: ScanModule {
         "lockfile",
         ".lock",
     ]
+
+    /// Injectable only to make deletion failures deterministic in regression tests.
+    /// Production always uses the audited central remover.
+    private let permanentRemover: PermanentRemover
+    private let emptyDirectoryRemover: PermanentRemover
+
+    init() {
+        permanentRemover = { url, module in
+            try CleanupFileRemover.permanent(url, module: module)
+        }
+        emptyDirectoryRemover = { url, module in
+            try CleanupFileRemover.permanentEmptyDirectory(url, module: module)
+        }
+    }
+
+    init(permanentRemover: @escaping PermanentRemover) {
+        self.permanentRemover = permanentRemover
+        emptyDirectoryRemover = { url, module in
+            try CleanupFileRemover.permanentEmptyDirectory(url, module: module)
+        }
+    }
+
+    init(
+        permanentRemover: @escaping PermanentRemover,
+        emptyDirectoryRemover: @escaping PermanentRemover
+    ) {
+        self.permanentRemover = permanentRemover
+        self.emptyDirectoryRemover = emptyDirectoryRemover
+    }
 
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
@@ -201,11 +232,23 @@ struct SystemCacheModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        await cleanItems(
-            items,
-            dryRun: dryRun,
-            errorMessage: { "Failed to delete: \($0.localizedDescription)" }
-        ) { item, checker in
+        var processed = 0
+        var freed: Int64 = 0
+        var errors: [CleanupError] = []
+        let checker = SafetyChecker()
+
+        for item in items where item.module == id {
+            if dryRun {
+                processed += 1
+                freed += item.size
+                continue
+            }
+
+            if let validationError = validationError(for: item.path, type: item.type, checker: checker) {
+                errors.append(validationError)
+                continue
+            }
+
             if item.type == .directory {
                 // Remove the directory's CONTENTS but keep the directory itself.
                 // Each child is removed via a recursive, per-node validated walk
@@ -214,21 +257,69 @@ struct SystemCacheModule: ScanModule {
                 // subdir or symlink deep in the tree must not be swept away, and
                 // the module's own protected-name list is enforced at delete
                 // time, not just at scan.
-                let contents = try FileManager.default.contentsOfDirectory(
-                    at: item.path,
-                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-                )
+                let contents: [URL]
+                do {
+                    contents = try FileManager.default.contentsOfDirectory(
+                        at: item.path,
+                        includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+                    )
+                } catch {
+                    errors.append(deletionError(at: item.path, error: error, action: "inspect"))
+                    continue
+                }
+
+                var directoryResult = NodeRemovalResult.success
                 for content in contents {
-                    removeValidatedNode(content, checker: checker)
+                    directoryResult.merge(await removeValidatedNode(content, checker: checker))
+                }
+
+                // The selected cache root is intentionally kept, so it cannot
+                // use the atomic `rmdir` emptiness check applied to nested
+                // directories. Re-enumerate it after removals: a protected or
+                // otherwise unvalidated child may have arrived after the first
+                // snapshot. Such a survivor keeps the actual removed-byte
+                // credit, but the item must be reported as partial rather than
+                // full success.
+                do {
+                    let survivors = try FileManager.default.contentsOfDirectory(
+                        at: item.path,
+                        includingPropertiesForKeys: nil,
+                        options: []
+                    )
+                    for survivor in survivors
+                    where !directoryResult.hasReportedFailure(atOrBelow: survivor) {
+                        directoryResult.fullyRemoved = false
+                        directoryResult.errors.append(CleanupError(
+                            path: survivor,
+                            message: "Cache item appeared or remained after cleanup"
+                        ))
+                    }
+                } catch {
+                    directoryResult.fullyRemoved = false
+                    directoryResult.errors.append(
+                        deletionError(at: item.path, error: error, action: "verify")
+                    )
+                }
+
+                freed += directoryResult.bytesFreed
+                errors.append(contentsOf: directoryResult.errors)
+                if directoryResult.fullyRemoved {
+                    processed += 1
                 }
             } else {
-                try CleanupFileRemover.permanent(item.path, module: item.module)
+                let result = await removeValidatedNode(item.path, checker: checker)
+                freed += result.bytesFreed
+                errors.append(contentsOf: result.errors)
+                if result.fullyRemoved {
+                    processed += 1
+                }
             }
         }
+
+        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
     }
 
-    /// Recursively remove a validated subtree, returning whether `url` was fully
-    /// removed.
+    /// Recursively remove a validated subtree and report its exact outcome.
     ///
     /// Every node is re-checked at delete time — with its real on-disk type —
     /// against BOTH the module's own protected-name list (`isProtected`) and the
@@ -236,35 +327,114 @@ struct SystemCacheModule: ScanModule {
     /// any ancestor directory still holding a survivor is preserved rather than
     /// force-deleted. This closes the gap where only immediate children were
     /// validated before a blind recursive `permanent()` on the subtree.
-    @discardableResult
-    private func removeValidatedNode(_ url: URL, checker: SafetyChecker) -> Bool {
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        let isSymlink = values?.isSymbolicLink == true
-        let isDirectory = values?.isDirectory == true && !isSymlink
-        let nodeType: CleanupItem.ItemType = isSymlink ? .symbolicLink : (isDirectory ? .directory : .file)
+    private func removeValidatedNode(_ url: URL, checker: SafetyChecker) async -> NodeRemovalResult {
+        let values: URLResourceValues
+        do {
+            values = try url.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+                .totalFileAllocatedSizeKey,
+                .fileSizeKey
+            ])
+        } catch {
+            return .failure(deletionError(at: url, error: error, action: "inspect"))
+        }
 
-        guard !isProtected(url) else { return false }
-        guard checker.validateForCleanup(url, moduleID: id, itemType: nodeType).isSafe else { return false }
+        let isSymlink = values.isSymbolicLink == true
+        let isDirectory = values.isDirectory == true && !isSymlink
+        let nodeType: CleanupItem.ItemType =
+            isSymlink ? .symbolicLink : (isDirectory ? .directory : .file)
 
+        if let validationError = validationError(for: url, type: nodeType, checker: checker) {
+            return .failure(validationError)
+        }
+
+        var result = NodeRemovalResult.success
         if isDirectory {
-            let children = (try? FileManager.default.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-            )) ?? []
-            var allChildrenRemoved = true
-            for child in children where !removeValidatedNode(child, checker: checker) {
-                allChildrenRemoved = false
+            let children: [URL]
+            do {
+                children = try FileManager.default.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+                )
+            } catch {
+                return .failure(deletionError(at: url, error: error, action: "inspect"))
+            }
+
+            for child in children {
+                result.merge(await removeValidatedNode(child, checker: checker))
             }
             // Only remove the directory once every child is gone; a surviving
             // protected descendant keeps its ancestors alive.
-            guard allChildrenRemoved else { return false }
+            guard result.fullyRemoved else { return result }
         }
 
         do {
-            try CleanupFileRemover.permanent(url, module: id)
-            return true
+            if isDirectory {
+                // This must stay non-recursive. A child can appear after the
+                // validated enumeration above; rmdir fails closed in that case
+                // instead of deleting the unvalidated arrival.
+                try emptyDirectoryRemover(url, id)
+            } else {
+                try permanentRemover(url, id)
+            }
+            result.bytesFreed += values.diskSize
+            return result
         } catch {
-            return false
+            result.fullyRemoved = false
+            result.errors.append(deletionError(at: url, error: error, action: "delete"))
+            return result
+        }
+    }
+
+    /// `nil` means the node is safe to remove; otherwise the returned error
+    /// explains the precise safety veto to the user.
+    private func validationError(
+        for url: URL,
+        type: CleanupItem.ItemType,
+        checker: SafetyChecker
+    ) -> CleanupError? {
+        if isProtected(url) {
+            return CleanupError(path: url, message: "Skipped protected cache item")
+        }
+
+        let validation = checker.validateForCleanup(url, moduleID: id, itemType: type)
+        guard !validation.isSafe else { return nil }
+        let reason = validation.reason.map { ": \($0)" } ?? ""
+        return CleanupError(path: url, message: "Blocked by safety checks\(reason)")
+    }
+
+    private func deletionError(at url: URL, error: Error, action: String) -> CleanupError {
+        CleanupError(
+            path: url,
+            message: "Failed to \(action): \(error.localizedDescription)",
+            underlyingError: error
+        )
+    }
+
+    private struct NodeRemovalResult {
+        var fullyRemoved: Bool
+        var bytesFreed: Int64
+        var errors: [CleanupError]
+
+        static let success = NodeRemovalResult(fullyRemoved: true, bytesFreed: 0, errors: [])
+
+        static func failure(_ error: CleanupError) -> NodeRemovalResult {
+            NodeRemovalResult(fullyRemoved: false, bytesFreed: 0, errors: [error])
+        }
+
+        mutating func merge(_ other: NodeRemovalResult) {
+            fullyRemoved = fullyRemoved && other.fullyRemoved
+            bytesFreed += other.bytesFreed
+            errors.append(contentsOf: other.errors)
+        }
+
+        func hasReportedFailure(atOrBelow url: URL) -> Bool {
+            let survivorPath = url.standardizedFileURL.path
+            return errors.contains { error in
+                let errorPath = error.path.standardizedFileURL.path
+                return errorPath == survivorPath || errorPath.hasPrefix(survivorPath + "/")
+            }
         }
     }
 }

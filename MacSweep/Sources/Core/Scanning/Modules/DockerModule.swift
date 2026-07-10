@@ -16,23 +16,61 @@ enum DockerCLI {
         return FileManager.default.fileExists(atPath: dockerDesktopPath) ? dockerDesktopPath : nil
     }
 
-    /// Parse a Docker size token (e.g. "1.5GB", "256M", "512kB") into bytes.
-    /// Accepts both the two-letter (`GB`) and bare (`G`) unit forms Docker emits
-    /// across subcommands/versions. Single source of truth for both call sites.
+    /// Parse a complete Docker size token (e.g. "1.5GB", "256M", "512kB")
+    /// into bytes. Docker's SI labels use powers of 1000; explicit IEC labels
+    /// use powers of 1024. Unknown, missing, or malformed units fail closed.
     static func parseBytes(_ str: String) -> Int64 {
-        let trimmed = str.trimmingCharacters(in: .whitespaces)
-        guard let value = Double(trimmed.filter { $0.isNumber || $0 == "." }) else { return 0 }
-        let upper = trimmed.uppercased()
-        if upper.hasSuffix("GB") || upper.hasSuffix("G") {
-            return Int64(value * 1_073_741_824)
-        } else if upper.hasSuffix("MB") || upper.hasSuffix("M") {
-            return Int64(value * 1_048_576)
-        } else if upper.hasSuffix("KB") || upper.hasSuffix("K") {
-            return Int64(value * 1024)
-        }
-        return Int64(value)
+        parseVerifiedBytes(str) ?? 0
     }
+
+    /// Optional form used when cleanup must distinguish a real `0B` value from
+    /// malformed external output before allowing a destructive Docker action.
+    static func parseVerifiedBytes(_ str: String) -> Int64? {
+        let trimmed = str.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        let unitStart = trimmed.firstIndex { !$0.isNumber && $0 != "." } ?? trimmed.endIndex
+        let number = trimmed[..<unitStart]
+        let unit = trimmed[unitStart...]
+        guard number.first?.isNumber == true,
+              number.last?.isNumber == true,
+              number.filter({ $0 == "." }).count <= 1,
+              !unit.isEmpty,
+              unit.allSatisfy(\.isLetter),
+              let value = Double(number),
+              value.isFinite,
+              value >= 0,
+              let multiplier = sizeMultipliers[String(unit).uppercased()]
+        else { return nil }
+
+        let bytes = value * multiplier
+        // Docker output is external input. Reject non-finite/out-of-range values
+        // instead of trapping during Double-to-Int64 conversion.
+        guard bytes.isFinite, bytes >= 0, bytes < Double(Int64.max) else { return nil }
+        return Int64(bytes)
+    }
+
+    private static let sizeMultipliers: [String: Double] = [
+        "B": 1,
+        "K": 1_000,
+        "KB": 1_000,
+        "M": 1_000_000,
+        "MB": 1_000_000,
+        "G": 1_000_000_000,
+        "GB": 1_000_000_000,
+        "T": 1_000_000_000_000,
+        "TB": 1_000_000_000_000,
+        "P": 1_000_000_000_000_000,
+        "PB": 1_000_000_000_000_000,
+        "KIB": 1_024,
+        "MIB": 1_048_576,
+        "GIB": 1_073_741_824,
+        "TIB": 1_099_511_627_776,
+        "PIB": 1_125_899_906_842_624,
+    ]
 }
+
+typealias DockerCommandRunner = @Sendable (_ executable: String, _ arguments: [String]) async throws -> ProcessResult
 
 /// Module for cleaning Docker resources
 struct DockerModule: ScanModule {
@@ -40,6 +78,34 @@ struct DockerModule: ScanModule {
     let name = "Docker"
     let description = "Clean Docker containers, images, volumes, and build cache"
     let icon = "shippingbox.fill"
+
+    private let dockerPath: @Sendable () -> String?
+    private let commandRunner: DockerCommandRunner
+
+    private static let actionCategories: [(action: DockerCleanupAction, dfType: String)] = [
+        (.pruneBuildCache, "Build Cache"),
+        (.pruneImages, "Images"),
+        (.pruneContainers, "Containers"),
+        (.pruneVolumes, "Local Volumes"),
+    ]
+
+    private static let dockerDFTypeByAction = Dictionary(
+        uniqueKeysWithValues: actionCategories.map { ($0.action, $0.dfType) }
+    )
+
+    init(
+        dockerPath: @escaping @Sendable () -> String? = { DockerCLI.path },
+        commandRunner: @escaping DockerCommandRunner = { executable, arguments in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: 300
+            )
+        }
+    ) {
+        self.dockerPath = dockerPath
+        self.commandRunner = commandRunner
+    }
 
     func scan() async throws -> [CleanupItem] {
         // Check if Docker is installed
@@ -75,76 +141,37 @@ struct DockerModule: ScanModule {
     }
 
     private func isDockerInstalled() -> Bool {
-        DockerCLI.path != nil ||
+        dockerPath() != nil ||
         FileManager.default.fileExists(atPath: "/Applications/Docker.app")
     }
 
     private func getDockerDiskUsage() async -> [CleanupItem]? {
-        guard let dockerPath = DockerCLI.path else { return nil }
-
-        // Run docker off the cooperative pool so waitUntilExit doesn't pin a
-        // concurrency thread. Only the captured String crosses in; parsing happens
-        // back here so `self` isn't captured by the detached task.
-        let data: Data? = await Task.detached(priority: .utility) {
-            let process = Process()
-            let pipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: dockerPath)
-            // Summary form (no `-v`) prints one JSON object per resource type,
-            // each carrying a human-readable `Reclaimable` field we parse into
-            // real per-category byte estimates.
-            process.arguments = ["system", "df", "--format", "{{json .}}"]
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                // Drain before reaping to avoid a full-pipe deadlock.
-                let out = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                guard process.terminationStatus == 0 else { return nil }
-                return out
-            } catch {
-                return nil
-            }
-        }.value
-
-        guard let data else { return nil }
-        return parseDockerDF(data)
+        guard let reclaimableByType = await getDockerReclaimableByType() else { return nil }
+        return Self.actionCategories.compactMap { category in
+            let reclaimable = reclaimableByType[category.dfType] ?? 0
+            guard reclaimable > 0 else { return nil }
+            return CleanupItem(
+                id: UUID(),
+                action: .docker(category.action),
+                size: reclaimable,
+                lastModified: nil
+            )
+        }
     }
 
-    private func parseDockerDF(_ data: Data) -> [CleanupItem] {
-        guard !data.isEmpty else { return [] }
+    private func getDockerReclaimableByType() async -> [String: Int64]? {
+        guard let executable = dockerPath() else { return nil }
 
-        // Real reclaimable bytes per resource type, parsed from `docker system df`.
-        // Sizing the sentinel items with these (instead of a synthetic 0) makes
-        // the dry-run estimate and DeletionGuard's byte-cap honest about what a
-        // subsequent `prune` would reclaim. The paths remain nominal sentinels:
-        // reclamation happens via category-scoped `docker ... prune -f` in
-        // clean() (Docker's own "unused only" semantics), not by real file paths.
-        let reclaimableByType = Self.parseReclaimableByType(data)
+        // Summary form (no `-v`) prints one JSON object per resource type,
+        // each carrying a human-readable `Reclaimable` field we parse into real
+        // per-category byte estimates. ProcessRunner keeps this argv-only and
+        // bounded; the injectable runner makes the exact command testable.
+        guard let result = try? await commandRunner(
+            executable,
+            ["system", "df", "--format", "{{json .}}"]
+        ), result.didSucceed else { return nil }
 
-        let categories: [(name: String, itemId: String, dfType: String)] = [
-            ("Docker Build Cache", "docker-build-cache", "Build Cache"),
-            ("Docker Images", "docker-images", "Images"),
-            ("Docker Containers", "docker-containers", "Containers"),
-            ("Docker Volumes", "docker-volumes", "Local Volumes"),
-        ]
-
-        var items: [CleanupItem] = []
-        for category in categories {
-            let reclaimable = reclaimableByType[category.dfType] ?? 0
-            guard reclaimable > 0 else { continue }  // nothing to reclaim — don't surface
-            items.append(CleanupItem(
-                id: UUID(),
-                path: URL(fileURLWithPath: "/var/lib/docker/\(category.itemId)"),  // sentinel
-                size: reclaimable,
-                type: .directory,
-                module: id,
-                moduleName: category.name,
-                lastModified: nil
-            ))
-        }
-
-        return items
+        return Self.parseReclaimableByType(Data(result.output.utf8))
     }
 
     /// Parse `docker system df --format "{{json .}}"` output — one JSON object
@@ -161,7 +188,8 @@ struct DockerModule: ScanModule {
                   let type = object["Type"] as? String,
                   let reclaimable = object["Reclaimable"] as? String else { continue }
             let sizeToken = reclaimable.split(separator: " ").first.map(String.init) ?? reclaimable
-            result[type] = DockerCLI.parseBytes(sizeToken)
+            guard let byteCount = DockerCLI.parseVerifiedBytes(sizeToken) else { continue }
+            result[type] = byteCount
         }
         return result
     }
@@ -175,7 +203,23 @@ struct DockerModule: ScanModule {
         var freed: Int64 = 0
         var errors: [CleanupError] = []
 
+        var executedActions: Set<DockerCleanupAction> = []
         for item in items where item.module == id {
+            guard case .action(.docker(let action)) = item.target else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Unsupported Docker cleanup target"
+                ))
+                continue
+            }
+            guard item.size > 0 else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Docker cleanup action has no verified reclaimable impact"
+                ))
+                continue
+            }
+
             if dryRun {
                 // item.size is the real reclaimable estimate from `docker system
                 // df` (see parseDockerDF), so this is an honest preview, not a
@@ -186,87 +230,88 @@ struct DockerModule: ScanModule {
                 continue
             }
 
-            // Handle different cleanup types
-            switch item.moduleName {
-            case "Docker Build Cache":
-                let result = await runDockerCommand(["builder", "prune", "-f"])
-                if result.success {
-                    processed += 1
-                    freed += result.bytesFreed
-                }
-
-            case "Docker Images":
-                // Remove dangling images
-                let result = await runDockerCommand(["image", "prune", "-f"])
-                if result.success {
-                    processed += 1
-                    freed += result.bytesFreed
-                }
-
-            case "Docker Containers":
-                // Remove stopped containers
-                let result = await runDockerCommand(["container", "prune", "-f"])
-                if result.success {
-                    processed += 1
-                    freed += result.bytesFreed
-                }
-
-            case "Docker Volumes":
-                // Remove unused volumes
-                let result = await runDockerCommand(["volume", "prune", "-f"])
-                if result.success {
-                    processed += 1
-                    freed += result.bytesFreed
-                }
-
-            case "Docker VM Disk":
-                // Can't clean VM disk directly - would need Docker Desktop reset
+            // A duplicated finding must not run the same destructive command
+            // twice. It still contributed to DeletionGuard's conservative sum.
+            guard executedActions.insert(action).inserted else {
                 errors.append(CleanupError(
                     path: item.path,
-                    message: "Docker VM disk requires Docker Desktop reset to reclaim space"
+                    message: "Duplicate Docker cleanup action"
                 ))
+                continue
+            }
 
-            default:
-                break
+            // Each prune can run for minutes and can itself change the impact of
+            // a later action (for example, container prune can make a volume
+            // unused). Refresh the relevant category immediately before this
+            // command, after all preceding prunes, and require it to remain no
+            // larger than the declaration already approved by DeletionGuard.
+            // Docker can still change in the narrow interval between this query
+            // and the command, but no earlier or concurrent growth is knowingly
+            // executed from stale state.
+            let freshReclaimable = await getDockerReclaimableByType()
+            guard let dfType = Self.dockerDFTypeByAction[action],
+                  let currentReclaimable = freshReclaimable?[dfType]
+            else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Unable to verify current Docker cleanup impact; rescan before cleaning"
+                ))
+                continue
+            }
+            guard currentReclaimable <= item.size else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: "Docker cleanup impact increased after scanning; rescan before cleaning"
+                ))
+                continue
+            }
+
+            let result = await runDockerCommand(action)
+            if result.success {
+                processed += 1
+                freed += result.bytesFreed
+            } else {
+                errors.append(CleanupError(
+                    path: item.path,
+                    message: result.error ?? "Docker cleanup command failed"
+                ))
             }
         }
 
         return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
     }
 
-    private func runDockerCommand(_ args: [String]) async -> (success: Bool, bytesFreed: Int64) {
-        guard let dockerPath = DockerCLI.path else { return (false, 0) }
-
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: dockerPath)
-        process.arguments = args
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
+    private func runDockerCommand(
+        _ action: DockerCleanupAction
+    ) async -> (success: Bool, bytesFreed: Int64, error: String?) {
+        guard let executable = dockerPath() else {
+            return (false, 0, "Docker CLI is unavailable")
+        }
         do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
+            let result = try await commandRunner(executable, action.arguments)
 
             // Parse reclaimed space from output
             // Format: "Total reclaimed space: 1.234GB"
-            if let range = output.range(of: "reclaimed space: "),
-               let endRange = output.range(of: "B", range: range.upperBound..<output.endIndex) {
-                let sizeStr = String(output[range.upperBound..<endRange.lowerBound])
-                let bytes = DockerCLI.parseBytes(sizeStr)
-                return (process.terminationStatus == 0, bytes)
-            }
-
-            return (process.terminationStatus == 0, 0)
+            let bytes = Self.parseReclaimedBytes(result.output)
+            let error = result.didSucceed
+                ? nil
+                : (result.error.isEmpty ? "Docker cleanup command failed" : result.error)
+            return (result.didSucceed, bytes, error)
         } catch {
-            return (false, 0)
+            return (false, 0, error.localizedDescription)
         }
     }
 
+    private static func parseReclaimedBytes(_ output: String) -> Int64 {
+        guard let range = output.range(of: "reclaimed space: ", options: .caseInsensitive) else {
+            return 0
+        }
+        let token = output[range.upperBound...]
+            .split(whereSeparator: { $0.isWhitespace })
+            .first
+            .map(String.init) ?? ""
+        return DockerCLI.parseBytes(token)
+    }
 }
 
 // MARK: - Docker Info

@@ -49,6 +49,30 @@ final class CleanupFileRemoverTests {
         }
     }
 
+    @Test func permanentEmptyDirectoryRemovesOnlyAnEmptyDirectory() throws {
+        let directory = testDirectory.appendingPathComponent("empty-cache-directory")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        try CleanupFileRemover.permanentEmptyDirectory(directory, module: "test")
+
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test func permanentEmptyDirectoryFailsWithoutRemovingChildren() throws {
+        let directory = testDirectory.appendingPathComponent("nonempty-cache-directory")
+        let child = directory.appendingPathComponent("CloudKit/keep.cache")
+        try FileManager.default.createDirectory(
+            at: child.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("protected child".utf8).write(to: child)
+
+        #expect(throws: (any Error).self) {
+            try CleanupFileRemover.permanentEmptyDirectory(directory, module: "test")
+        }
+        #expect(FileManager.default.fileExists(atPath: child.path))
+    }
+
     // MARK: - recoverable (Trash)
 
     @Test func recoverableRemovesItemFromOriginalLocation() throws {

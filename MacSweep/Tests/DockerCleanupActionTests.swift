@@ -1,0 +1,280 @@
+import Foundation
+import Testing
+@testable import MacSweepCore
+
+/// End-to-end contract tests for Docker findings as typed, non-filesystem
+/// cleanup actions. The command recorder is the security boundary assertion:
+/// item labels and filesystem paths must never become executable argv.
+struct DockerCleanupActionTests {
+    actor CommandRecorder {
+        struct Invocation: Equatable {
+            let executable: String
+            let arguments: [String]
+        }
+
+        private var invocations: [Invocation] = []
+        private var dockerDFOutputs: [String]
+
+        private static let zeroUsage = [
+            #"{"Reclaimable":"0B","Type":"Build Cache"}"#,
+            #"{"Reclaimable":"0B","Type":"Images"}"#,
+            #"{"Reclaimable":"0B","Type":"Containers"}"#,
+            #"{"Reclaimable":"0B","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+
+        init() {
+            dockerDFOutputs = Array(
+                repeating: Self.zeroUsage,
+                count: DockerCleanupAction.allCases.count
+            )
+        }
+
+        init(dockerDFOutput: String) {
+            dockerDFOutputs = [dockerDFOutput]
+        }
+
+        init(dockerDFOutputs: [String]) {
+            self.dockerDFOutputs = dockerDFOutputs
+        }
+
+        func run(executable: String, arguments: [String]) -> ProcessResult {
+            invocations.append(Invocation(executable: executable, arguments: arguments))
+            if arguments == ["system", "df", "--format", "{{json .}}"] {
+                let output = dockerDFOutputs.isEmpty ? "" : dockerDFOutputs.removeFirst()
+                return ProcessResult(status: 0, output: output, error: "")
+            }
+            return ProcessResult(
+                status: 0,
+                output: "Total reclaimed space: 64MB\n",
+                error: ""
+            )
+        }
+
+        func recordedInvocations() -> [Invocation] {
+            invocations
+        }
+    }
+
+    private func module(recorder: CommandRecorder) -> DockerModule {
+        DockerModule(
+            dockerPath: { "/test/bin/docker" },
+            commandRunner: { executable, arguments in
+                await recorder.run(executable: executable, arguments: arguments)
+            }
+        )
+    }
+
+    @Test func scanSurfacesTypedActionsWithCanonicalLabelsAndReclaimableBytes() async throws {
+        let output = [
+            #"{"Reclaimable":"256MB (100%)","Type":"Build Cache"}"#,
+            #"{"Reclaimable":"1.5GB (75%)","Type":"Images"}"#,
+            #"{"Reclaimable":"0B","Type":"Containers"}"#,
+            #"{"Reclaimable":"32MB (100%)","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+        let recorder = CommandRecorder(dockerDFOutput: output)
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let items = try await engine.scan(modules: ["docker"])
+        let actions = items.filter { $0.type == .action }
+
+        #expect(actions.count == 3)
+        #expect(actions.allSatisfy { !$0.path.isFileURL })
+        #expect(actions.allSatisfy { $0.path.scheme == "macsweep-action" })
+        #expect(actions.allSatisfy { $0.module == "docker" && $0.moduleName == $0.displayName })
+        #expect(Dictionary(uniqueKeysWithValues: actions.map { ($0.displayName, $0.size) }) == [
+            "Docker Build Cache": 256_000_000,
+            "Docker Images": 1_500_000_000,
+            "Docker Volumes": 32_000_000,
+        ])
+
+        let preview = try await engine.clean(items: actions, dryRun: true)
+        #expect(preview.itemsProcessed == 3)
+        #expect(preview.bytesFreed == 1_788_000_000)
+    }
+
+    @Test func everyTypedActionMapsToOneFixedAllowlistedCommand() async throws {
+        let recorder = CommandRecorder()
+        let docker = module(recorder: recorder)
+        let items = DockerCleanupAction.allCases.map {
+            CleanupItem(id: UUID(), action: .docker($0), size: 1)
+        }
+
+        let result = try await docker.clean(items: items, dryRun: false)
+        let invocations = await recorder.recordedInvocations()
+
+        #expect(result.itemsProcessed == DockerCleanupAction.allCases.count)
+        #expect(invocations.map(\.executable) == Array(
+            repeating: "/test/bin/docker",
+            count: DockerCleanupAction.allCases.count * 2
+        ))
+        #expect(invocations.map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["builder", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
+            ["image", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
+            ["container", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
+            ["volume", "prune", "-f"],
+        ])
+    }
+
+    @Test func filesystemItemCannotSpoofAnExecutableDockerAction() async throws {
+        let recorder = CommandRecorder()
+        let docker = module(recorder: recorder)
+        let spoofed = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/var/lib/docker/$(touch-pwned)"),
+            size: 1024,
+            type: .directory,
+            module: "docker",
+            moduleName: "Docker Images"
+        )
+        let unverified = CleanupItem(
+            id: UUID(),
+            action: .docker(.pruneVolumes),
+            size: 0
+        )
+
+        let result = try await docker.clean(items: [spoofed, unverified], dryRun: false)
+        let invocations = await recorder.recordedInvocations()
+
+        #expect(invocations.isEmpty)
+        #expect(result.itemsProcessed == 0)
+        #expect(result.errors.count == 2)
+    }
+
+    @Test func deletionGuardBlocksOversizedDockerActionBeforeExecution() async {
+        let recorder = CommandRecorder()
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+        let oversized = CleanupItem(
+            id: UUID(),
+            action: .docker(.pruneBuildCache),
+            size: 10_737_418_241
+        )
+
+        do {
+            _ = try await engine.clean(items: [oversized], dryRun: false)
+            Issue.record("Expected the Docker action to be blocked by DeletionGuard")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected ScanEngineError, got \(error)")
+        }
+
+        let invocations = await recorder.recordedInvocations()
+        #expect(invocations.isEmpty)
+    }
+
+    @Test func terabyteScanEstimateIsBlockedBeforeDockerPrune() async throws {
+        let output = #"{"Reclaimable":"12TB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutput: output)
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let items = try await engine.scan(modules: ["docker"])
+        let actions = items.filter { $0.type == .action }
+        #expect(actions.count == 1)
+        #expect(actions.first?.size == 12_000_000_000_000)
+
+        do {
+            _ = try await engine.clean(items: actions, dryRun: false)
+            Issue.record("Expected parsed 12TB Docker impact to exceed the 10GiB hard cap")
+        } catch let error as ScanEngineError {
+            guard case .deletionBlocked = error else {
+                Issue.record("Expected .deletionBlocked, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected ScanEngineError, got \(error)")
+        }
+
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func unknownDockerSizeUnitProducesNoCleanupAction() async throws {
+        let output = #"{"Reclaimable":"12XB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutput: output)
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let items = try await engine.scan(modules: ["docker"])
+
+        #expect(items.allSatisfy { $0.type != .action })
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func cleanupRefusesImpactThatGrewAfterScanBeforePrune() async throws {
+        let scanned = #"{"Reclaimable":"1GB (100%)","Type":"Images"}"#
+        let grown = #"{"Reclaimable":"12TB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutputs: [scanned, grown])
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let actions = try await engine.scan(modules: ["docker"])
+        let result = try await engine.clean(items: actions, dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func cleanupRefusesUnverifiableFreshImpactBeforePrune() async throws {
+        let scanned = #"{"Reclaimable":"1GB (100%)","Type":"Images"}"#
+        let malformed = #"{"Reclaimable":"12XB (100%)","Type":"Images"}"#
+        let recorder = CommandRecorder(dockerDFOutputs: [scanned, malformed])
+        let engine = ScanEngine(modules: [module(recorder: recorder)])
+
+        let actions = try await engine.scan(modules: ["docker"])
+        let result = try await engine.clean(items: actions, dryRun: false)
+
+        #expect(result.itemsProcessed == 0)
+        #expect(result.bytesFreed == 0)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("verify") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+
+    @Test func laterActionIsReverifiedAfterEarlierPruneChangesDockerState() async throws {
+        let beforeContainerPrune = [
+            #"{"Reclaimable":"1B","Type":"Containers"}"#,
+            #"{"Reclaimable":"1B","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+        let afterContainerPrune = [
+            #"{"Reclaimable":"0B","Type":"Containers"}"#,
+            #"{"Reclaimable":"12TB","Type":"Local Volumes"}"#,
+        ].joined(separator: "\n")
+        let recorder = CommandRecorder(dockerDFOutputs: [
+            beforeContainerPrune,
+            afterContainerPrune,
+        ])
+        let docker = module(recorder: recorder)
+        let items = [
+            CleanupItem(id: UUID(), action: .docker(.pruneContainers), size: 1),
+            CleanupItem(id: UUID(), action: .docker(.pruneVolumes), size: 1),
+        ]
+
+        let result = try await docker.clean(items: items, dryRun: false)
+
+        #expect(result.itemsProcessed == 1)
+        #expect(result.errors.count == 1)
+        #expect(result.errors.first?.message.localizedCaseInsensitiveContains("rescan") == true)
+        #expect(await recorder.recordedInvocations().map(\.arguments) == [
+            ["system", "df", "--format", "{{json .}}"],
+            ["container", "prune", "-f"],
+            ["system", "df", "--format", "{{json .}}"],
+        ])
+    }
+}

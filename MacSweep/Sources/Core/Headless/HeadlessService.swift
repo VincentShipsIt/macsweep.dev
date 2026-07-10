@@ -363,7 +363,7 @@ public actor MacSweepHeadlessService {
         var apps = await discovery.installedApps()
         let scanner = LeftoverScanner()
         for index in apps.indices {
-            apps[index].leftovers = await scanner.findLeftovers(for: apps[index])
+            apps[index].leftovers = await scanner.findLeftovers(for: apps[index], among: apps)
         }
 
         let headless = apps
@@ -387,7 +387,7 @@ public actor MacSweepHeadlessService {
 
         // Always populate leftovers before previewing or removing.
         let scanner = LeftoverScanner()
-        target.leftovers = await scanner.findLeftovers(for: target)
+        target.leftovers = await scanner.findLeftovers(for: target, among: apps)
         let leftoverDTOs = target.leftovers.map { Self.serializeLeftover($0) }
 
         if dryRun {
@@ -609,10 +609,7 @@ public actor MacSweepHeadlessService {
                 errors: result.errors.map { $0.localizedDescription }
             )
         } else {
-            // Read size before shredding — the file is gone afterward.
-            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let size = (attrs?[.size] as? Int64) ?? 0
-            try await SecureDelete.shred(file: url, level: shredLevel)
+            let size = try await SecureDelete.shred(file: url, level: shredLevel)
             return HeadlessShredResult(
                 path: expanded,
                 level: level.lowercased(),

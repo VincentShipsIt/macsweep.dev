@@ -1260,24 +1260,21 @@ struct GitArtifactScanner: Sendable {
     /// tree as unsafe to delete.
     static func worktreeHasValuableIgnoredContent(at url: URL) -> Bool {
         let result = run([
-            "git", "-C", url.path, "-c", "core.quotePath=false",
-            "status", "--porcelain", "--ignored", "--ignore-submodules"
+            "git", "-C", url.path,
+            "status", "--porcelain=v1", "-z", "--ignored", "--ignore-submodules"
         ])
         guard result.status == 0 else { return true }
 
-        for rawLine in result.output.split(separator: "\n") {
-            let line = String(rawLine)
-            guard line.hasPrefix("!!") else { continue }  // "!!" marks ignored entries
-            let entry = unquoteGitPath(String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces))
+        // `-z` emits paths verbatim and terminates each record with NUL, so
+        // quotes, backslashes, tabs, newlines, and non-ASCII characters are not
+        // C-quoted or confused with a record boundary.
+        for record in result.output.split(separator: "\0") {
+            guard record.hasPrefix("!! ") else { continue }  // "!!" marks ignored entries
+            let entry = String(record.dropFirst(3))
             guard !entry.isEmpty else { continue }
             if pathHasNonzeroContent(url.appending(path: entry)) { return true }
         }
         return false
-    }
-
-    private static func unquoteGitPath(_ path: String) -> String {
-        guard path.count >= 2, path.hasPrefix("\""), path.hasSuffix("\"") else { return path }
-        return String(path.dropFirst().dropLast())
     }
 
     /// Whether `url` is a nonempty file, or a directory containing at least one
@@ -1368,8 +1365,17 @@ struct GitArtifactScanner: Sendable {
         process.waitUntilExit()
         drainQueue.sync {}   // ensure the stderr drain has completed
 
-        let output = String(data: outputData, encoding: .utf8) ?? ""
         let error = String(data: errorData, encoding: .utf8) ?? ""
+        // Git `-z` output can contain raw filename bytes. Never turn a decode
+        // failure into empty successful output: deletion guards rely on status.
+        guard let output = String(data: outputData, encoding: .utf8) else {
+            let decodeError = "Subprocess stdout was not valid UTF-8"
+            return ProcessResult(
+                status: process.terminationStatus == 0 ? -1 : process.terminationStatus,
+                output: "",
+                error: error.isEmpty ? decodeError : "\(error)\n\(decodeError)"
+            )
+        }
         return ProcessResult(status: process.terminationStatus, output: output, error: error)
     }
 

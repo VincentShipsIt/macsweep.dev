@@ -34,7 +34,11 @@ final class GitWorktreeIgnoredContentTests {
         // Deterministic identity so commits succeed on hosts without global config.
         _ = GitArtifactScanner.run(["git", "-C", dir.path, "config", "user.email", "t@example.com"])
         _ = GitArtifactScanner.run(["git", "-C", dir.path, "config", "user.name", "Test"])
-        try "ignored/\n.env\n".write(to: dir.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+        try "ignored/\n.env\n*.secret\n".write(
+            to: dir.appendingPathComponent(".gitignore"),
+            atomically: true,
+            encoding: .utf8
+        )
         try "hello".write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         _ = GitArtifactScanner.run(["git", "-C", dir.path, "add", "-A"])
         return GitArtifactScanner.run(["git", "-C", dir.path, "commit", "-m", "init"]).status == 0
@@ -63,6 +67,35 @@ final class GitWorktreeIgnoredContentTests {
 
         // Our gate must catch it.
         #expect(GitArtifactScanner.worktreeHasValuableIgnoredContent(at: root) == true)
+    }
+
+    @Test(arguments: [
+        "quoted\"name.secret",
+        #"back\slash.secret"#,
+        "tab\tname.secret",
+        "line\nbreak.secret",
+        "café.secret"
+    ])
+    func valuableIgnoredContentWithAdversarialFilenameBlocksRemoval(_ filename: String) throws {
+        guard gitAvailable else { return }
+        try #require(try initRepo(at: root))
+
+        try Data("valuable local content".utf8).write(to: root.appendingPathComponent(filename))
+
+        #expect(
+            GitArtifactScanner.worktreeHasValuableIgnoredContent(at: root) == true,
+            "Ignored content at filename \(String(reflecting: filename)) must block permanent worktree removal"
+        )
+    }
+
+    @Test func invalidUTF8StdoutProducesFailureSentinel() {
+        // Invalid UTF-8 path fixtures are not portable across macOS filesystems,
+        // so exercise the subprocess boundary directly with one raw 0xFF byte.
+        let result = GitArtifactScanner.run(["sh", "-c", #"printf '\377'"#])
+
+        #expect(result.status != 0, "Invalid UTF-8 stdout must produce a failure sentinel")
+        #expect(result.output.isEmpty)
+        #expect(result.error.contains("valid UTF-8"), "Decode failure must be explicit")
     }
 
     @Test func gitignoredDirectoryWithContentBlocksRemoval() throws {

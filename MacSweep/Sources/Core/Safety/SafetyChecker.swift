@@ -33,12 +33,50 @@ struct SafetyChecker: Sendable {
         validate(url, context: .scan(moduleID: moduleID, itemType: nil))
     }
 
+    /// Validate a complete finding while preserving the distinction between a
+    /// filesystem target and a closed, non-filesystem action. Action validation
+    /// never consults or relaxes protected-path rules because there is no path to
+    /// delete; it only verifies canonical module ownership.
+    func validateForScan(_ item: CleanupItem, moduleID: String? = nil) -> ValidationResult {
+        validate(item, moduleID: moduleID, mode: .scan)
+    }
+
     func validateForCleanup(
         _ url: URL,
         moduleID: String? = nil,
         itemType: CleanupItem.ItemType? = nil
     ) -> ValidationResult {
         validate(url, context: .cleanup(moduleID: moduleID, itemType: itemType))
+    }
+
+    func validateForCleanup(_ item: CleanupItem, moduleID: String? = nil) -> ValidationResult {
+        validate(item, moduleID: moduleID, mode: .cleanup)
+    }
+
+    private func validate(
+        _ item: CleanupItem,
+        moduleID: String?,
+        mode: ValidationContext.Mode
+    ) -> ValidationResult {
+        let owner = moduleID ?? item.module
+        guard item.module == owner else {
+            return .unknown(reason: "Finding ownership does not match its scanning module")
+        }
+
+        switch item.target {
+        case .fileSystem(let path, let type):
+            switch mode {
+            case .scan:
+                return validate(path, context: .scan(moduleID: owner, itemType: type))
+            case .cleanup:
+                return validate(path, context: .cleanup(moduleID: owner, itemType: type))
+            }
+        case .action(let action):
+            guard action.moduleID == owner else {
+                return .unknown(reason: "Cleanup action is not allowlisted for this module")
+            }
+            return .safe
+        }
     }
 
     /// Validate a path the user has *explicitly* selected for secure shredding.
@@ -754,11 +792,96 @@ struct DeletionGuard {
     /// Dry-run by default
     var dryRunDefault: Bool = true
 
-    func preflightCheck(items: [CleanupItem]) -> PreflightResult {
-        let totalSize = items.reduce(0) { $0 + $1.size }
+    func preflightCheck(
+        items: [CleanupItem],
+        fileManager: FileManager = .default
+    ) -> PreflightResult {
+        evaluate(
+            items: items,
+            alreadyAuthorizedSize: 0,
+            fileManager: fileManager
+        ).preflightResult
+    }
 
+    /// Measures one imminent destructive dispatch and combines it with the
+    /// impact already authorized for earlier dispatches in this cleanup run.
+    /// ScanEngine uses the returned cumulative size exactly once, avoiding a
+    /// second measurement window merely to recover the byte count.
+    func evaluate(
+        items: [CleanupItem],
+        alreadyAuthorizedSize: Int64,
+        fileManager: FileManager = .default
+    ) -> MeasuredPreflightResult {
+        guard alreadyAuthorizedSize >= 0 else {
+            return .blocked(reason: "Cleanup impact cannot be negative")
+        }
+        guard alreadyAuthorizedSize <= maxTotalSize else {
+            return .blocked(reason: maximumExceededReason)
+        }
+
+        // Closed actions have no filesystem path to measure. Their strictly
+        // positive declaration is an upper bound that the owning module must
+        // re-verify immediately before execution. Filesystem targets ignore stale
+        // scan metadata and are measured from live state below.
+        var actionSize: Int64 = 0
+        var filesystemRoots: [LiveDeletionByteCounter.FilesystemRoot] = []
+        for item in items {
+            switch item.target {
+            case .fileSystem(let path, let type):
+                let expectedType: LiveDeletionByteCounter.ExpectedNodeType
+                switch type {
+                case .file:
+                    expectedType = .regularFile
+                case .directory:
+                    expectedType = .directory
+                case .symbolicLink:
+                    expectedType = .symbolicLink
+                case .action:
+                    return .blocked(reason: "Filesystem cleanup target has an invalid action type")
+                }
+                filesystemRoots.append(.init(url: path, expectedType: expectedType))
+            case .action:
+                guard item.size > 0 else {
+                    return .blocked(reason: "Cleanup action impact must be a positive verified size")
+                }
+                let (nextSize, overflowed) = actionSize.addingReportingOverflow(item.size)
+                guard !overflowed else {
+                    return .blocked(reason: "Cleanup impact exceeds the supported size range")
+                }
+                guard nextSize <= maxTotalSize - alreadyAuthorizedSize else {
+                    return .blocked(reason: maximumExceededReason)
+                }
+                actionSize = nextSize
+            }
+        }
+
+        do {
+            let filesystemSize = try LiveDeletionByteCounter(fileManager: fileManager).totalAllocatedBytes(
+                for: filesystemRoots,
+                limit: maxTotalSize - alreadyAuthorizedSize - actionSize
+            )
+            let dispatchSize = actionSize + filesystemSize
+            let cumulativeSize = alreadyAuthorizedSize + dispatchSize
+            if cumulativeSize > confirmationThreshold {
+                return .requiresConfirmation(cumulativeSize: cumulativeSize)
+            }
+            return .allowed(cumulativeSize: cumulativeSize)
+        } catch LiveDeletionByteCounter.MeasurementError.limitExceeded {
+            return .blocked(reason: maximumExceededReason)
+        } catch {
+            return .blocked(
+                reason: "Unable to safely measure every selected path immediately before deletion."
+            )
+        }
+    }
+
+    /// Pure threshold classification after a complete live measurement.
+    func classify(measuredTotalSize totalSize: Int64) -> PreflightResult {
+        guard totalSize >= 0 else {
+            return .blocked(reason: "Unable to safely measure every selected path immediately before deletion.")
+        }
         if totalSize > maxTotalSize {
-            return .blocked(reason: "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))")
+            return maximumExceededResult
         }
 
         if totalSize > confirmationThreshold {
@@ -766,6 +889,31 @@ struct DeletionGuard {
         }
 
         return .allowed
+    }
+
+    private var maximumExceededResult: PreflightResult {
+        .blocked(reason: maximumExceededReason)
+    }
+
+    private var maximumExceededReason: String {
+        "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
+    }
+}
+
+enum MeasuredPreflightResult: Sendable, Equatable {
+    case allowed(cumulativeSize: Int64)
+    case requiresConfirmation(cumulativeSize: Int64)
+    case blocked(reason: String)
+
+    var preflightResult: PreflightResult {
+        switch self {
+        case .allowed:
+            return .allowed
+        case .requiresConfirmation(let cumulativeSize):
+            return .requiresConfirmation(size: cumulativeSize)
+        case .blocked(let reason):
+            return .blocked(reason: reason)
+        }
     }
 }
 
