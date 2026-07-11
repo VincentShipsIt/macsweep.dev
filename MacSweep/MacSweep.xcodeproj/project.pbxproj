@@ -6,23 +6,7 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		808010E4CB0673AB3704D9E0 /* MacSweepCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75D69EC395FDF95988521299 /* MacSweepCore.framework */; };
-/* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		28352C5F3BA7369CF46581A9 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = EA0DD96A467C5000B98BB1D1 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = E2333167A6039D567D23E8EE;
-			remoteInfo = MacSweepCore;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
-		75D69EC395FDF95988521299 /* MacSweepCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MacSweepCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		A7826FAD254F151FEE75FBA7 /* MacSweepCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = MacSweepCLI; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacSweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -101,17 +85,6 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		C7E6A18220467A89FF74E6B6 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				808010E4CB0673AB3704D9E0 /* MacSweepCore.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin PBXGroup section */
 		C5EB2394C8E6771356D95724 /* Sources */ = {
 			isa = PBXGroup;
@@ -140,8 +113,6 @@
 			isa = PBXGroup;
 			children = (
 				E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */,
-				A7826FAD254F151FEE75FBA7 /* MacSweepCLI */,
-				75D69EC395FDF95988521299 /* MacSweepCore.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -175,49 +146,6 @@
 			productReference = E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B2331531AC8CA89C24EC01FB /* MacSweepCLI */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 5DFDC7421D608A26DF2EB152 /* Build configuration list for PBXNativeTarget "MacSweepCLI" */;
-			buildPhases = (
-				87E6992B47DE45E27E69B646 /* Sources */,
-				C7E6A18220467A89FF74E6B6 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				19ABCB9E81411D87350E3A12 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				AA0000000000000000000003 /* CLI */,
-				AA0000000000000000000004 /* CLIKit */,
-			);
-			name = MacSweepCLI;
-			packageProductDependencies = (
-			);
-			productName = MacSweepCLI;
-			productReference = A7826FAD254F151FEE75FBA7 /* MacSweepCLI */;
-			productType = "com.apple.product-type.tool";
-		};
-		E2333167A6039D567D23E8EE /* MacSweepCore */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 1BB00DD19152C999930AFAC9 /* Build configuration list for PBXNativeTarget "MacSweepCore" */;
-			buildPhases = (
-				6BC7DC6CB57BB7BF3DCC83B6 /* Sources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				AA0000000000000000000005 /* Core */,
-			);
-			name = MacSweepCore;
-			packageProductDependencies = (
-			);
-			productName = MacSweepCore;
-			productReference = 75D69EC395FDF95988521299 /* MacSweepCore.framework */;
-			productType = "com.apple.product-type.framework";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -228,12 +156,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					3A489B5429A55015C32FF518 = {
-						ProvisioningStyle = Automatic;
-					};
-					B2331531AC8CA89C24EC01FB = {
-						ProvisioningStyle = Automatic;
-					};
-					E2333167A6039D567D23E8EE = {
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -253,8 +175,6 @@
 			projectRoot = "";
 			targets = (
 				3A489B5429A55015C32FF518 /* MacSweep */,
-				B2331531AC8CA89C24EC01FB /* MacSweepCLI */,
-				E2333167A6039D567D23E8EE /* MacSweepCore */,
 			);
 		};
 /* End PBXProject section */
@@ -277,55 +197,9 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		6BC7DC6CB57BB7BF3DCC83B6 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		87E6992B47DE45E27E69B646 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		19ABCB9E81411D87350E3A12 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = E2333167A6039D567D23E8EE /* MacSweepCore */;
-			targetProxy = 28352C5F3BA7369CF46581A9 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		26ABCF7BCD0B724188F1714D /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "";
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.core;
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.9;
-				VERSIONING_SYSTEM = "apple-generic";
-			};
-			name = Debug;
-		};
 		5DDBBF96DD814ABAF8D81FC4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -393,22 +267,6 @@
 			};
 			name = Debug;
 		};
-		6298B50506654000F2D47AA2 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.cli;
-				PRODUCT_NAME = macsweep;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
-			};
-			name = Debug;
-		};
 		78E59F3F7D67D935167FD4F3 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -469,30 +327,6 @@
 			};
 			name = Release;
 		};
-		D528ABA88611CBE9C4F12353 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "";
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.core;
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.9;
-				VERSIONING_SYSTEM = "apple-generic";
-			};
-			name = Release;
-		};
 		D5AC2088212079AF57F4F818 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -518,22 +352,6 @@
 				SWIFT_VERSION = 5.9;
 			};
 			name = Debug;
-		};
-		DC49CD06306CABAFFB3CB99E /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.cli;
-				PRODUCT_NAME = macsweep;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.9;
-			};
-			name = Release;
 		};
 		F7DED16864F6535D9C186443 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -565,29 +383,11 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1BB00DD19152C999930AFAC9 /* Build configuration list for PBXNativeTarget "MacSweepCore" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				26ABCF7BCD0B724188F1714D /* Debug */,
-				D528ABA88611CBE9C4F12353 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
 		456383CEE83FDE8221223958 /* Build configuration list for PBXProject "MacSweep" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5DDBBF96DD814ABAF8D81FC4 /* Debug */,
 				78E59F3F7D67D935167FD4F3 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		5DFDC7421D608A26DF2EB152 /* Build configuration list for PBXNativeTarget "MacSweepCLI" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				6298B50506654000F2D47AA2 /* Debug */,
-				DC49CD06306CABAFFB3CB99E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

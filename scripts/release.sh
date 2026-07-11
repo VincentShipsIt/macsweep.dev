@@ -5,12 +5,12 @@
 # builds one version while the binary reports another (exactly the 1.0.0/1.0.1
 # drift this script exists to prevent):
 #
-#   1. MacSweep/project.yml            MARKETING_VERSION       (XcodeGen SSoT)
-#   2. MacSweep/Sources/Core/MacSweepVersion.swift  .current  (CLI `version`)
-#   3. MacSweep/MacSweep.xcodeproj/...pbxproj  MARKETING_VERSION (generated)
+#   1. MacSweep/Sources/Core/MacSweepVersion.swift  .current  (SSoT; CLI `version`)
+#   2. MacSweep/MacSweep.xcodeproj/...pbxproj  MARKETING_VERSION (app bundle)
 #
-# (3) is generated from (1) by `xcodegen generate`; it's checked in, so it can
-# go stale if someone bumps project.yml without regenerating.
+# The xcodeproj is hand-maintained (synchronized folder references — file
+# adds/removals never touch it), NOT generated: XcodeGen and project.yml are
+# gone, so `bump` edits MARKETING_VERSION in the pbxproj directly with sed.
 #
 # The Homebrew formula and cask live in a SEPARATE repo —
 # VincentShipsIt/homebrew-tap (Formula/macsweep.rb, Casks/macsweep.rb) — so this
@@ -27,8 +27,8 @@
 #
 # Usage:
 #   scripts/release.sh check          Verify all version sources agree (read-only).
-#   scripts/release.sh bump X.Y.Z     Set X.Y.Z in project.yml + MacSweepVersion,
-#                                      regenerate the xcodeproj, then re-verify.
+#   scripts/release.sh bump X.Y.Z     Set X.Y.Z in MacSweepVersion.swift + the
+#                                      pbxproj MARKETING_VERSION, then re-verify.
 #   scripts/release.sh sha [X.Y.Z]    Fetch the GitHub tag tarball and print its
 #                                      sha256 for the formula (defaults to the
 #                                      current version). Network read only.
@@ -38,16 +38,14 @@ set -euo pipefail
 
 REPO_ROOT="${0:A:h:h}"   # scripts/ -> repo root
 PKG="$REPO_ROOT/MacSweep"
-PROJECT_YML="$PKG/project.yml"
 VERSION_SWIFT="$PKG/Sources/Core/MacSweepVersion.swift"
 PBXPROJ="$PKG/MacSweep.xcodeproj/project.pbxproj"
 
 SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
 
 # --- extractors: each prints the single version string from one source ----------
-yml_version()     { grep 'MARKETING_VERSION:' "$PROJECT_YML" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
 swift_version()   { grep 'static let current' "$VERSION_SWIFT" | head -1 | sed 's/.*"\(.*\)".*/\1/'; }
-# pbxproj has the value on multiple targets; assert they're uniform and print one.
+# pbxproj may carry the value on multiple configs; assert they're uniform and print one.
 pbxproj_version() {
   grep 'MARKETING_VERSION = ' "$PBXPROJ" | sed 's/.*= \(.*\);/\1/' | sort -u
 }
@@ -56,26 +54,23 @@ die()  { print -u2 "error: $*"; exit 1; }
 usage() { print -u2 "usage: release.sh {check|bump X.Y.Z|sha [X.Y.Z]}"; exit 2; }
 
 cmd_check() {
-  local yml swift pbx
-  yml="$(yml_version)"
+  local swift pbx
   swift="$(swift_version)"
-  pbx="$(pbxproj_version)"   # may be multiple lines if targets disagree
+  pbx="$(pbxproj_version)"   # may be multiple lines if configs disagree
 
   print "version sources:"
-  print "  project.yml          $yml"
   print "  MacSweepVersion.swift $swift"
-  print "  pbxproj (generated)   ${pbx//$'\n'/, }"
+  print "  pbxproj               ${pbx//$'\n'/, }"
 
   local ok=1
-  [[ "$swift"   == "$yml" ]] || { print -u2 "  ✗ MacSweepVersion.swift ($swift) != project.yml ($yml)"; ok=0; }
   # pbx must be exactly one distinct value AND equal to the SSoT.
-  if [[ "$(print -r -- "$pbx" | wc -l | tr -d ' ')" != "1" || "$pbx" != "$yml" ]]; then
-    print -u2 "  ✗ pbxproj MARKETING_VERSION ($pbx) != project.yml ($yml) — run: scripts/release.sh bump $yml"
+  if [[ "$(print -r -- "$pbx" | wc -l | tr -d ' ')" != "1" || "$pbx" != "$swift" ]]; then
+    print -u2 "  ✗ pbxproj MARKETING_VERSION ($pbx) != MacSweepVersion.swift ($swift) — run: scripts/release.sh bump $swift"
     ok=0
   fi
 
   if [[ "$ok" == "1" ]]; then
-    print "✓ all version sources agree on $yml"
+    print "✓ all version sources agree on $swift"
     return 0
   fi
   return 1
@@ -85,16 +80,13 @@ cmd_bump() {
   local new="${1:-}"
   [[ -n "$new" ]] || usage
   [[ "$new" =~ $SEMVER_RE ]] || die "version must be X.Y.Z, got '$new'"
-  command -v xcodegen >/dev/null 2>&1 || die "xcodegen not found (brew install xcodegen)"
 
-  # Edit the two human-owned SSoT files in place.
-  sed -i '' "s/MARKETING_VERSION: \".*\"/MARKETING_VERSION: \"$new\"/" "$PROJECT_YML"
+  # Edit both version carriers in place (the pbxproj is hand-maintained, not
+  # generated — sed is the whole story).
   sed -i '' "s/static let current = \".*\"/static let current = \"$new\"/" "$VERSION_SWIFT"
+  sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $new;/" "$PBXPROJ"
 
-  # Regenerate the checked-in xcodeproj so its MARKETING_VERSION tracks the SSoT.
-  ( cd "$PKG" && xcodegen generate >/dev/null )
-
-  print "bumped project.yml + MacSweepVersion.swift -> $new and regenerated xcodeproj"
+  print "bumped MacSweepVersion.swift + pbxproj MARKETING_VERSION -> $new"
   print ""
   cmd_check || die "post-bump verification failed"
   print ""
@@ -106,7 +98,7 @@ cmd_bump() {
 }
 
 cmd_sha() {
-  local v="${1:-$(yml_version)}"
+  local v="${1:-$(swift_version)}"
   [[ "$v" =~ $SEMVER_RE ]] || die "version must be X.Y.Z, got '$v'"
   local url="https://github.com/VincentShipsIt/macsweep/archive/refs/tags/v$v.tar.gz"
   print -u2 "fetching $url ..."
