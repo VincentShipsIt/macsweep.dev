@@ -278,3 +278,15 @@ jobs:
     with:
       version: ${{ github.ref_name }}
     secrets: inherit
+
+  # Package the released app zip as a Developer ID-signed, notarized, stapled
+  # MacSweep.dmg under a STABLE asset name, so the landing page's download button
+  # can link releases/latest/download/MacSweep.dmg across versions.
+  dmg:
+    needs: build
+    uses: ./.github/workflows/dmg.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
+    permissions:
+      contents: write
