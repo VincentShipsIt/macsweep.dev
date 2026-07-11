@@ -27,23 +27,35 @@ struct PrivacyView: View {
         ) {
             Group {
                 if isScanning || !hasScanned {
-                    ScanLandingView(
-                        icon: "hand.raised",
-                        title: "Ready to Scan",
-                        description: "Find browser, app, and system traces of your recent activity that you can clear.",
-                        ctaTitle: "Scan Privacy Traces",
-                        benefits: [
-                            ScanBenefit("eye.slash", "Erases your digital footprint", "Clears recent-document lists, saved app state, and download history so your activity doesn't linger."),
-                            ScanBenefit("checkmark.shield", "You stay in control", "Every trace is grouped for review, and nothing is cleared until you select it and confirm."),
-                        ],
-                        illustration: "hand.raised.fingers.spread",
-                        isScanning: isScanning,
-                        scanningMessage: "Scanning privacy traces",
-                        action: { Task { await scanPrivacy() } }
-                    )
+                    ZStack(alignment: .top) {
+                        ScanLandingView(
+                            icon: "hand.raised",
+                            title: "Ready to Scan",
+                            description: "Find browser, app, and system traces of your recent activity that you can clear.",
+                            ctaTitle: "Scan Privacy Traces",
+                            benefits: [
+                                ScanBenefit("eye.slash", "Erases your digital footprint", "Clears recent-document lists, saved app state, and download history so your activity doesn't linger."),
+                                ScanBenefit("checkmark.shield", "You stay in control", "Every trace is grouped for review, and nothing is cleared until you select it and confirm."),
+                            ],
+                            illustration: "hand.raised.fingers.spread",
+                            isScanning: isScanning,
+                            scanningMessage: "Scanning privacy traces",
+                            action: { Task { await scanPrivacy() } }
+                        )
+
+                        if !appState.hasFullDiskAccess && !isScanning {
+                            FullDiskAccessWarningBanner(scope: .safari)
+                                .padding(20)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         VStack(spacing: 24) {
+                            if !appState.hasFullDiskAccess {
+                                FullDiskAccessWarningBanner(scope: .safari)
+                            }
+
                             if let errorMessage {
                                 MacSweepErrorBanner(message: errorMessage) {
                                     self.errorMessage = nil

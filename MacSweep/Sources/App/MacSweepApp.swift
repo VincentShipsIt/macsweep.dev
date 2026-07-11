@@ -4,6 +4,7 @@ import AppKit
 @main
 struct MacSweepApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showingOnboarding = false
 
@@ -73,6 +74,11 @@ struct MacSweepApp: App {
             .onChange(of: showingOnboarding) { newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    appDelegate.appState.refreshFullDiskAccess()
                 }
             }
     }

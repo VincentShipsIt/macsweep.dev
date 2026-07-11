@@ -19,23 +19,38 @@ struct SystemCleanupView: View {
             scrolls: appState.scanResults.isEmpty
         ) {
             if appState.scanResults.isEmpty {
-                ScanLandingView(
-                    icon: "sparkles",
-                    title: "Scan for System Junk",
-                    description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
-                    ctaTitle: "Scan System Junk",
-                    benefits: [
-                        ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
-                        ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
-                    ],
-                    illustration: "sparkles",
-                    isScanning: appState.isScanning,
-                    progress: appState.scanProgress,
-                    scanningMessage: appState.currentScanModule,
-                    action: { Task { await appState.scan(modules: ["system-cache"]) } }
-                )
+                ZStack(alignment: .top) {
+                    ScanLandingView(
+                        icon: "sparkles",
+                        title: "Scan for System Junk",
+                        description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
+                        ctaTitle: "Scan System Junk",
+                        benefits: [
+                            ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
+                            ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
+                        ],
+                        illustration: "sparkles",
+                        isScanning: appState.isScanning,
+                        progress: appState.scanProgress,
+                        scanningMessage: appState.currentScanModule,
+                        action: { Task { await appState.scan(modules: ["system-cache"]) } }
+                    )
+
+                    if !appState.hasFullDiskAccess && !appState.isScanning {
+                        FullDiskAccessWarningBanner(scope: .systemData)
+                            .padding(20)
+                    }
+                }
             } else {
-                resultsList
+                VStack(spacing: 0) {
+                    if !appState.hasFullDiskAccess {
+                        FullDiskAccessWarningBanner(scope: .systemData)
+                            .padding(.horizontal)
+                            .padding(.top, 12)
+                    }
+
+                    resultsList
+                }
 
                 Divider()
 

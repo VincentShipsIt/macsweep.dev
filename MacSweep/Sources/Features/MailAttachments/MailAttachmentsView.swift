@@ -22,21 +22,33 @@ struct MailAttachmentsView: View {
             scrolls: model.items.isEmpty
         ) {
             if model.items.isEmpty {
-                ScanLandingView(
-                    icon: "envelope",
-                    title: "Scan for Mail Attachments",
-                    description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
-                    ctaTitle: "Scan Mail Attachments",
-                    benefits: [
-                        ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
-                        ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
-                    ],
-                    illustration: "paperclip",
-                    isScanning: model.isScanning,
-                    scanningMessage: "Scanning mail attachments",
-                    action: { Task { await scanAttachments() } }
-                )
+                ZStack(alignment: .top) {
+                    ScanLandingView(
+                        icon: "envelope",
+                        title: "Scan for Mail Attachments",
+                        description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
+                        ctaTitle: "Scan Mail Attachments",
+                        benefits: [
+                            ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
+                            ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
+                        ],
+                        illustration: "paperclip",
+                        isScanning: model.isScanning,
+                        scanningMessage: "Scanning mail attachments",
+                        action: { Task { await scanAttachments() } }
+                    )
+
+                    if !appState.hasFullDiskAccess && !model.isScanning {
+                        FullDiskAccessWarningBanner(scope: .mail)
+                            .padding(20)
+                    }
+                }
             } else {
+                if !appState.hasFullDiskAccess {
+                    FullDiskAccessWarningBanner(scope: .mail)
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                }
                 filterBar
                 Divider()
                 attachmentsList
