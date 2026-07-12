@@ -316,13 +316,13 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .cloudCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup]
         case .protection:
-            return [.malwareRemoval, .privacy]
+            return [.malwareRemoval, .privacy, .loginItems]
         case .speed:
-            return [.optimization, .networkCleanup, .batteryMonitor]
+            return [.optimization, .networkCleanup, .batteryMonitor, .maintenance]
         case .applications:
-            return [.uninstaller]  // updater, extensions, homebrewUpdater hidden from sidebar
+            return [.uninstaller, .homebrewUpdater]
         case .files:
             return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
         }
@@ -357,8 +357,6 @@ enum Feature: String, CaseIterable, Identifiable {
     // Applications
     case uninstaller = "Uninstaller"
     case homebrewUpdater = "Homebrew Updater"
-    case updater = "Updater"
-    case extensions = "Extensions"
 
     // Files
     case spaceLens = "Space Lens"
@@ -398,8 +396,6 @@ enum Feature: String, CaseIterable, Identifiable {
         // Applications
         case .uninstaller: return "xmark.app"
         case .homebrewUpdater: return "arrow.up.circle"
-        case .updater: return "arrow.clockwise.circle"
-        case .extensions: return "puzzlepiece.extension"
 
         // Files
         case .spaceLens: return "chart.pie"
@@ -416,7 +412,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
-        case .uninstaller, .homebrewUpdater, .updater, .extensions: return .applications
+        case .uninstaller, .homebrewUpdater: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }
     }

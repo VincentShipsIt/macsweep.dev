@@ -151,10 +151,6 @@ struct ContentView: View {
             staticDetail(AppUninstallerView())
         case .homebrewUpdater:
             staticDetail(HomebrewUpdaterView())
-        case .updater:
-            staticDetail(PlaceholderFeatureView(feature: .updater))
-        case .extensions:
-            staticDetail(PlaceholderFeatureView(feature: .extensions))
 
         // Files
         case .spaceLens:
@@ -205,8 +201,6 @@ private extension Feature {
              .maintenance,
              .uninstaller,
              .homebrewUpdater,
-             .updater,
-             .extensions,
              .shredder:
             return false
         }
@@ -223,33 +217,6 @@ struct SidebarRow: View {
         // Liquid Glass selection highlight and tints the icon for us — no custom
         // pill, no manual foreground/weight overrides to fight it.
         Label(feature.rawValue, systemImage: feature.icon)
-    }
-}
-
-// MARK: - Placeholder Feature View
-
-struct PlaceholderFeatureView: View {
-    let feature: Feature
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: feature.icon)
-                .font(.system(size: 72))
-                .foregroundStyle(.secondary)
-
-            Text(feature.rawValue)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Text("Coming soon...")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-
-            Text("This feature is under development")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
