@@ -247,6 +247,18 @@ enum ShredError: LocalizedError {
 // MARK: - Free Space Wipe
 
 extension SecureDelete {
+    /// Creates a writable scratch directory on the selected volume.
+    /// Kept separate from the write loop so the volume-placement safety
+    /// contract can be verified without consuming free space in tests.
+    static func makeFreeSpaceWipeDirectory(on volume: URL) throws -> URL {
+        try FileManager.default.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: volume,
+            create: true
+        )
+    }
+
     /// Wipe free space on a volume (writes and deletes temporary files)
     static func wipeFreeSpace(
         volume: URL = URL(fileURLWithPath: "/"),
@@ -263,10 +275,11 @@ extension SecureDelete {
         let toWrite = max(0, Int64(available) - 1_073_741_824)
         guard toWrite > 0 else { return }
 
-        let tempDir = FileManager.default.temporaryDirectory
-            .appending(path: "macsweep_wipe_\(UUID().uuidString)")
-
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        // `.itemReplacementDirectory` is writable and guaranteed to live on
+        // the same volume as `volume`. Using the process-wide temporary
+        // directory here could fill the boot disk while claiming to wipe an
+        // external volume.
+        let tempDir = try makeFreeSpaceWipeDirectory(on: volume)
 
         defer {
             try? FileManager.default.removeItem(at: tempDir)

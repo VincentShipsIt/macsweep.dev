@@ -79,8 +79,15 @@ struct MacSweepApp: App {
 }
 
 private struct MacSweepMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Label("macsweep.dev", image: "MenuBarIcon")
+            .onReceive(NotificationCenter.default.publisher(for: AppDelegate.openMainWindowRequest)) { _ in
+                AppDelegate.openMainWindowIfNeeded {
+                    openWindow(id: "main")
+                }
+            }
     }
 }
 
