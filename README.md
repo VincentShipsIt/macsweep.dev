@@ -1,4 +1,4 @@
-# macsweep.dev
+# MacSweep
 
 > [!WARNING]
 > This project is under active development and is a work in progress.
@@ -44,22 +44,22 @@ Scan, clean, and optimize your Mac with safety-first defaults.
 
 ### Agent-first install
 
-Paste this into a terminal-capable coding agent to have it install macsweep.dev for
+Paste this into a terminal-capable coding agent to have it install MacSweep for
 you:
 
 ```text
-Install macsweep.dev on this Mac.
+Install MacSweep on this Mac.
 
 First run these read-only checks:
 - Confirm this Mac is running macOS 26.0 Tahoe or later with `sw_vers`.
 - Check whether Homebrew is installed with `command -v brew`.
 - Check whether Apple's command-line tools can find Swift with `xcrun --find swift`.
 
-If macOS is older than 26.0, stop and explain that macsweep.dev cannot be installed.
+If macOS is older than 26.0, stop and explain that MacSweep cannot be installed.
 If Homebrew is missing, stop and ask me before installing Homebrew from https://brew.sh.
 If Apple's command-line tools are missing, run `xcode-select --install`, then wait for me to finish Apple's installer prompt before continuing.
 
-Then install the stable macsweep.dev app and CLI:
+Then install the stable MacSweep app and CLI:
 
 brew tap vincentshipsit/tap
 brew trust --formula vincentshipsit/tap/macsweep
@@ -67,15 +67,15 @@ brew install --cask vincentshipsit/tap/macsweep
 macsweep version
 
 Do not run any cleanup, delete, apply, shred, uninstall, or maintenance commands.
-When the install is done, tell me the installed CLI version, confirm macsweep.dev.app
+When the install is done, tell me the installed CLI version, confirm MacSweep.app
 is installed, and suggest `macsweep dry-run` as the first safe command.
 ```
 
 ### Homebrew (GUI + CLI, recommended)
 
-macsweep.dev is distributed from the shared `vincentshipsit/tap`.
+MacSweep is distributed from the shared `vincentshipsit/tap`.
 
-For the full desktop install, install the cask. It installs `macsweep.dev.app` and
+For the full desktop install, install the cask. It installs `MacSweep.app` and
 pulls in the `macsweep` CLI formula as a dependency:
 
 ```bash
@@ -87,7 +87,7 @@ brew install --cask vincentshipsit/tap/macsweep     # installs GUI + CLI
 Verify both entry points:
 
 ```bash
-open -a macsweep.dev
+open -a MacSweep
 macsweep version
 ```
 
@@ -123,7 +123,7 @@ package locally. If Apple's command-line tools are missing, Homebrew or macOS ma
 prompt you to install them.
 
 > [!NOTE]
-> macsweep.dev used to be installed from this repo acting as its own tap
+> MacSweep used to be installed from this repo acting as its own tap
 > (`vincentshipsit/macsweep`). It now lives in the shared
 > [vincentshipsit/tap](https://github.com/VincentShipsIt/homebrew-tap). If you
 > tapped the old path, migrate with:
@@ -158,7 +158,7 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 ## Safety
 
-macsweep.dev is designed with safety in mind:
+MacSweep is designed with safety in mind:
 
 - **Dry-run by default** - Always preview before deleting
 - **Protected paths** - Critical directories are never touched:
@@ -167,11 +167,11 @@ macsweep.dev is designed with safety in mind:
   - `/System`, `/Applications`
 - **Confirmation prompts** - Large deletions require explicit confirmation
 - **Size limits** - Configurable max delete size (default 10GB)
-- **Assistant guardrails** - AI-planned scans still pass through macsweep.dev safety checks before cleanup
+- **Assistant guardrails** - AI-planned scans still pass through MacSweep safety checks before cleanup
 
 ## Assistant Config
 
-macsweep.dev seeds persistent assistant config under:
+MacSweep seeds persistent assistant config under:
 
 - `~/Library/Application Support/macsweep.dev/assistant/providers.toml`
 - `~/Library/Application Support/macsweep.dev/watchlists/watchlists.toml`
@@ -181,7 +181,7 @@ The TOML files are the source of truth for provider defaults and saved watchlist
 
 ## Privacy & Network
 
-macsweep.dev includes an optional AI Analysis feature that can send directory metadata
+MacSweep includes an optional AI Analysis feature that can send directory metadata
 (names and sizes, not file contents) to the Anthropic API for intelligent cache
 identification. This feature:
 
