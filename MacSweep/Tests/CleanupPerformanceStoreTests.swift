@@ -93,4 +93,33 @@ final class CleanupPerformanceStoreTests {
         #expect(summary.successRate == 8.0 / 9.0)
         #expect(summary.bestCleanup?.bytesFreed == 6_000)
     }
+
+    @Test func summarySaturatesCorruptOrOverflowingCounters() {
+        let now = Date()
+        let summary = CleanupPerformanceSummary(entries: [
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: Int64.max,
+                itemsProcessed: Int.max,
+                errorCount: Int.max
+            ),
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: 1,
+                itemsProcessed: 1,
+                errorCount: 1
+            ),
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: -1,
+                itemsProcessed: -1,
+                errorCount: -1
+            )
+        ], generatedAt: now)
+
+        #expect(summary.totalBytesFreed == Int64.max)
+        #expect(summary.totalItemsProcessed == Int.max)
+        #expect(summary.totalErrors == Int.max)
+        #expect(summary.successRate == 0.5)
+    }
 }
