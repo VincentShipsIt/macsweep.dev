@@ -58,6 +58,7 @@ actor ScanEngine {
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
     private let deletionGuard: DeletionGuard
+    private let cleanupHistoryStore: CleanupHistoryStore
     private static let cleanupPriority: [String] = [
         "trash-bins",
         "system-cache",
@@ -81,10 +82,12 @@ actor ScanEngine {
 
     init(
         modules: [any ScanModule]? = nil,
-        deletionGuard: DeletionGuard = DeletionGuard()
+        deletionGuard: DeletionGuard = DeletionGuard(),
+        cleanupHistoryStore: CleanupHistoryStore = .shared
     ) {
         self.modules = modules ?? Self.defaultModules()
         self.deletionGuard = deletionGuard
+        self.cleanupHistoryStore = cleanupHistoryStore
     }
 
     private static func defaultModules() -> [any ScanModule] {
@@ -242,6 +245,33 @@ actor ScanEngine {
     /// gate, not advisory. Defaults to `false` so any caller that forgets to
     /// confirm fails closed rather than silently deleting.
     func clean(items: [CleanupItem], dryRun: Bool, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
+        if dryRun {
+            return try await performClean(
+                items: items,
+                dryRun: true,
+                confirmedLargeDeletion: confirmedLargeDeletion
+            )
+        }
+
+        do {
+            let result = try await performClean(
+                items: items,
+                dryRun: false,
+                confirmedLargeDeletion: confirmedLargeDeletion
+            )
+            cleanupHistoryStore.record(items: items, result: result)
+            return result
+        } catch {
+            cleanupHistoryStore.recordFailure(items: items, error: error)
+            throw error
+        }
+    }
+
+    private func performClean(
+        items: [CleanupItem],
+        dryRun: Bool,
+        confirmedLargeDeletion: Bool
+    ) async throws -> CleanupResult {
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []

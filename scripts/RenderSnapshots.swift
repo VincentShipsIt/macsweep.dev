@@ -84,9 +84,9 @@ struct SnapshotRenderer {
 
     // MARK: - Data-state variants
 
-    /// Builds the populated / error layouts for the three deletion-bearing flows.
-    /// SystemCleanup reads its rows straight off `AppState`; LargeFiles and the
-    /// Uninstaller hold local `@State`, so they take the snapshot-injection
+    /// Builds populated / error layouts for cleanup-history and deletion flows.
+    /// SystemCleanup reads its rows straight off `AppState`; the remaining views
+    /// hold local `@State`, so they take snapshot-injection
     /// initializers added on each view. Every view still renders through the real
     /// composed body — only the seed data is synthetic.
     @MainActor
@@ -112,6 +112,10 @@ struct SnapshotRenderer {
         let orphans = sampleOrphans()
 
         return [
+            ("cleanup-history-results", wrap(
+                CleanupHistoryView(snapshotRuns: sampleCleanupHistory()),
+                appState: AppState()
+            )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
@@ -139,6 +143,36 @@ struct SnapshotRenderer {
                 ),
                 appState: AppState()
             )),
+        ]
+    }
+
+    static func sampleCleanupHistory() -> [CleanupHistoryRun] {
+        let timestamp = Date(timeIntervalSince1970: 1_782_300_600)
+        return [
+            CleanupHistoryRun(
+                timestamp: timestamp,
+                records: [
+                    CleanupHistoryRecord(
+                        timestamp: timestamp,
+                        moduleID: "dev-tools",
+                        moduleName: "Xcode DerivedData",
+                        originalPath: "/Users/example/Library/Developer/Xcode/DerivedData/Sample",
+                        action: .moveToTrash,
+                        bytes: 2_400_000_000,
+                        outcome: .completed
+                    ),
+                    CleanupHistoryRecord(
+                        timestamp: timestamp,
+                        moduleID: "system-cache",
+                        moduleName: "System Caches",
+                        originalPath: "/Users/example/Library/Caches/locked-cache",
+                        action: .deletePermanently,
+                        bytes: 18_000_000,
+                        outcome: .failed,
+                        errorMessage: "Permission denied"
+                    ),
+                ]
+            ),
         ]
     }
 
@@ -396,6 +430,7 @@ extension Feature {
         case .smartScan: return "smart-care"
         case .assistant: return "assistant"
         case .share: return "share"
+        case .cleanupHistory: return "cleanup-history"
         case .systemJunk: return "system-junk"
         case .mailAttachments: return "mail-attachments"
         case .trashBins: return "trash-bins"
