@@ -7,7 +7,7 @@ import Foundation
 /// style — the hand-rolled GB/MB division it replaces could disagree with every
 /// in-app display of the same number.
 enum ScanNotificationContent {
-    static let title = "macsweep.dev Weekly Scan"
+    static let title = "MacSweep Weekly Scan"
     static let categoryIdentifier = "SCAN_COMPLETE"
 
     static func formattedBody(for bytesFound: Int64) -> String {
