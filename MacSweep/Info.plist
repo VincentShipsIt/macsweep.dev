@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
 	<key>NSAppBundlesUsageDescription</key>
-	<string>macsweep.dev inspects app bundles to calculate storage use and remove apps you choose.</string>
+	<string>MacSweep inspects app bundles to calculate storage use and remove apps you choose.</string>
 	<key>NSAppDataUsageDescription</key>
-	<string>macsweep.dev scans application caches and support data so you can review and clean them.</string>
+	<string>MacSweep scans application caches and support data so you can review and clean them.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>macsweep.dev uses Finder and System Events only when you request actions such as emptying Trash, restoring items, or clearing recent items.</string>
+	<string>MacSweep uses Finder and System Events only when you request actions such as emptying Trash, restoring items, or clearing recent items.</string>
 	<key>NSSystemAdministrationUsageDescription</key>
-	<string>macsweep.dev changes system maintenance settings only when you explicitly request an action.</string>
+	<string>MacSweep changes system maintenance settings only when you explicitly request an action.</string>
 </dict>
 </plist>

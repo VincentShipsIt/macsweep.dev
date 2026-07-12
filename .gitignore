@@ -65,7 +65,10 @@ dist/
 MacSweep/.build/
 
 # Headless snapshot output (regenerable via scripts/render-screenshots.sh)
-scripts/screenshots/
+scripts/screenshots/*
+!scripts/screenshots/02-assistant.png
+!scripts/screenshots/26-system-junk-results.png
+!scripts/screenshots/27-large-old-files-results.png
 
 # gpt-image logo generation scratch
 .codex_logos/

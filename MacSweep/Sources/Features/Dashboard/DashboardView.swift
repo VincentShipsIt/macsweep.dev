@@ -236,7 +236,7 @@ struct DashboardView: View {
 
     private var smartCareDescription: String {
         if appState.isScanning {
-            return appState.currentScanModule ?? "macsweep.dev is scanning in the background."
+            return appState.currentScanModule ?? "MacSweep is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
             return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."

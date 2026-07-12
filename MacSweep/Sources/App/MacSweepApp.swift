@@ -13,7 +13,7 @@ struct MacSweepApp: App {
     private static let mainWindowLaunchSize = CGSize(width: 1040, height: 800)
 
     var body: some Scene {
-        Window("macsweep.dev", id: "main") {
+        Window("MacSweep", id: "main") {
             mainWindowContent
         }
         .defaultSize(width: Self.mainWindowLaunchSize.width, height: Self.mainWindowLaunchSize.height)
@@ -71,7 +71,7 @@ struct MacSweepApp: App {
                 NotificationManager.shared.requestPermission()
                 #endif
             }
-            .onChange(of: showingOnboarding) { newValue in
+            .onChange(of: showingOnboarding) { _, newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
                 }
@@ -86,7 +86,7 @@ struct MacSweepApp: App {
 
 private struct MacSweepMenuBarLabel: View {
     var body: some View {
-        Label("macsweep.dev", image: "MenuBarIcon")
+        Label("MacSweep", image: "MenuBarIcon")
     }
 }
 

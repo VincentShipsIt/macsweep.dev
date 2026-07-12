@@ -278,6 +278,7 @@ struct FullDiskAccessWarningBanner: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
                 .help("Dismiss")
+                .accessibilityLabel("Dismiss")
             }
         }
         .padding(12)
