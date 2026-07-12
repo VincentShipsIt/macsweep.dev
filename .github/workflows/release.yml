@@ -1,8 +1,9 @@
 name: Release
 
 # One-command release: pushing a `vX.Y.Z` tag builds + smoke-tests the CLI, packages
-# the GUI app, publishes the formula/cask checksums, then bumps Formula/macsweep.rb
-# and Casks/macsweep.rb in VincentShipsIt/homebrew-tap — with no manual steps.
+# the GUI app, signs and publishes its Sparkle appcast, publishes formula/cask
+# checksums, then bumps Formula/macsweep.rb and Casks/macsweep.rb in
+# VincentShipsIt/homebrew-tap — with no manual steps.
 #
 # MacSweep's formula is build-from-source: its `url` is GitHub's auto-generated source
 # tarball for the tag (archive/refs/tags/<tag>.tar.gz) and `sha256` is that tarball's
@@ -27,6 +28,7 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ vars.APPLE_API_ISSUER_ID }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
 
     steps:
       - name: Checkout
@@ -40,6 +42,7 @@ jobs:
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
           DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
           APPLE_API_PRIVATE_KEY_P8_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_P8_BASE64 }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
@@ -54,6 +57,8 @@ jobs:
           [[ -n "$APPLE_TEAM_ID" ]] || missing+=(APPLE_TEAM_ID)
           [[ -n "$APPLE_API_KEY_ID" ]] || missing+=(APPLE_API_KEY_ID)
           [[ -n "$APPLE_API_ISSUER_ID" ]] || missing+=(APPLE_API_ISSUER_ID)
+          [[ -n "$SPARKLE_PUBLIC_ED_KEY" ]] || missing+=(SPARKLE_PUBLIC_ED_KEY)
+          [[ -n "$SPARKLE_PRIVATE_ED_KEY" ]] || missing+=(SPARKLE_PRIVATE_ED_KEY)
 
           if (( ${#missing[@]} > 0 )); then
             printf '::error::Missing release environment secrets/variables: %s\n' "${missing[*]}"
@@ -128,10 +133,12 @@ jobs:
             -scheme MacSweep \
             -configuration Release \
             -archivePath "$ARCHIVE_PATH" \
+            -derivedDataPath "$RUNNER_TEMP/MacSweepDerivedData" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$MACSWEEP_SIGNING_IDENTITY" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            SPARKLE_PUBLIC_ED_KEY="$SPARKLE_PUBLIC_ED_KEY" \
             OTHER_CODE_SIGN_FLAGS="--timestamp"
 
           cat > "$EXPORT_OPTIONS" <<PLIST
@@ -161,7 +168,23 @@ jobs:
           APP="$EXPORT_PATH/MacSweep.app"
           test -d "$APP"
           APP_INFO="$APP/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO"
+          EXPECTED_VERSION="${RELEASE_TAG#v}"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_INFO")" == "$EXPECTED_VERSION" ]] || {
+            echo "::error::CFBundleShortVersionString does not match $RELEASE_TAG"
+            exit 1
+          }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_INFO")" == "$EXPECTED_VERSION" ]] || {
+            echo "::error::CFBundleVersion does not match $RELEASE_TAG"
+            exit 1
+          }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP_INFO")" == "$SPARKLE_PUBLIC_ED_KEY" ]] || {
+            echo "::error::Sparkle public key is missing from the exported app"
+            exit 1
+          }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_INFO")" == "https://github.com/VincentShipsIt/macsweep/releases/latest/download/appcast.xml" ]] || {
+            echo "::error::Sparkle appcast URL is incorrect"
+            exit 1
+          }
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_INFO")" == "MacSweep" ]] || {
             echo "::error::CFBundleDisplayName is not MacSweep"
             exit 1
@@ -235,6 +258,40 @@ jobs:
             "$MACSWEEP_APP_PATH" \
             "dist/macsweep-${RELEASE_TAG}-macos.zip"
 
+      - name: Generate signed Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          set -euo pipefail
+          GENERATE_APPCAST="$(find "$RUNNER_TEMP/MacSweepDerivedData/SourcePackages" \
+            -type f -path '*/Sparkle/bin/generate_appcast' -print -quit)"
+          [[ -x "$GENERATE_APPCAST" ]] || {
+            echo "::error::Sparkle generate_appcast tool was not resolved by Xcode"
+            exit 1
+          }
+
+          APPCAST_INPUT="$RUNNER_TEMP/MacSweepAppcast"
+          mkdir -p "$APPCAST_INPUT"
+          cp "dist/macsweep-${RELEASE_TAG}-macos.zip" "$APPCAST_INPUT/"
+
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | "$GENERATE_APPCAST" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/" \
+            --link "https://macsweep.dev/" \
+            --maximum-versions 1 \
+            -o "$GITHUB_WORKSPACE/appcast.xml" \
+            "$APPCAST_INPUT"
+
+          test -s appcast.xml
+          grep -q 'sparkle:edSignature=' appcast.xml || {
+            echo "::error::Generated appcast is not signed"
+            exit 1
+          }
+          grep -q "macsweep-${RELEASE_TAG}-macos.zip" appcast.xml || {
+            echo "::error::Generated appcast does not reference the release archive"
+            exit 1
+          }
+
       # The formula pins GitHub's source tarball checksum. The cask pins the prebuilt
       # app zip checksum. Publish both digests so the tap bump is verifiable end-to-end.
       - name: Compute release checksums
@@ -268,6 +325,7 @@ jobs:
         with:
           files: |
             dist/macsweep-${{ env.RELEASE_TAG }}-macos.zip
+            appcast.xml
             macsweep-${{ env.RELEASE_TAG }}-macos.zip.sha256
             macsweep-${{ env.RELEASE_TAG }}.tar.gz.sha256
           draft: false

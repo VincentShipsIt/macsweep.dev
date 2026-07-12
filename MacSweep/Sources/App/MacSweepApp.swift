@@ -6,6 +6,7 @@ struct MacSweepApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showingOnboarding = false
+    private let appUpdater = AppUpdater()
 
     /// App-global run-once guard for lifecycle side effects.
     @MainActor private static var didRunLaunchSideEffects = false
@@ -20,6 +21,9 @@ struct MacSweepApp: App {
         .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(appUpdater: appUpdater)
+            }
         }
 
         // Menu bar widget
@@ -70,7 +74,7 @@ struct MacSweepApp: App {
                 NotificationManager.shared.requestPermission()
                 #endif
             }
-            .onChange(of: showingOnboarding) { newValue in
+            .onChange(of: showingOnboarding) { _, newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
                 }

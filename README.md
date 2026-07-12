@@ -122,6 +122,10 @@ brew upgrade --cask vincentshipsit/tap/macsweep
 brew upgrade --formula vincentshipsit/tap/macsweep
 ```
 
+The GUI also checks for signed updates with Sparkle and exposes **MacSweep ›
+Check for Updates…**. Sparkle updates the app bundle; the separately packaged CLI
+continues to update through Homebrew.
+
 The CLI formula still supports self-update helpers:
 
 ```bash
@@ -167,6 +171,21 @@ CI runs the unit suite with coverage floors and the e2e smoke suite on every
 push/PR, renders GUI snapshots as a PR artifact, and repeats e2e + coverage on
 a daily schedule (`.github/workflows/nightly.yml`).
 
+### Release signing for app updates
+
+The protected GitHub `release` environment must contain both Sparkle values:
+
+- Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
+  release builds.
+- Secret `SPARKLE_PRIVATE_ED_KEY`: the matching base64 private seed exported by
+  Sparkle's `generate_keys` tool.
+
+The private key must be backed up outside GitHub and must never be committed.
+On every version tag, the release workflow verifies the embedded public key,
+signs the notarized app ZIP, generates `appcast.xml`, and publishes both files
+to the GitHub release. `scripts/release.sh bump X.Y.Z` advances both the visible
+version and Sparkle's bundle build version.
+
 ## Safety
 
 MacSweep is designed with safety in mind:
@@ -206,6 +225,7 @@ identification. This feature:
 - **SwiftUI** - Modern declarative UI
 - **Combine** - Reactive state management
 - **Swift Concurrency** - Async/await for scanning
+- **Sparkle 2** - Signed in-app updates for the macOS app
 
 ## License
 
