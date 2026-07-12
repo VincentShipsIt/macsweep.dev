@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var scanResults: [CleanupItem] = []
     @Published var selectedItems: Set<CleanupItem.ID> = []
     @Published var smartCareSummary: SmartCareSummary?
+    @Published var scanFailures: [ModuleScanFailure] = []
 
     /// Last scan failure, surfaced to the UI. Cleared at the start of each scan.
     @Published var lastError: String?
@@ -70,7 +71,12 @@ final class AppState: ObservableObject {
 
     func quickScan() async {
         await startScan(
-            moduleScan: { progress in try await self.scanEngine.smartCareScan(progress: progress) },
+            moduleScan: { progress in
+                await self.scanEngine.scanWithDiagnostics(
+                    modules: SmartCareDefaults.moduleIDs,
+                    progress: progress
+                )
+            },
             modules: SmartCareDefaults.moduleIDs,
             assistantTargets: assistant.enabledTargets
         )
@@ -78,7 +84,9 @@ final class AppState: ObservableObject {
 
     func scan(modules: [String]? = nil) async {
         await startScan(
-            moduleScan: { progress in try await self.scanEngine.scan(modules: modules, progress: progress) },
+            moduleScan: { progress in
+                await self.scanEngine.scanWithDiagnostics(modules: modules, progress: progress)
+            },
             modules: modules,
             assistantTargets: modules == nil ? assistant.enabledTargets : []
         )
@@ -185,8 +193,10 @@ final class AppState: ObservableObject {
     func runAssistantPlan(_ plan: AssistantScanPlan) async {
         await startScan(
             moduleScan: { [scanEngine] progress in
-                guard !plan.modules.isEmpty else { return [] }
-                return try await scanEngine.scan(modules: plan.modules, progress: progress)
+                guard !plan.modules.isEmpty else {
+                    return PartialScanResult(items: [], failures: [])
+                }
+                return await scanEngine.scanWithDiagnostics(modules: plan.modules, progress: progress)
             },
             modules: plan.modules,
             assistantTargets: plan.customTargets
@@ -207,7 +217,7 @@ final class AppState: ObservableObject {
     }
 
     private func startScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
+        moduleScan: @escaping (ScanProgressHandler?) async -> PartialScanResult,
         modules: [String]?,
         assistantTargets: [AssistantScanTarget]
     ) async {
@@ -241,7 +251,7 @@ final class AppState: ObservableObject {
     }
 
     private func performScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
+        moduleScan: @escaping (ScanProgressHandler?) async -> PartialScanResult,
         modules: [String]?,
         assistantTargets: [AssistantScanTarget]
     ) async {
@@ -251,6 +261,7 @@ final class AppState: ObservableObject {
         scanResults = []
         selectedItems = []
         smartCareSummary = nil
+        scanFailures = []
         lastError = nil
 
         defer {
@@ -273,13 +284,16 @@ final class AppState: ObservableObject {
         }
 
         do {
-            async let primaryItems = moduleScan(progressHandler)
+            async let primaryResult = moduleScan(progressHandler)
             async let watchlistItems = scanEngine.scanAssistantTargets(assistantTargets)
-            let scannedItems = try await primaryItems
+            let result = await primaryResult
             currentScanModule = assistantTargets.isEmpty ? "Finalizing results" : "Checking assistant watchlist"
             scanProgress = max(scanProgress, 0.95)
             let persistentItems = try await watchlistItems
-            let combined = deduplicated(items: scannedItems + persistentItems)
+            let combined = deduplicated(items: result.items + persistentItems)
+            scanFailures = result.failures.sorted {
+                $0.moduleName.localizedStandardCompare($1.moduleName) == .orderedAscending
+            }
             applyScanResults(combined, modules: modules)
             scanProgress = 1
         } catch is CancellationError {

@@ -489,6 +489,7 @@ struct ScanEngineTests {
         #expect(result.isPartial)
         #expect(result.failures.count == 1)
         #expect(result.failures.first?.moduleID == "broken")
+        #expect(result.failures.first?.moduleName == "Broken")
     }
 
     @Test func scanWithDiagnosticsReportsCompleteWhenNoFailures() async {
@@ -512,6 +513,28 @@ struct ScanEngineTests {
         #expect(result.items == [healthyItem])
         #expect(!result.isPartial)
         #expect(result.failures.isEmpty)
+    }
+
+    @Test func scanFailureClassifiesPermissionRecoveryAndProducesConciseReason() {
+        let permissionFailure = ModuleScanFailure(
+            moduleID: "mail-attachments",
+            moduleName: "Mail Attachments",
+            message: "Operation not permitted while reading Mail\nGrant access and retry."
+        )
+        let ordinaryFailure = ModuleScanFailure(
+            moduleID: "docker",
+            moduleName: "Docker",
+            message: "Permission denied: " + String(repeating: "x", count: 200)
+        )
+
+        #expect(permissionFailure.requiresFullDiskAccess)
+        #expect(
+            permissionFailure.conciseMessage
+                == "Operation not permitted while reading Mail Grant access and retry."
+        )
+        #expect(!ordinaryFailure.requiresFullDiskAccess)
+        #expect(ordinaryFailure.conciseMessage.count == 158)
+        #expect(ordinaryFailure.conciseMessage.hasSuffix("…"))
     }
 
     @Test func dockerActionsSurviveScanFilteringWithoutAllowingProtectedDockerPaths() async {

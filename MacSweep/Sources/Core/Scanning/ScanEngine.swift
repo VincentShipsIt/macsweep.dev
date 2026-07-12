@@ -25,7 +25,40 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
 /// A single module that failed during a scan, captured rather than swallowed.
 struct ModuleScanFailure: Sendable, Equatable {
     let moduleID: String
+    let moduleName: String
     let message: String
+
+    /// Permission failures need a different recovery path from transient scan
+    /// failures. Keep the classifier in core so every UI presents the same
+    /// diagnosis instead of relying on view-specific string checks.
+    var requiresFullDiskAccess: Bool {
+        let normalized = message.lowercased()
+        if normalized.contains("full disk access") {
+            return true
+        }
+
+        let fullDiskAccessModules = ["browser-safari", "mail-attachments", "privacy"]
+        guard fullDiskAccessModules.contains(moduleID) else { return false }
+
+        return [
+            "operation not permitted",
+            "permission denied",
+            "access denied",
+            "not authorized"
+        ].contains { normalized.contains($0) }
+    }
+
+    /// A single-line reason suitable for an inline banner. The complete message
+    /// remains available for copied diagnostic reports.
+    var conciseMessage: String {
+        let singleLine = message
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = singleLine.isEmpty ? "The module did not return a reason." : singleLine
+        guard fallback.count > 160 else { return fallback }
+        return String(fallback.prefix(157)) + "…"
+    }
 }
 
 /// Result of a scan that records which modules failed instead of silently
@@ -198,6 +231,7 @@ actor ScanEngine {
                     } catch {
                         return .failure(ModuleScanFailure(
                             moduleID: module.id,
+                            moduleName: module.name,
                             message: error.localizedDescription
                         ), moduleName: module.name)
                     }
