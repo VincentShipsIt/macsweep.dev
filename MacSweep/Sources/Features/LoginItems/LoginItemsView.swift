@@ -183,10 +183,18 @@ struct LoginItemRow: View {
             HStack(spacing: 8) {
                 Toggle("", isOn: $isEnabled)
                     .labelsHidden()
+                    .accessibilityLabel("Enable \(item.name)")
                     .toggleStyle(.switch)
                     .disabled(item.type == .appService)
-                    .onChange(of: isEnabled) { newValue in
-                        onToggle(newValue)
+                    .onChange(of: item.isEnabled) { _, newValue in
+                        if isEnabled != newValue {
+                            isEnabled = newValue
+                        }
+                    }
+                    .onChange(of: isEnabled) { _, newValue in
+                        if newValue != item.isEnabled {
+                            onToggle(newValue)
+                        }
                     }
 
                 if item.type != .appService {
@@ -197,6 +205,7 @@ struct LoginItemRow: View {
                             .foregroundStyle(.red.opacity(0.7))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Delete \(item.name)")
                 }
             }
         }

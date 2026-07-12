@@ -21,9 +21,16 @@ struct SelectionCheckmark: View {
         let image = Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
             .foregroundStyle(isSelected ? MacSweepTheme.selection : .secondary)
         if let onToggle {
-            image.onTapGesture { onToggle() }
+            Button(action: onToggle) {
+                image
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Selection")
+            .accessibilityValue(isSelected ? "Selected" : "Not selected")
         } else {
             image
+                .accessibilityLabel("Selection")
+                .accessibilityValue(isSelected ? "Selected" : "Not selected")
         }
     }
 }
@@ -198,13 +205,22 @@ extension View {
 struct RescanButton: View {
     var title: String = "Rescan"
     let isScanning: Bool
+    var usesNativeToolbarStyle = false
     let action: () -> Void
 
+    @ViewBuilder
     var body: some View {
+        if usesNativeToolbarStyle {
+            button
+        } else {
+            button.glassButton()
+        }
+    }
+
+    private var button: some View {
         Button(action: action) {
             Label(title, systemImage: "arrow.clockwise")
         }
-        .glassButton()
         .controlSize(.small)
         .disabled(isScanning)
     }

@@ -11,7 +11,7 @@ struct SimilarPhotosView: View {
             title: "Similar Photos",
             subtitle: "Detect look-alike images and keep the best shot.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanPhotos() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanPhotos() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty

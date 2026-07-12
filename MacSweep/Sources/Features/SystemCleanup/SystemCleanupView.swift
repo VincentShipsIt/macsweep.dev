@@ -11,7 +11,7 @@ struct SystemCleanupView: View {
             title: "System Junk",
             subtitle: "Clear caches, logs, and temporary files.",
             trailing: appState.scanResults.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: appState.isScanning) {
+                RescanButton(isScanning: appState.isScanning, usesNativeToolbarStyle: true) {
                     Task { await appState.scan(modules: ["system-cache"]) }
                 }
             ),

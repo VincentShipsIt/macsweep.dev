@@ -17,7 +17,7 @@ struct CloudCleanupView: View {
             title: "Cloud Cleanup",
             subtitle: "Evict stale cloud downloads and provider caches.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanCloudStorage() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanCloudStorage() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
