@@ -101,11 +101,6 @@ struct SystemCleanupView: View {
 
             Spacer()
 
-            Button("Preview") {
-                // Show preview
-            }
-            .glassButton()
-
             Button("Clean") {
                 showingConfirmation = true
             }
@@ -115,17 +110,14 @@ struct SystemCleanupView: View {
         }
         .padding()
         .background(MacSweepTheme.panelStrong)
-        .deleteConfirmation(
-            "Delete \(appState.selectedItems.count) items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            confirmTitle: "Delete",
-            message: "This will free \(appState.selectedSize.formattedFileSize). This action cannot be undone."
-        ) {
-            // Behind this confirmation dialog → confirm the large-deletion gate.
-            Task {
-                _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
-            }
-        }
+            items: selectedResults,
+            disposition: .mixed,
+            note: "System caches use their module's declared Trash-first or permanent-cache action. "
+                + "Protected paths are checked again immediately before execution.",
+            onConfirm: { try? await appState.deleteSelected(confirmedLargeDeletion: true) }
+        )
     }
 
     // MARK: - Filtered Results
@@ -138,6 +130,10 @@ struct SystemCleanupView: View {
             $0.displayName.localizedCaseInsensitiveContains(searchText) ||
             $0.path.path.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    private var selectedResults: [CleanupItem] {
+        appState.scanResults.filter { appState.selectedItems.contains($0.id) }
     }
 }
 

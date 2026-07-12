@@ -272,6 +272,53 @@ struct CleanupResult: Sendable {
     }
 }
 
+// MARK: - Cleanup Review
+
+/// Stable, UI-independent facts shown before every destructive GUI cleanup.
+/// Keeping the aggregation in Core makes the review contract testable and keeps
+/// every feature page honest about the exact selection it will submit.
+struct CleanupReviewSummary: Equatable, Sendable {
+    let itemCount: Int
+    let totalBytes: Int64
+    let moduleCounts: [(name: String, count: Int)]
+    let paths: [URL]
+    let exceedsConfirmationThreshold: Bool
+
+    init(
+        items: [CleanupItem],
+        additionalCount: Int = 0,
+        additionalBytes: Int64 = 0,
+        additionalModules: [String] = [],
+        additionalPaths: [URL] = [],
+        confirmationThreshold: Int64 = DeletionGuard().confirmationThreshold
+    ) {
+        itemCount = items.count + additionalCount
+        totalBytes = items.reduce(0) { $0 + $1.size } + additionalBytes
+
+        var counts = Dictionary(grouping: items, by: \.moduleName).mapValues(\.count)
+        for module in additionalModules {
+            counts[module, default: 0] += 1
+        }
+        moduleCounts = counts
+            .map { (name: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                lhs.count == rhs.count ? lhs.name < rhs.name : lhs.count > rhs.count
+            }
+        paths = (items.map(\.path) + additionalPaths)
+        exceedsConfirmationThreshold = totalBytes > confirmationThreshold
+    }
+
+    static func == (lhs: CleanupReviewSummary, rhs: CleanupReviewSummary) -> Bool {
+        lhs.itemCount == rhs.itemCount
+            && lhs.totalBytes == rhs.totalBytes
+            && lhs.moduleCounts.elementsEqual(rhs.moduleCounts) {
+                $0.name == $1.name && $0.count == $1.count
+            }
+            && lhs.paths == rhs.paths
+            && lhs.exceedsConfirmationThreshold == rhs.exceedsConfirmationThreshold
+    }
+}
+
 struct CleanupError: Error, Sendable {
     let path: URL
     let message: String

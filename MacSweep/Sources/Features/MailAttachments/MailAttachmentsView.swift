@@ -141,14 +141,13 @@ struct MailAttachmentsView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Move \(model.selectedItems.count) Attachments to Trash?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Move to Trash",
-            message: "This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected."
-        ) {
-            Task { await deleteSelected() }
-        }
+            items: selectedAttachments,
+            disposition: .trash,
+            note: "The original email messages remain untouched and attachments can be downloaded again.",
+            onConfirm: { await deleteSelected() }
+        )
     }
 
     // MARK: - Actions
@@ -164,12 +163,11 @@ struct MailAttachmentsView: View {
         }
     }
 
-    private func deleteSelected() async {
+    private func deleteSelected() async -> CleanupResult? {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // `stats` recomputes automatically from the pruned list.
-        let itemsToDelete = filteredAttachments.filter { model.selectedItems.contains($0.id) }
-        await model.clean(itemsToDelete) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
+        await model.clean(selectedAttachments) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
     }
 
     // MARK: - Computed
@@ -200,6 +198,10 @@ struct MailAttachmentsView: View {
 
     private var selectedSize: String {
         filteredAttachments.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedAttachments: [CleanupItem] {
+        filteredAttachments.filter { model.selectedItems.contains($0.id) }
     }
 }
 

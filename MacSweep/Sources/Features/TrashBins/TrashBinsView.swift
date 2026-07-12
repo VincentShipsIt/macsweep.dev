@@ -26,14 +26,13 @@ struct TrashBinsView: View {
                 .tint(.red)
                 .controlSize(.small)
                 .disabled((trashItems.isEmpty && (trashSummary?.totalCount ?? 0) == 0) || isScanning)
-                .deleteConfirmation(
-                    "Empty All Trash?",
+                .cleanupReview(
                     isPresented: $showingEmptyAllConfirmation,
-                    confirmTitle: "Empty Trash",
-                    message: emptyAllTrashMessage
-                ) {
-                    Task { await emptyAllTrash() }
-                }
+                    items: trashItems,
+                    disposition: .permanent,
+                    note: "This empties every scanned Trash item. It cannot be undone.",
+                    onConfirm: { await emptyAllTrash() }
+                )
             ),
             hidesChrome: trashItems.isEmpty && !(hasScanned && !isScanning && errorMessage == nil),
             scrolls: trashItems.isEmpty
@@ -117,14 +116,12 @@ struct TrashBinsView: View {
             actionDisabled: selectedItems.isEmpty,
             onAction: { showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Permanently Delete \(selectedItems.count) Items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            confirmTitle: "Delete Permanently",
-            message: "This will permanently delete \(selectedSize) of files. This cannot be undone."
-        ) {
-            Task { await deleteSelected() }
-        }
+            items: selectedTrashItems,
+            disposition: .permanent,
+            onConfirm: { await deleteSelected() }
+        )
     }
 
     private var emptyTrashState: some View {
@@ -135,13 +132,6 @@ struct TrashBinsView: View {
             actionTitle: "Scan Again",
             action: { Task { await scanTrash() } }
         )
-    }
-
-    private var emptyAllTrashMessage: String {
-        if let summary = trashSummary {
-            return "This will permanently delete \(summary.totalCount) items (\(summary.formattedSize)). This cannot be undone."
-        }
-        return "This will permanently delete all items in Trash. This cannot be undone."
     }
 
     // MARK: - Actions
@@ -178,9 +168,10 @@ struct TrashBinsView: View {
         }
     }
 
-    private func deleteSelected() async {
-        let itemsToDelete = trashItems.filter { selectedItems.contains($0.id) }
+    private func deleteSelected() async -> CleanupResult? {
+        let itemsToDelete = selectedTrashItems
         var deletionError: String?
+        var cleanupResult: CleanupResult?
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
@@ -188,6 +179,7 @@ struct TrashBinsView: View {
         let engine = ScanEngine()
         do {
             let result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
+            cleanupResult = result
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 deletionError = "\(count) item\(count == 1 ? "" : "s") couldn't be deleted and were kept."
@@ -201,10 +193,11 @@ struct TrashBinsView: View {
         if let deletionError {
             errorMessage = deletionError
         }
+        return cleanupResult
     }
 
-    private func emptyAllTrash() async {
-        guard !isScanning else { return }
+    private func emptyAllTrash() async -> CleanupResult? {
+        guard !isScanning else { return nil }
 
         isScanning = true
         errorMessage = nil
@@ -214,14 +207,16 @@ struct TrashBinsView: View {
             hasScanned = true
         }
 
-        let module = TrashBinsModule()
+        let engine = ScanEngine()
         do {
-            try await module.emptyAllTrash()
-            trashItems = try await module.scan()
+            let result = try await engine.clean(items: trashItems, dryRun: false, confirmedLargeDeletion: true)
+            trashItems = try await TrashBinsModule().scan()
             trashSummary = await TrashSummary.current()
+            return result
         } catch {
             trashSummary = await TrashSummary.current()
             errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -229,6 +224,10 @@ struct TrashBinsView: View {
 
     private var selectedSize: String {
         trashItems.formattedTotalSize(selected: selectedItems)
+    }
+
+    private var selectedTrashItems: [CleanupItem] {
+        trashItems.filter { selectedItems.contains($0.id) }
     }
 
     private func formattedSize(for items: [CleanupItem]) -> String {

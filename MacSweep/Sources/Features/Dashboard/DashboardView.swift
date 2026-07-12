@@ -106,21 +106,14 @@ struct DashboardView: View {
                 isCleanupReviewExpanded = false
             }
         }
-        .confirmationDialog(
-            "Clean \(appState.selectedItems.count) selected item\(appState.selectedItems.count == 1 ? "" : "s")?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clean", role: .destructive) {
-                Task {
-                    // Behind this dialog → confirm the large-deletion gate.
-                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). Some items are deleted permanently and can't be recovered.")
-        }
+            items: selectedCleanupItems,
+            disposition: .mixed,
+            note: "Recommended items remain separated from review-only personal files. "
+                + "Every path is checked again immediately before its module runs.",
+            onConfirm: { try? await appState.deleteSelected(confirmedLargeDeletion: true) }
+        )
     }
 
     private var rescanButton: some View {
