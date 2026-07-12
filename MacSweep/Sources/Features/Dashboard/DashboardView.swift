@@ -54,7 +54,7 @@ struct DashboardView: View {
                         PartialScanStatusRow(
                             failures: appState.scanFailures,
                             retry: {
-                                Task { await appState.quickScan() }
+                                Task { await appState.retryLastScan() }
                             },
                             openFullDiskAccess: FullDiskAccess.openSystemPreferences,
                             copyDetails: copyPartialScanDetails
