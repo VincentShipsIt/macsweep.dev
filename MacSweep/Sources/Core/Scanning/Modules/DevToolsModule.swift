@@ -1357,7 +1357,7 @@ struct GitArtifactScanner: Sendable {
         // with many untracked files easily exceeds that. Mirrors the concurrent
         // drain in AssistantConversationService.runProcess.
         let stderrHandle = stderr.fileHandleForReading
-        let drainQueue = DispatchQueue(label: "macsweep.devtools.stderr-drain")
+        let drainQueue = DispatchQueue(label: "MacSweep.devtools.stderr-drain")
         var errorData = Data()
         drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
 

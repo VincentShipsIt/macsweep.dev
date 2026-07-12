@@ -1,4 +1,4 @@
-# macsweep.dev
+# MacSweep
 
 > [!WARNING]
 > This project is under active development and is a work in progress.
@@ -31,13 +31,18 @@ Scan, clean, and optimize your Mac with safety-first defaults.
 
 ## Screenshots
 
-### Review large files before cleanup
+### Review before you clean
 
-Large and old files are never silently selected as routine junk. The review view
-shows each path, category, size, age, and current selection before anything moves
-to Trash.
+<p align="center">
+  <img src="scripts/screenshots/26-system-junk-results.png" alt="Reviewing selected system junk before cleanup" width="49%">
+  <img src="scripts/screenshots/27-large-old-files-results.png" alt="Finding and selecting large old files" width="49%">
+</p>
 
-![Large and old file review](docs/assets/screenshots/large-file-review.png)
+### AI-assisted analysis
+
+<p align="center">
+  <img src="scripts/screenshots/02-assistant.png" alt="macsweep.dev AI assistant with suggested cleanup tasks" width="100%">
+</p>
 
 ### Recover protected-folder access
 
@@ -59,29 +64,29 @@ Choose the artifact that matches how you want to use MacSweep:
 
 | Install | Includes | Use when |
 | --- | --- | --- |
-| Homebrew cask | Signed and notarized `macsweep.dev.app` plus the `macsweep` CLI formula | You want the recommended desktop install with automatic Homebrew upgrades |
+| Homebrew cask | Signed and notarized `MacSweep.app` plus the `macsweep` CLI formula | You want the recommended desktop install with automatic Homebrew upgrades |
 | [Latest `MacSweep.dmg`](https://github.com/VincentShipsIt/macsweep/releases/latest/download/MacSweep.dmg) | Signed and notarized native app | You want the GUI without installing the CLI |
 | Homebrew formula | Headless `macsweep` CLI only | You use MacSweep from a terminal or automation |
 | Source checkout | Local CLI build; Xcode project for the app | You are developing or auditing MacSweep |
 
 ### Agent-first install
 
-Paste this into a terminal-capable coding agent to have it install macsweep.dev for
+Paste this into a terminal-capable coding agent to have it install MacSweep for
 you:
 
 ```text
-Install macsweep.dev on this Mac.
+Install MacSweep on this Mac.
 
 First run these read-only checks:
 - Confirm this Mac is running macOS 26.0 Tahoe or later with `sw_vers`.
 - Check whether Homebrew is installed with `command -v brew`.
 - Check whether Apple's command-line tools can find Swift with `xcrun --find swift`.
 
-If macOS is older than 26.0, stop and explain that macsweep.dev cannot be installed.
+If macOS is older than 26.0, stop and explain that MacSweep cannot be installed.
 If Homebrew is missing, stop and ask me before installing Homebrew from https://brew.sh.
 If Apple's command-line tools are missing, run `xcode-select --install`, then wait for me to finish Apple's installer prompt before continuing.
 
-Then install the stable macsweep.dev app and CLI:
+Then install the stable MacSweep app and CLI:
 
 brew tap vincentshipsit/tap
 brew trust --formula vincentshipsit/tap/macsweep
@@ -89,15 +94,15 @@ brew install --cask vincentshipsit/tap/macsweep
 macsweep version
 
 Do not run any cleanup, delete, apply, shred, uninstall, or maintenance commands.
-When the install is done, tell me the installed CLI version, confirm macsweep.dev.app
+When the install is done, tell me the installed CLI version, confirm MacSweep.app
 is installed, and suggest `macsweep dry-run` as the first safe command.
 ```
 
 ### Homebrew (GUI + CLI, recommended)
 
-macsweep.dev is distributed from the shared `vincentshipsit/tap`.
+MacSweep is distributed from the shared `vincentshipsit/tap`.
 
-For the full desktop install, install the cask. It installs `macsweep.dev.app` and
+For the full desktop install, install the cask. It installs `MacSweep.app` and
 pulls in the `macsweep` CLI formula as a dependency:
 
 ```bash
@@ -109,7 +114,7 @@ brew install --cask vincentshipsit/tap/macsweep     # installs GUI + CLI
 Verify both entry points:
 
 ```bash
-open -a macsweep.dev
+open -a MacSweep
 macsweep version
 ```
 
@@ -145,7 +150,7 @@ package locally. If Apple's command-line tools are missing, Homebrew or macOS ma
 prompt you to install them.
 
 > [!NOTE]
-> macsweep.dev used to be installed from this repo acting as its own tap
+> MacSweep used to be installed from this repo acting as its own tap
 > (`vincentshipsit/macsweep`). It now lives in the shared
 > [vincentshipsit/tap](https://github.com/VincentShipsIt/homebrew-tap). If you
 > tapped the old path, migrate with:
@@ -180,7 +185,7 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 ## Safety
 
-macsweep.dev treats scan results as a proposal, not permission to delete:
+MacSweep treats scan results as a proposal, not permission to delete:
 
 - **Dry-run first** - The CLI's `dry-run` command reports the plan without
   deleting. Destructive CLI commands require their explicit command and
@@ -190,11 +195,13 @@ macsweep.dev treats scan results as a proposal, not permission to delete:
   recovery. Operations that are inherently irreversible, including secure
   shredding, emptying Trash, privacy clearing, and removal of regenerable cache
   data, say so in their confirmation copy.
-- **Protected paths** - Automated cleanup is default-deny and refuses critical
-  roots such as `~/Documents`, `~/Desktop`, `~/Pictures`, `~/Downloads`,
-  credential directories (`~/.ssh`, `~/.gnupg`, `~/.aws`), `/System`, and
-  `/Applications`. Explicit user-directed tools still refuse whole protected
-  roots and re-check paths immediately before removal.
+- **Protected paths** - Automated cleanup is default-deny and refuses whole
+  critical roots such as `~/Documents`, `~/Desktop`, `~/Pictures`, `~/Downloads`,
+  credential directories (`~/.ssh`, `~/.gnupg`, `~/.aws`), `/System`,
+  `/Applications`, and `~/Applications`. Explicit app removal is narrower:
+  a non-symlink `.app` directly inside `/Applications` or `~/Applications` may
+  move to Trash after dedicated validation, but removal of either root remains
+  blocked. Paths are re-checked immediately before removal.
 - **Confirmation and deletion caps** - Operations above 1 GB require explicit
   confirmation. The cleanup engine blocks a single run above its 10 GB hard cap.
 - **Live preflight checks** - MacSweep re-measures selected paths and applies the
@@ -210,9 +217,10 @@ such as Safari data, Mail attachments, and some system caches cannot be scanned
 completely without it.
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**.
-2. Add and enable the exact `macsweep.dev.app` bundle you installed. If it is not
-   listed, use the **+** button and select it from `/Applications`.
-3. Quit and reopen macsweep.dev if macOS asks you to relaunch it.
+2. Add and enable the exact `MacSweep.app` bundle you installed. If it is not
+   listed, use the **+** button and select that bundle wherever it is installed,
+   commonly `/Applications` or `~/Applications`.
+3. Quit and reopen MacSweep if macOS asks you to relaunch it.
 4. Run the scan again. A partial result is not proof that protected folders are
    empty.
 
@@ -221,22 +229,20 @@ reports inaccessible paths rather than treating them as clean.
 
 ## Known Limitations and Deferred Work
 
-- macsweep.dev currently requires macOS 26 Tahoe or later; older macOS releases
+- MacSweep currently requires macOS 26 Tahoe or later; older macOS releases
   are not supported.
 - Results can be partial when macOS denies access, a volume is offline, or an
   external tool such as Docker or Homebrew is unavailable.
 - Large files, duplicates, similar photos, uninstaller leftovers, and developer
   project findings require manual review; they are not automatic background
   cleanup.
-- The generic app updater, extensions manager, iOS companion, cloud sync, paid
-  licensing, App Store distribution, and automatic background deletion are
-  deferred. The existing Homebrew updater covers Homebrew-managed packages only.
+- The extensions manager, iOS companion, cloud sync, paid licensing, App Store
+  distribution, and automatic background deletion are deferred.
 - AI analysis is optional and needs a user-supplied provider key. Deterministic
   scanning and safety checks remain available without AI.
-
 ## Assistant Config
 
-macsweep.dev seeds persistent assistant config under:
+MacSweep seeds persistent assistant config under:
 
 - `~/Library/Application Support/macsweep.dev/assistant/providers.toml`
 - `~/Library/Application Support/macsweep.dev/watchlists/watchlists.toml`
@@ -246,7 +252,7 @@ The TOML files are the source of truth for provider defaults and saved watchlist
 
 ## Privacy & Network
 
-macsweep.dev includes an optional AI Analysis feature that can send directory metadata
+MacSweep includes an optional AI Analysis feature that can send directory metadata
 (names and sizes, not file contents) to the Anthropic API for intelligent cache
 identification. This feature:
 
