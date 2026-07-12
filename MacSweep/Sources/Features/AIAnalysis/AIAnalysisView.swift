@@ -35,7 +35,7 @@ struct AIAnalysisView: View {
                     apiKeyPopover
                 }
             ),
-            hidesChrome: service.findings.isEmpty && !service.isScanning,
+            hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
             if service.findings.isEmpty && !service.isScanning {

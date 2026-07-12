@@ -43,6 +43,23 @@ final class CleanupPerformanceStoreTests {
         #expect(store.history.isEmpty)
     }
 
+    @Test func recordsFullyFailedCleanupResults() throws {
+        let store = store()
+        let result = CleanupResult(
+            itemsProcessed: 0,
+            bytesFreed: 0,
+            errors: [CleanupError(path: URL(fileURLWithPath: "/tmp/a"), message: "Permission denied")]
+        )
+
+        let entry = try #require(store.record(result))
+
+        #expect(entry.bytesFreed == 0)
+        #expect(entry.itemsProcessed == 0)
+        #expect(entry.errorCount == 1)
+        #expect(store.history == [entry])
+        #expect(store.summary().successRate == 0)
+    }
+
     @Test func summaryUsesRequestedWindowAndSuccessRate() {
         let store = store()
         let now = Date()

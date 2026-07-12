@@ -31,7 +31,7 @@ struct CleanupPerformanceEntry: Codable, Equatable, Identifiable, Sendable {
     }
 
     var hasCleanupWork: Bool {
-        bytesFreed > 0 || itemsProcessed > 0
+        bytesFreed > 0 || itemsProcessed > 0 || errorCount > 0
     }
 }
 
