@@ -31,7 +31,18 @@ Scan, clean, and optimize your Mac with safety-first defaults.
 
 ## Screenshots
 
-*Coming soon*
+### Review before you clean
+
+<p align="center">
+  <img src="scripts/screenshots/26-system-junk-results.png" alt="Reviewing selected system junk before cleanup" width="49%">
+  <img src="scripts/screenshots/27-large-old-files-results.png" alt="Finding and selecting large old files" width="49%">
+</p>
+
+### AI-assisted analysis
+
+<p align="center">
+  <img src="scripts/screenshots/02-assistant.png" alt="macsweep.dev AI assistant with suggested cleanup tasks" width="100%">
+</p>
 
 ## Requirements
 
