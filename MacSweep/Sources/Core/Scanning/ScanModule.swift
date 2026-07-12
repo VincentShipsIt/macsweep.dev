@@ -292,8 +292,12 @@ struct CleanupReviewSummary: Equatable, Sendable {
         additionalPaths: [URL] = [],
         confirmationThreshold: Int64 = DeletionGuard().confirmationThreshold
     ) {
-        itemCount = items.count + additionalCount
-        totalBytes = items.reduce(0) { $0 + $1.size } + additionalBytes
+        let (combinedCount, countOverflow) = items.count.addingReportingOverflow(max(0, additionalCount))
+        itemCount = countOverflow ? Int.max : combinedCount
+        totalBytes = (items.map(\.size) + [additionalBytes]).reduce(0) { total, bytes in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, bytes))
+            return overflow ? Int64.max : sum
+        }
 
         var counts = Dictionary(grouping: items, by: \.moduleName).mapValues(\.count)
         for module in additionalModules {
@@ -304,7 +308,10 @@ struct CleanupReviewSummary: Equatable, Sendable {
             .sorted { lhs, rhs in
                 lhs.count == rhs.count ? lhs.name < rhs.name : lhs.count > rhs.count
             }
-        paths = (items.map(\.path) + additionalPaths)
+        var seenPaths = Set<URL>()
+        paths = (items.map(\.path) + additionalPaths).filter {
+            seenPaths.insert($0).inserted
+        }
         exceedsConfirmationThreshold = totalBytes > confirmationThreshold
     }
 
@@ -319,12 +326,14 @@ struct CleanupReviewSummary: Equatable, Sendable {
     }
 }
 
-struct CleanupError: Error, Sendable {
+struct CleanupError: Error, Identifiable, Sendable {
+    let id: UUID
     let path: URL
     let message: String
     let underlyingError: Error?
 
-    init(path: URL, message: String, underlyingError: Error? = nil) {
+    init(id: UUID = UUID(), path: URL, message: String, underlyingError: Error? = nil) {
+        self.id = id
         self.path = path
         self.message = message
         self.underlyingError = underlyingError

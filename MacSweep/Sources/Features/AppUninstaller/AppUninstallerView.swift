@@ -230,8 +230,11 @@ struct AppUninstallerView: View {
 
         // Load leftovers for each app
         let scanner = LeftoverScanner()
-        for i in loadedApps.indices {
-            loadedApps[i].leftovers = await scanner.findLeftovers(for: loadedApps[i], among: loadedApps)
+        for appIndex in loadedApps.indices {
+            loadedApps[appIndex].leftovers = await scanner.findLeftovers(
+                for: loadedApps[appIndex],
+                among: loadedApps
+            )
         }
 
         apps = loadedApps
@@ -374,6 +377,7 @@ struct AppDetailView: View {
 
     @State private var includeLeftovers = true
     @State private var showingConfirmation = false
+    @State private var appBundleItemID = UUID()
 
     var body: some View {
         ScrollView {
@@ -468,7 +472,7 @@ struct AppDetailView: View {
 
     private var uninstallItems: [CleanupItem] {
         var items = [CleanupItem(
-            id: UUID(),
+            id: appBundleItemID,
             path: app.bundlePath,
             size: app.bundleSize,
             type: .directory,

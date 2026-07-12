@@ -44,6 +44,21 @@ struct CleanupReviewSummaryTests {
         #expect(summary.exceedsConfirmationThreshold)
     }
 
+    @Test func deduplicatesPathsAndSaturatesOverflowingSizes() {
+        let sharedPath = "/tmp/shared"
+        let first = item(path: sharedPath, size: Int64.max, module: "System Junk")
+        let second = item(path: sharedPath, size: 1, module: "Developer Tools")
+
+        let summary = CleanupReviewSummary(
+            items: [first, second],
+            additionalBytes: Int64.max
+        )
+
+        #expect(summary.totalBytes == Int64.max)
+        #expect(summary.paths == [first.path])
+        #expect(summary.exceedsConfirmationThreshold)
+    }
+
     private func item(path: String, size: Int64, module: String) -> CleanupItem {
         CleanupItem(
             id: UUID(),

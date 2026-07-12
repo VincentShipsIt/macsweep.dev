@@ -169,8 +169,9 @@ final class ScanFeatureModel: ObservableObject {
             return nil
         }
 
+        let submittedIDs = Set(itemsToClean.map(\.id))
         let failedPaths = Set(result.errors.map(\.path))
-        items.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
+        items.removeAll { submittedIDs.contains($0.id) && !failedPaths.contains($0.path) }
         selectedItems = selectedItems.filter { id in items.contains(where: { $0.id == id }) }
         errorMessage = result.failureSummaryMessage
         return result

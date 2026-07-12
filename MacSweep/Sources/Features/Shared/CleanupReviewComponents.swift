@@ -117,6 +117,7 @@ struct CleanupReviewModifier: ViewModifier {
     }
 
     private func runCleanup() {
+        guard !isRunning else { return }
         requestedCount = summary.itemCount
         isRunning = true
         Task { @MainActor in
@@ -223,7 +224,7 @@ private struct CleanupReviewSheet: View {
                     }
 
                     reviewSection("Paths") {
-                        ForEach(Array(summary.paths.prefix(12).enumerated()), id: \.offset) { _, path in
+                        ForEach(summary.paths.prefix(12), id: \.self) { path in
                             Text(path.path)
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
@@ -282,7 +283,7 @@ private struct CleanupReviewSheet: View {
             if !result.errors.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(result.errors.enumerated()), id: \.offset) { _, error in
+                        ForEach(result.errors) { error in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(error.path.path)
                                     .font(.caption.monospaced())
