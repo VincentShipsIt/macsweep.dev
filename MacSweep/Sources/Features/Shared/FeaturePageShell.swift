@@ -178,7 +178,7 @@ struct ScanLandingView: View {
                             .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
                     }
 
-                    CircularScanButton(action: action)
+                    CircularScanButton(accessibilityLabel: ctaTitle, action: action)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
@@ -191,7 +191,9 @@ struct ScanLandingView: View {
 /// The signature CleanMyMac circular Scan button — a glowing accent ring.
 struct CircularScanButton: View {
     var title: String = "Scan"
+    var accessibilityLabel: String = "Start scan"
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -201,17 +203,21 @@ struct CircularScanButton: View {
                     .fill(MacSweepTheme.panel)
                 Circle()
                     .strokeBorder(MacSweepTheme.accent.opacity(0.95), lineWidth: 2)
-                    .shadow(color: MacSweepTheme.accent.opacity(isHovering ? 0.7 : 0.45),
-                            radius: isHovering ? 16 : 9)
+                    .shadow(color: MacSweepTheme.accent.opacity(!reduceMotion && isHovering ? 0.7 : 0.45),
+                            radius: !reduceMotion && isHovering ? 16 : 9)
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
             }
             .frame(width: 96, height: 96)
-            .scaleEffect(isHovering ? 1.04 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: isHovering)
+            .scaleEffect(!reduceMotion && isHovering ? 1.04 : 1.0)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut("r", modifiers: .command)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Scans only. You can review results before anything is removed.")
+        .help("\(accessibilityLabel) (Command-R)")
         .onHover { isHovering = $0 }
     }
 }
@@ -235,6 +241,8 @@ struct MacSweepErrorBanner: View {
                     .font(.caption)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
+            .accessibilityHint(message)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

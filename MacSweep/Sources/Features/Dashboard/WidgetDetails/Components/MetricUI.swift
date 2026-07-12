@@ -44,13 +44,30 @@ extension View {
 
     /// Starts the shared repeating pulse animation when `level` is `.critical`.
     func startCriticalPulse(_ level: MetricAlertLevel, into flag: Binding<Bool>) -> some View {
-        onAppear {
-            if level == .critical {
-                withAnimation(
-                    .easeInOut(duration: MetricThresholds.Pulse.duration).repeatForever(autoreverses: true)
-                ) {
-                    flag.wrappedValue = true
-                }
+        modifier(CriticalPulseAnimationModifier(level: level, flag: flag))
+    }
+}
+
+private struct CriticalPulseAnimationModifier: ViewModifier {
+    let level: MetricAlertLevel
+    @Binding var flag: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard level == .critical, !reduceMotion else {
+                flag = false
+                return
+            }
+            withAnimation(
+                .easeInOut(duration: MetricThresholds.Pulse.duration).repeatForever(autoreverses: true)
+            ) {
+                flag = true
+            }
+        }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            if shouldReduceMotion {
+                flag = false
             }
         }
     }

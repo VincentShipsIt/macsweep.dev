@@ -1,12 +1,25 @@
 import SwiftUI
 import AppKit
 
+struct FocusMacSweepSidebarKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    var focusMacSweepSidebar: (() -> Void)? {
+        get { self[FocusMacSweepSidebarKey.self] }
+        set { self[FocusMacSweepSidebarKey.self] = newValue }
+    }
+}
+
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
     @State private var usesSlideTransition = true
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -23,6 +36,9 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(\.focusMacSweepSidebar) {
+            isSidebarFocused = true
+        }
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -51,6 +67,11 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($isSidebarFocused)
+        .accessibilityLabel("Feature navigation")
+        .onAppear {
+            isSidebarFocused = true
+        }
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking
@@ -73,7 +94,9 @@ struct ContentView: View {
             detailView(for: activeFeature)
                 .id(activeFeature)
                 .transition(
-                    usesSlideTransition
+                    reduceMotion
+                        ? .identity
+                        : usesSlideTransition
                         ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
                         : .opacity
                 )
@@ -84,6 +107,12 @@ struct ContentView: View {
     private func showFeature(_ newFeature: Feature) {
         let oldFeature = activeFeature
         guard oldFeature != newFeature else { return }
+
+        if reduceMotion {
+            usesSlideTransition = false
+            displayedFeature = newFeature
+            return
+        }
 
         let shouldSlide = usesCenteredLandingTransition(oldFeature)
             && usesCenteredLandingTransition(newFeature)

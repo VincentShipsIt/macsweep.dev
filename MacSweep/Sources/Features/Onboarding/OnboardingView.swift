@@ -4,6 +4,7 @@ import AppKit
 /// Onboarding view shown on first launch
 struct OnboardingView: View {
     @Binding var isPresented: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage: Int
     @State private var hasFullDiskAccess: Bool
     @State private var fdaTimer: Timer?
@@ -78,18 +79,14 @@ struct OnboardingView: View {
                 // Navigation buttons
                 if currentPage > 0 {
                     Button("Back") {
-                        withAnimation {
-                            currentPage -= 1
-                        }
+                        changePage(to: currentPage - 1)
                     }
                     .glassButton()
                 }
 
                 if currentPage < welcomePages.count {
                     Button("Next") {
-                        withAnimation {
-                            currentPage += 1
-                        }
+                        changePage(to: currentPage + 1)
                     }
                     .glassButton(prominent: true)
                 } else {
@@ -118,6 +115,16 @@ struct OnboardingView: View {
         .onDisappear {
             fdaTimer?.invalidate()
             fdaTimer = nil
+        }
+    }
+
+    private func changePage(to page: Int) {
+        if reduceMotion {
+            currentPage = page
+        } else {
+            withAnimation {
+                currentPage = page
+            }
         }
     }
 }
