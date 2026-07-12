@@ -1,15 +1,8 @@
 import SwiftUI
 import AppKit
 
-struct FocusMacSweepSidebarKey: FocusedValueKey {
-    typealias Value = () -> Void
-}
-
 extension FocusedValues {
-    var focusMacSweepSidebar: (() -> Void)? {
-        get { self[FocusMacSweepSidebarKey.self] }
-        set { self[FocusMacSweepSidebarKey.self] = newValue }
-    }
+    @Entry var macSweepSidebarFocus: FocusState<Bool>.Binding?
 }
 
 /// Main content view with native macOS sidebar navigation.
@@ -36,9 +29,7 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .focusedSceneValue(\.focusMacSweepSidebar) {
-            isSidebarFocused = true
-        }
+        .focusedSceneValue(\.macSweepSidebarFocus, $isSidebarFocused)
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -68,10 +59,8 @@ struct ContentView: View {
         }
         .listStyle(.sidebar)
         .focused($isSidebarFocused)
+        .defaultFocus($isSidebarFocused, true)
         .accessibilityLabel("Feature navigation")
-        .onAppear {
-            isSidebarFocused = true
-        }
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking

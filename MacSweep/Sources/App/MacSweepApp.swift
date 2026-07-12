@@ -81,7 +81,7 @@ struct MacSweepApp: App {
 
 private struct MacSweepCommands: Commands {
     @ObservedObject var appState: AppState
-    @FocusedValue(\.focusMacSweepSidebar) private var focusSidebar
+    @FocusedValue(\.macSweepSidebarFocus) private var sidebarFocus
 
     var body: some Commands {
         CommandMenu("Scan") {
@@ -100,10 +100,10 @@ private struct MacSweepCommands: Commands {
 
         CommandMenu("Navigate") {
             Button("Focus Sidebar") {
-                focusSidebar?()
+                sidebarFocus?.wrappedValue = true
             }
             .keyboardShortcut("l", modifiers: [.command, .option])
-            .disabled(focusSidebar == nil)
+            .disabled(sidebarFocus == nil)
 
             Divider()
 

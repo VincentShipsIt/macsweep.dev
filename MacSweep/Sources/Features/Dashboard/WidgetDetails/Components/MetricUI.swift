@@ -55,20 +55,25 @@ private struct CriticalPulseAnimationModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.onAppear {
-            guard level == .critical, !reduceMotion else {
-                flag = false
-                return
-            }
-            withAnimation(
-                .easeInOut(duration: MetricThresholds.Pulse.duration).repeatForever(autoreverses: true)
-            ) {
-                flag = true
-            }
+            updateAnimation()
         }
-        .onChange(of: reduceMotion) { _, shouldReduceMotion in
-            if shouldReduceMotion {
-                flag = false
-            }
+        .onChange(of: level) {
+            updateAnimation()
+        }
+        .onChange(of: reduceMotion) {
+            updateAnimation()
+        }
+    }
+
+    private func updateAnimation() {
+        guard level == .critical, !reduceMotion else {
+            flag = false
+            return
+        }
+        withAnimation(
+            .easeInOut(duration: MetricThresholds.Pulse.duration).repeatForever(autoreverses: true)
+        ) {
+            flag = true
         }
     }
 }

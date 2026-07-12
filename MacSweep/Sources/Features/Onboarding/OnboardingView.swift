@@ -50,7 +50,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             // Page content
             TabView(selection: $currentPage) {
-                ForEach(Array(welcomePages.enumerated()), id: \.offset) { index, page in
+                ForEach(welcomePages.enumerated(), id: \.element.id) { index, page in
                     OnboardingPageView(page: page)
                         .tag(index)
                 }
@@ -317,12 +317,14 @@ struct FDAStepRow: View {
 
 // MARK: - Onboarding Page Model
 
-struct OnboardingPage {
+struct OnboardingPage: Identifiable {
     let icon: String
     let iconColor: Color
     let title: String
     let description: String
     let features: [(icon: String, text: String)]
+
+    var id: String { title }
 }
 
 // MARK: - Onboarding Page View
