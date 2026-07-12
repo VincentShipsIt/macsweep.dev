@@ -7,7 +7,7 @@ name: Release
 # MacSweep's formula is build-from-source: its `url` is GitHub's auto-generated source
 # tarball for the tag (archive/refs/tags/<tag>.tar.gz) and `sha256` is that tarball's
 # digest. The cask is prebuilt: it downloads the Developer ID-signed, notarized,
-# and stapled macsweep.dev.app zip. It depends on the formula, so
+# and stapled MacSweep.app zip. It depends on the formula, so
 # `brew install --cask vincentshipsit/tap/macsweep` installs both GUI + CLI.
 
 on:
@@ -158,9 +158,22 @@ jobs:
             -exportOptionsPlist "$EXPORT_OPTIONS" \
             -exportPath "$EXPORT_PATH"
 
-          APP="$EXPORT_PATH/macsweep.dev.app"
+          APP="$EXPORT_PATH/MacSweep.app"
           test -d "$APP"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist"
+          APP_INFO="$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_INFO")" == "MacSweep" ]] || {
+            echo "::error::CFBundleDisplayName is not MacSweep"
+            exit 1
+          }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP_INFO")" == "MacSweep" ]] || {
+            echo "::error::CFBundleName is not MacSweep"
+            exit 1
+          }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_INFO")" == "dev.macsweep.app" ]] || {
+            echo "::error::CFBundleIdentifier changed from dev.macsweep.app"
+            exit 1
+          }
 
           codesign --verify --deep --strict --verbose=4 "$APP"
           SIGNATURE_INFO="$(codesign -dvv "$APP" 2>&1)"

@@ -22,7 +22,7 @@ struct OnboardingView: View {
         OnboardingPage(
             icon: "sparkles",
             iconColor: .purple,
-            title: "Welcome to macsweep.dev",
+            title: "Welcome to MacSweep",
             description: "Keep your Mac clean, fast, and organized with powerful cleanup tools.",
             features: [
                 ("trash.circle", "Remove junk files and caches"),
@@ -35,7 +35,7 @@ struct OnboardingView: View {
             icon: "shield.checkered",
             iconColor: .green,
             title: "Safe & Secure",
-            description: "macsweep.dev protects your important files and never deletes anything without your permission.",
+            description: "MacSweep protects your important files and never deletes anything without your permission.",
             features: [
                 ("lock.shield", "Protected paths are never touched"),
                 ("eye", "Preview before you delete"),
@@ -171,8 +171,8 @@ struct FDAPermissionPageView: View {
 
     private var description: some View {
         Text(hasAccess
-            ? "macsweep.dev has the permissions it needs to scan and clean your Mac."
-            : "macsweep.dev needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
+            ? "MacSweep has the permissions it needs to scan and clean your Mac."
+            : "MacSweep needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
             .font(.body)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
@@ -199,14 +199,14 @@ struct FDAPermissionPageView: View {
 
             FDAStepRow(
                 step: 3,
-                title: "Add this macsweep.dev app",
-                description: "macsweep.dev may not appear automatically. Click + and choose the exact app that Finder reveals below."
+                title: "Add this MacSweep app",
+                description: "MacSweep may not appear automatically. Click + and choose the exact app that Finder reveals below."
             )
 
             FDAStepRow(
                 step: 4,
                 title: "Enable and relaunch",
-                description: "Turn macsweep.dev on, then quit and reopen it if macOS asks."
+                description: "Turn MacSweep on, then quit and reopen it if macOS asks."
             )
         }
         .padding(16)
@@ -260,7 +260,7 @@ struct FDAPermissionPageView: View {
             .padding()
             .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
 
-            Text("You can now use all of macsweep.dev's features.")
+            Text("You can now use all of MacSweep's features.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
