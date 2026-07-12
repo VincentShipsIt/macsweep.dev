@@ -657,7 +657,7 @@ public enum CLIExecutor {
         }
     }
 
-    private static func renderText<T>(_ value: T) -> String {
+    static func renderText<T>(_ value: T) -> String {
         switch value {
         case let output as CLIScanOutput:
             let recommendedFindings = output.findings
@@ -759,7 +759,7 @@ public enum CLIExecutor {
             }.joined(separator: "\n")
 
         case let output as CLIVersionOutput:
-            return "macsweep \(output.version)"
+            return "\(MacSweepVersion.productName) \(output.version)"
 
         case let output as CLISpaceOutput:
             let formatter = ByteCountFormatter()
@@ -1071,7 +1071,7 @@ public enum CLIExecutor {
                     lines.append(log)
                 }
             } else {
-                lines.append("MacSweep \(result.currentVersion)")
+                lines.append("\(MacSweepVersion.productName) \(result.currentVersion)")
                 lines.append("To upgrade via Homebrew, run:")
                 lines.append("  \(result.upgradeCommand)")
                 lines.append("Or re-run with --yes to upgrade now.")

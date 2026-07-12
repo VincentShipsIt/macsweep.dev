@@ -68,7 +68,7 @@ struct MenuBarView: View {
                 .font(.title2)
                 .foregroundStyle(.purple)
 
-            Text("MacSweep")
+            Text(MacSweepVersion.productName)
                 .font(.headline)
 
             Spacer()
@@ -153,7 +153,7 @@ struct MenuBarView: View {
             Button {
                 openMainWindow()
             } label: {
-                Label("Open MacSweep", systemImage: "macwindow")
+                Label("Open \(MacSweepVersion.productName)", systemImage: "macwindow")
             }
             .buttonStyle(.plain)
 
