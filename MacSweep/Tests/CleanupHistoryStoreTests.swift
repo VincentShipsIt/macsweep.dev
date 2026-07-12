@@ -3,15 +3,27 @@ import Testing
 @testable import MacSweepCore
 
 final class CleanupHistoryStoreTests {
+    private struct InjectedFailure: LocalizedError {
+        var errorDescription: String? { "Injected cleanup failure" }
+    }
+
     private struct TestModule: ScanModule {
-        let id = "system-cache"
-        let name = "System Cache"
+        let id: String
+        let name: String
         let description = "Test cleanup module"
         let icon = "testtube.2"
+        var shouldThrow = false
+
+        init(id: String = "system-cache", name: String = "System Cache", shouldThrow: Bool = false) {
+            self.id = id
+            self.name = name
+            self.shouldThrow = shouldThrow
+        }
 
         func scan() async throws -> [CleanupItem] { [] }
 
         func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+            if shouldThrow { throw InjectedFailure() }
             CleanupResult(
                 itemsProcessed: items.count,
                 bytesFreed: items.reduce(0) { $0 + $1.size }
@@ -129,5 +141,52 @@ final class CleanupHistoryStoreTests {
         #expect(result.errors.count == 1)
         #expect(run.failedCount == 1)
         #expect(run.records[0].errorMessage?.hasPrefix("Safety check failed:") == true)
+    }
+
+    @Test func scanEngineRecordsCompletedModulesBeforeALaterModuleThrows() async throws {
+        let store = store()
+        let engine = ScanEngine(
+            modules: [
+                TestModule(id: "system-cache", name: "System Cache"),
+                TestModule(id: "large-files", name: "Large Files", shouldThrow: true)
+            ],
+            cleanupHistoryStore: store
+        )
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+        let first = item(
+            path: temporaryDirectory.appendingPathComponent("completed.cache").path,
+            module: "system-cache",
+            moduleName: "System Cache"
+        )
+        let second = item(
+            path: temporaryDirectory.appendingPathComponent("failed.cache").path,
+            module: "large-files",
+            moduleName: "Large Files"
+        )
+        try Data("completed".utf8).write(to: first.path)
+        try Data("failed".utf8).write(to: second.path)
+        defer {
+            try? FileManager.default.removeItem(at: first.path)
+            try? FileManager.default.removeItem(at: second.path)
+        }
+
+        await #expect(throws: InjectedFailure.self) {
+            _ = try await engine.clean(
+                items: [first, second],
+                dryRun: false,
+                confirmedLargeDeletion: true
+            )
+        }
+
+        let runs = store.history
+        #expect(runs.count == 2)
+        let completedRun = try #require(runs.first { $0.records.first?.moduleID == "system-cache" })
+        let failedRun = try #require(runs.first { $0.records.first?.moduleID == "large-files" })
+        #expect(completedRun.records.map(\.originalPath) == [first.path.path])
+        #expect(completedRun.completedCount == 1)
+        #expect(completedRun.containsTrashRecovery == false)
+        #expect(failedRun.records.map(\.originalPath) == [second.path.path])
+        #expect(failedRun.failedCount == 1)
+        #expect(failedRun.records[0].errorMessage == "Injected cleanup failure")
     }
 }

@@ -55,6 +55,45 @@ struct ScanProgressUpdate: Sendable, Equatable {
 typealias ScanProgressHandler = @Sendable (ScanProgressUpdate) async -> Void
 
 actor ScanEngine {
+    private struct PartialCleanupFailure: Error {
+        let finalizedItems: [CleanupItem]
+        let partialResult: CleanupResult
+        let remainingItems: [CleanupItem]
+        let underlyingError: Error
+    }
+
+    private struct CleanupProgress {
+        var processedCount = 0
+        var bytesFreed: Int64 = 0
+        var errors: [CleanupError] = []
+        var finalizedItems: [CleanupItem] = []
+        var finalizedItemIDs = Set<CleanupItem.ID>()
+
+        var result: CleanupResult {
+            CleanupResult(
+                itemsProcessed: processedCount,
+                bytesFreed: bytesFreed,
+                errors: errors
+            )
+        }
+
+        mutating func finalize(_ items: [CleanupItem], result: CleanupResult? = nil) {
+            if let result {
+                let (nextProcessedCount, countOverflow) = processedCount.addingReportingOverflow(
+                    result.itemsProcessed
+                )
+                processedCount = countOverflow ? Int.max : nextProcessedCount
+                let (nextBytesFreed, bytesOverflow) = bytesFreed.addingReportingOverflow(
+                    result.bytesFreed
+                )
+                bytesFreed = bytesOverflow ? Int64.max : nextBytesFreed
+                errors.append(contentsOf: result.errors)
+            }
+            finalizedItems.append(contentsOf: items)
+            finalizedItemIDs.formUnion(items.map(\.id))
+        }
+    }
+
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
     private let deletionGuard: DeletionGuard
@@ -261,6 +300,20 @@ actor ScanEngine {
             )
             cleanupHistoryStore.record(items: items, result: result)
             return result
+        } catch let partial as PartialCleanupFailure {
+            if !partial.finalizedItems.isEmpty {
+                cleanupHistoryStore.record(
+                    items: partial.finalizedItems,
+                    result: partial.partialResult
+                )
+            }
+            if !partial.remainingItems.isEmpty {
+                cleanupHistoryStore.recordFailure(
+                    items: partial.remainingItems,
+                    error: partial.underlyingError
+                )
+            }
+            throw partial.underlyingError
         } catch {
             cleanupHistoryStore.recordFailure(items: items, error: error)
             throw error
@@ -272,9 +325,7 @@ actor ScanEngine {
         dryRun: Bool,
         confirmedLargeDeletion: Bool
     ) async throws -> CleanupResult {
-        var processedCount = 0
-        var bytesFreed: Int64 = 0
-        var errors: [CleanupError] = []
+        var progress = CleanupProgress()
         let groupedItems = Dictionary(grouping: items, by: \.module)
         let modulesByID = Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
         let orderedModuleIDs = groupedItems.keys.sorted { lhs, rhs in
@@ -295,9 +346,10 @@ actor ScanEngine {
         for moduleID in orderedModuleIDs {
             guard let moduleItems = groupedItems[moduleID] else { continue }
             guard let module = modulesByID[moduleID] else {
-                errors.append(contentsOf: moduleItems.map {
+                progress.errors.append(contentsOf: moduleItems.map {
                     CleanupError(path: $0.path, message: "No cleanup module registered for \(moduleID)")
                 })
+                progress.finalize(moduleItems)
                 continue
             }
 
@@ -305,10 +357,11 @@ actor ScanEngine {
                 let validation = safetyChecker.validateForCleanup(item, moduleID: moduleID)
 
                 if !validation.isSafe {
-                    errors.append(CleanupError(
+                    progress.errors.append(CleanupError(
                         path: item.path,
                         message: "Safety check failed: \(validation.reason ?? "protected")"
                     ))
+                    progress.finalize([item])
                 }
 
                 return validation.isSafe
@@ -344,35 +397,74 @@ actor ScanEngine {
         // Carry forward the measured impact of earlier dispatches so the 10 GiB
         // cap applies to the whole operation, even when modules return incomplete
         // or stale bytes-freed accounting.
+        try await executeCleanupPlan(
+            plan,
+            allItems: items,
+            dryRun: dryRun,
+            confirmedLargeDeletion: confirmedLargeDeletion,
+            progress: &progress
+        )
+        return progress.result
+    }
+
+    private func executeCleanupPlan(
+        _ plan: [(module: any ScanModule, items: [CleanupItem])],
+        allItems: [CleanupItem],
+        dryRun: Bool,
+        confirmedLargeDeletion: Bool,
+        progress: inout CleanupProgress
+    ) async throws {
         var authorizedImpact: Int64 = 0
         for entry in plan {
-            if !dryRun {
-                switch deletionGuard.evaluate(
-                    items: entry.items,
-                    alreadyAuthorizedSize: authorizedImpact
-                ) {
-                case .blocked(let reason):
-                    throw ScanEngineError.deletionBlocked(reason: reason)
-                case .requiresConfirmation(let cumulativeSize):
-                    guard confirmedLargeDeletion else {
-                        throw ScanEngineError.confirmationRequired(size: cumulativeSize)
-                    }
-                    authorizedImpact = cumulativeSize
-                case .allowed(let cumulativeSize):
-                    authorizedImpact = cumulativeSize
+            do {
+                if !dryRun {
+                    authorizedImpact = try evaluateAuthorizedImpact(
+                        for: entry.items,
+                        alreadyAuthorized: authorizedImpact,
+                        confirmedLargeDeletion: confirmedLargeDeletion
+                    )
                 }
+                let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
+                progress.finalize(entry.items, result: result)
+            } catch {
+                guard !dryRun else { throw error }
+                throw partialCleanupFailure(
+                    progress: progress,
+                    allItems: allItems,
+                    underlyingError: error
+                )
             }
-
-            let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
-            processedCount += result.itemsProcessed
-            bytesFreed += result.bytesFreed
-            errors.append(contentsOf: result.errors)
         }
+    }
 
-        return CleanupResult(
-            itemsProcessed: processedCount,
-            bytesFreed: bytesFreed,
-            errors: errors
+    private func evaluateAuthorizedImpact(
+        for items: [CleanupItem],
+        alreadyAuthorized: Int64,
+        confirmedLargeDeletion: Bool
+    ) throws -> Int64 {
+        switch deletionGuard.evaluate(items: items, alreadyAuthorizedSize: alreadyAuthorized) {
+        case .blocked(let reason):
+            throw ScanEngineError.deletionBlocked(reason: reason)
+        case .requiresConfirmation(let cumulativeSize):
+            guard confirmedLargeDeletion else {
+                throw ScanEngineError.confirmationRequired(size: cumulativeSize)
+            }
+            return cumulativeSize
+        case .allowed(let cumulativeSize):
+            return cumulativeSize
+        }
+    }
+
+    private func partialCleanupFailure(
+        progress: CleanupProgress,
+        allItems: [CleanupItem],
+        underlyingError: Error
+    ) -> PartialCleanupFailure {
+        PartialCleanupFailure(
+            finalizedItems: progress.finalizedItems,
+            partialResult: progress.result,
+            remainingItems: allItems.filter { !progress.finalizedItemIDs.contains($0.id) },
+            underlyingError: underlyingError
         )
     }
 }
