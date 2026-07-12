@@ -35,11 +35,13 @@ struct SystemCleanupView: View {
                     action: { Task { await appState.scan(modules: ["system-cache"]) } }
                 )
             } else {
-                resultsList
+                VStack(spacing: 0) {
+                    resultsList
 
-                Divider()
+                    Divider()
 
-                footer
+                    footer
+                }
             }
         }
         .errorAlert("Cleanup Failed", message: $appState.lastDeletionError)
