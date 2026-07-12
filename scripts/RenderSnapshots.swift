@@ -105,6 +105,8 @@ struct SnapshotRenderer {
         cleanupState.scanResults = cleanupItems
         cleanupState.selectedItems = Set(cleanupItems.prefix(3).map(\.id))
 
+        let smartCareState = sampleSmartCareState()
+
         let largeItems = sampleLargeItems()
         let largeSelection = Set(largeItems.prefix(2).map(\.id))
 
@@ -112,6 +114,7 @@ struct SnapshotRenderer {
         let orphans = sampleOrphans()
 
         return [
+            ("smart-care-results", wrap(DashboardView(), appState: smartCareState)),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
@@ -165,6 +168,39 @@ struct SnapshotRenderer {
 
     private static func daysAgo(_ days: Double) -> Date {
         sampleBaseDate.addingTimeInterval(-days * 86_400)
+    }
+
+    @MainActor
+    private static func sampleSmartCareState() -> AppState {
+        let state = AppState()
+        let items = sampleSmartCareItems()
+        state.scanResults = items
+        state.smartCareSummary = SmartCareAnalyzer().summarize(items: items, diskUsage: nil)
+        state.selectRecommended()
+        return state
+    }
+
+    @MainActor
+    static func sampleSmartCareItems() -> [CleanupItem] {
+        func item(_ name: String, _ size: Int64, _ module: String, _ moduleName: String) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/\(name)"),
+                size: size,
+                type: .file,
+                module: module,
+                moduleName: moduleName,
+                lastModified: daysAgo(8)
+            )
+        }
+
+        return [
+            item("Library/Caches/Xcode", 2_600_000_000, "dev-tools", "Developer Tools"),
+            item("Library/Caches/Safari", 840_000_000, "system-cache", "System Junk"),
+            item("Movies/archive.mov", 6_400_000_000, "large-files", "Large Files"),
+            item("Pictures/duplicate.jpg", 18_000_000, "duplicates", "Duplicate Files"),
+            item("Pictures/similar.jpg", 16_000_000, "similar-photos", "Similar Photos"),
+        ]
     }
 
     /// System-junk rows for the SystemCleanup results layout: a realistic spread
