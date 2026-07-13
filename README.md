@@ -202,8 +202,8 @@ MacSweep treats scan results as a proposal, not permission to delete:
   a non-symlink `.app` directly inside `/Applications` or `~/Applications` may
   move to Trash after dedicated validation, but removal of either root remains
   blocked. Paths are re-checked immediately before removal.
-- **Confirmation and deletion caps** - Operations above 1 GB require explicit
-  confirmation. The cleanup engine blocks a single run above its 10 GB hard cap.
+- **Confirmation and deletion caps** - Operations above 1 GiB require explicit
+  confirmation. The cleanup engine blocks a single run above its 10 GiB hard cap.
 - **Live preflight checks** - MacSweep re-measures selected paths and applies the
   safety policy at deletion time instead of trusting stale scan metadata.
 - **Assistant guardrails** - AI-planned scans use the same safety checks as
