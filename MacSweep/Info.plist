@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>SUFeedURL</key>
-	<string>https://github.com/VincentShipsIt/macsweep/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/VincentShipsIt/macsweep.dev/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>$(SPARKLE_PUBLIC_ED_KEY)</string>
 	<key>NSAppBundlesUsageDescription</key>

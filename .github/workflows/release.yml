@@ -181,7 +181,7 @@ jobs:
             echo "::error::Sparkle public key is missing from the exported app"
             exit 1
           }
-          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_INFO")" == "https://github.com/VincentShipsIt/macsweep/releases/latest/download/appcast.xml" ]] || {
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP_INFO")" == "https://github.com/VincentShipsIt/macsweep.dev/releases/latest/download/appcast.xml" ]] || {
             echo "::error::Sparkle appcast URL is incorrect"
             exit 1
           }
