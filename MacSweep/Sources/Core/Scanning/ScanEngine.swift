@@ -25,11 +25,44 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
 /// A single module that failed during a scan, captured rather than swallowed.
 struct ModuleScanFailure: Sendable, Equatable {
     let moduleID: String
+    let moduleName: String
     let message: String
+
+    /// Permission failures need a different recovery path from transient scan
+    /// failures. Keep the classifier in core so every UI presents the same
+    /// diagnosis instead of relying on view-specific string checks.
+    var requiresFullDiskAccess: Bool {
+        let normalized = message.lowercased()
+        if normalized.contains("full disk access") {
+            return true
+        }
+
+        let fullDiskAccessModules = ["browser-safari", "mail-attachments", "privacy"]
+        guard fullDiskAccessModules.contains(moduleID) else { return false }
+
+        return [
+            "operation not permitted",
+            "permission denied",
+            "access denied",
+            "not authorized"
+        ].contains { normalized.contains($0) }
+    }
+
+    /// A single-line reason suitable for an inline banner. The complete message
+    /// remains available for copied diagnostic reports.
+    var conciseMessage: String {
+        let singleLine = message
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = singleLine.isEmpty ? "The module did not return a reason." : singleLine
+        guard fallback.count > 160 else { return fallback }
+        return String(fallback.prefix(157)) + "…"
+    }
 }
 
 /// Result of a scan that records which modules failed instead of silently
-/// returning a short item list. A partial scan (some modules threw) is still a
+/// returning a short item list. A partial scan (some modules failed) is still a
 /// useful result, but the caller must be able to tell the user it was partial.
 struct PartialScanResult: Sendable {
     let items: [CleanupItem]
@@ -160,7 +193,8 @@ actor ScanEngine {
     ///
     /// Unlike ``scan(modules:)``, a thrown module error is recorded as a
     /// ``ModuleScanFailure`` rather than silently swallowed, so the caller can
-    /// surface that the result is partial.
+    /// surface that the result is partial. Cancellation is excluded because a
+    /// user stopping a scan is not a module failure.
     func scanWithDiagnostics(modules moduleIDs: [String]? = nil, progress: ScanProgressHandler? = nil) async -> PartialScanResult {
         let modulesToScan: [any ScanModule]
 
@@ -174,6 +208,7 @@ actor ScanEngine {
         // a failing module never tears down the whole group.
         enum ModuleOutcome: Sendable {
             case items(moduleID: String, moduleName: String, items: [CleanupItem])
+            case cancelled(moduleID: String, moduleName: String)
             case failure(ModuleScanFailure, moduleName: String)
         }
 
@@ -195,9 +230,12 @@ actor ScanEngine {
                             self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
+                    } catch is CancellationError {
+                        return .cancelled(moduleID: module.id, moduleName: module.name)
                     } catch {
                         return .failure(ModuleScanFailure(
                             moduleID: module.id,
+                            moduleName: module.name,
                             message: error.localizedDescription
                         ), moduleName: module.name)
                     }
@@ -213,6 +251,13 @@ actor ScanEngine {
                 switch outcome {
                 case .items(let moduleID, let moduleName, let items):
                     allItems.append(contentsOf: items)
+                    await progress?(ScanProgressUpdate(
+                        completedModules: completedModules,
+                        totalModules: totalModules,
+                        moduleID: moduleID,
+                        moduleName: moduleName
+                    ))
+                case .cancelled(let moduleID, let moduleName):
                     await progress?(ScanProgressUpdate(
                         completedModules: completedModules,
                         totalModules: totalModules,

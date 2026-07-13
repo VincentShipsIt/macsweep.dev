@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Widget types for popover expansion
 enum WidgetType: String, CaseIterable {
@@ -46,6 +47,17 @@ struct DashboardView: View {
                             tint: .orange,
                             title: "Scan Failed",
                             detail: lastError
+                        )
+                    }
+
+                    if !appState.scanFailures.isEmpty {
+                        PartialScanStatusRow(
+                            failures: appState.scanFailures,
+                            retry: {
+                                Task { await appState.retryLastScan() }
+                            },
+                            openFullDiskAccess: FullDiskAccess.openSystemPreferences,
+                            copyDetails: copyPartialScanDetails
                         )
                     }
 
@@ -235,7 +247,7 @@ struct DashboardView: View {
                     .fontWeight(.semibold)
                     .monospacedDigit()
 
-                Text("Score")
+                Text(appState.scanFailures.isEmpty ? "Score" : "Partial Score")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -243,6 +255,12 @@ struct DashboardView: View {
                     Text(summary.formattedBytes)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    if !appState.scanFailures.isEmpty {
+                        Text("from partial results")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
         }
@@ -276,9 +294,20 @@ struct DashboardView: View {
             return appState.currentScanModule ?? "MacSweep is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
-            return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."
+            let prefix = appState.scanFailures.isEmpty ? "" : "Partial results: "
+            return "\(prefix)\(summary.issueCount) items across \(summary.findings.count) categories. "
+                + "Recommended safe items are preselected."
         }
         return "Scans junk, large files, duplicates, similar photos, developer artifacts, and cloud storage waste."
+    }
+
+    private func copyPartialScanDetails() {
+        let lines = appState.scanFailures.map {
+            "\($0.moduleName) [\($0.moduleID)]: \($0.message)"
+        }
+        let report = (["macsweep.dev partial scan report"] + lines).joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
     }
 
     private var hasRecommendedCleanup: Bool {
@@ -771,6 +800,55 @@ struct DashboardView: View {
         case .warning: return .orange
         case .critical: return .red
         }
+    }
+}
+
+private struct PartialScanStatusRow: View {
+    let failures: [ModuleScanFailure]
+    let retry: () -> Void
+    let openFullDiskAccess: () -> Void
+    let copyDetails: () -> Void
+
+    private var hasPermissionFailure: Bool {
+        failures.contains(where: \.requiresFullDiskAccess)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Partial results")
+                    .font(.headline)
+                Text("\(failures.count) \(failures.count == 1 ? "module" : "modules") could not be scanned")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(failures, id: \.moduleID) { failure in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(failure.moduleName)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(failure.conciseMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            HStack(spacing: 8) {
+                if hasPermissionFailure {
+                    Button("Open Full Disk Access", action: openFullDiskAccess)
+                }
+                Button("Retry", action: retry)
+                Button("Copy Details", action: copyDetails)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .contain)
     }
 }
 

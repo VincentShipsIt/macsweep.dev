@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var scanResults: [CleanupItem] = []
     @Published var selectedItems: Set<CleanupItem.ID> = []
     @Published var smartCareSummary: SmartCareSummary?
+    @Published var scanFailures: [ModuleScanFailure] = []
 
     /// Last scan failure, surfaced to the UI. Cleared at the start of each scan.
     @Published var lastError: String?
@@ -49,6 +50,12 @@ final class AppState: ObservableObject {
     private let cleanupPerformanceStore = CleanupPerformanceStore.shared
     private var activeScanTask: Task<Void, Never>?
     private var activeScanID: UUID?
+    private var lastScanScope: ScanScope?
+
+    private struct ScanScope {
+        let modules: [String]?
+        let assistantTargets: [AssistantScanTarget]
+    }
 
     // MARK: - Initialization
     init(initialFullDiskAccess: Bool = FullDiskAccess.hasAccess) {
@@ -71,19 +78,25 @@ final class AppState: ObservableObject {
     }
 
     func quickScan() async {
-        await startScan(
-            moduleScan: { progress in try await self.scanEngine.smartCareScan(progress: progress) },
+        await startScan(scope: ScanScope(
             modules: SmartCareDefaults.moduleIDs,
             assistantTargets: assistant.enabledTargets
-        )
+        ))
     }
 
     func scan(modules: [String]? = nil) async {
-        await startScan(
-            moduleScan: { progress in try await self.scanEngine.scan(modules: modules, progress: progress) },
+        await startScan(scope: ScanScope(
             modules: modules,
             assistantTargets: modules == nil ? assistant.enabledTargets : []
-        )
+        ))
+    }
+
+    func retryLastScan() async {
+        guard let lastScanScope else {
+            await quickScan()
+            return
+        }
+        await startScan(scope: lastScanScope)
     }
 
     func deleteSelected(dryRun: Bool = false, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
@@ -189,14 +202,10 @@ final class AppState: ObservableObject {
     }
 
     func runAssistantPlan(_ plan: AssistantScanPlan) async {
-        await startScan(
-            moduleScan: { [scanEngine] progress in
-                guard !plan.modules.isEmpty else { return [] }
-                return try await scanEngine.scan(modules: plan.modules, progress: progress)
-            },
+        await startScan(scope: ScanScope(
             modules: plan.modules,
             assistantTargets: plan.customTargets
-        )
+        ))
     }
 
     private func applyScanResults(_ items: [CleanupItem], modules: [String]?) {
@@ -212,11 +221,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func startScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
-        modules: [String]?,
-        assistantTargets: [AssistantScanTarget]
-    ) async {
+    private func startScan(scope: ScanScope) async {
         // Serialize concurrent scan requests instead of dropping them. The previous
         // early `return` discarded this caller's modules/targets and let them see an
         // unrelated in-flight scan's results (e.g. an assistant plan showing a
@@ -231,9 +236,7 @@ final class AppState: ObservableObject {
 
         let task = Task { @MainActor in
             await self.performScan(
-                moduleScan: moduleScan,
-                modules: modules,
-                assistantTargets: assistantTargets
+                scope: scope
             )
 
             if self.activeScanID == scanID {
@@ -246,17 +249,15 @@ final class AppState: ObservableObject {
         await task.value
     }
 
-    private func performScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
-        modules: [String]?,
-        assistantTargets: [AssistantScanTarget]
-    ) async {
+    private func performScan(scope: ScanScope) async {
+        lastScanScope = scope
         isScanning = true
         scanProgress = 0
         currentScanModule = "Preparing scan"
         scanResults = []
         selectedItems = []
         smartCareSummary = nil
+        scanFailures = []
         lastError = nil
 
         defer {
@@ -279,14 +280,22 @@ final class AppState: ObservableObject {
         }
 
         do {
-            async let primaryItems = moduleScan(progressHandler)
-            async let watchlistItems = scanEngine.scanAssistantTargets(assistantTargets)
-            let scannedItems = try await primaryItems
-            currentScanModule = assistantTargets.isEmpty ? "Finalizing results" : "Checking assistant watchlist"
+            async let primaryResult = scanEngine.scanWithDiagnostics(
+                modules: scope.modules,
+                progress: progressHandler
+            )
+            async let watchlistItems = scanEngine.scanAssistantTargets(scope.assistantTargets)
+            let result = await primaryResult
+            currentScanModule = scope.assistantTargets.isEmpty
+                ? "Finalizing results"
+                : "Checking assistant watchlist"
             scanProgress = max(scanProgress, 0.95)
             let persistentItems = try await watchlistItems
-            let combined = deduplicated(items: scannedItems + persistentItems)
-            applyScanResults(combined, modules: modules)
+            let combined = deduplicated(items: result.items + persistentItems)
+            scanFailures = result.failures.sorted {
+                $0.moduleName.localizedStandardCompare($1.moduleName) == .orderedAscending
+            }
+            applyScanResults(combined, modules: scope.modules)
             scanProgress = 1
         } catch is CancellationError {
             // User-initiated stop — not an error worth a banner.

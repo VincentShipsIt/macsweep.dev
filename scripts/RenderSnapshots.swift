@@ -113,6 +113,23 @@ struct SnapshotRenderer {
         cleanupState.scanResults = cleanupItems
         cleanupState.selectedItems = Set(cleanupItems.prefix(3).map(\.id))
 
+        let partialState = AppState()
+        partialState.scanResults = cleanupItems
+        partialState.selectedItems = Set(cleanupItems.prefix(2).map(\.id))
+        partialState.smartCareSummary = SmartCareAnalyzer().summarize(items: cleanupItems, diskUsage: nil)
+        partialState.scanFailures = [
+            ModuleScanFailure(
+                moduleID: "mail-attachments",
+                moduleName: "Mail Attachments",
+                message: "Operation not permitted while reading protected Mail data."
+            ),
+            ModuleScanFailure(
+                moduleID: "docker",
+                moduleName: "Docker",
+                message: "Docker did not respond before the scan timeout."
+            ),
+        ]
+
         let smartCareState = sampleSmartCareState()
 
         let largeItems = sampleLargeItems()
@@ -122,6 +139,7 @@ struct SnapshotRenderer {
         let orphans = sampleOrphans()
 
         return [
+            ("smart-care-partial-results", wrap(DashboardView(), appState: partialState)),
             ("smart-care-results", wrap(DashboardView(), appState: smartCareState)),
             ("smart-care-missing-full-disk-access", wrap(
                 DashboardView(),
