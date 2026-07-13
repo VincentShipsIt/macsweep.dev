@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// View for cleaning up developer artifacts
@@ -694,9 +695,7 @@ struct ProjectRow: View {
                                 .padding(.vertical, 4)
                                 .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
 
-                            CopyButton(item: project.regenerateCommand)
-                                .labelStyle(.iconOnly)
-                                .help("Copy to clipboard")
+                            CopyCommandButton(command: project.regenerateCommand)
                         }
                     }
                     .padding()
@@ -864,14 +863,31 @@ struct GitArtifactRow: View {
                             .padding(.vertical, 4)
                             .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
 
-                        CopyButton(item: item.commandPreview)
-                            .labelStyle(.iconOnly)
-                            .help("Copy to clipboard")
+                        CopyCommandButton(command: item.commandPreview)
                     }
                 }
                 .padding()
             }
         }
+    }
+}
+
+// MARK: - Copy Command Button
+
+private struct CopyCommandButton: View {
+    let command: String
+
+    var body: some View {
+        Button {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(command, forType: .string)
+        } label: {
+            Image(systemName: "doc.on.doc")
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy command to clipboard")
+        .help("Copy to clipboard")
     }
 }
 
