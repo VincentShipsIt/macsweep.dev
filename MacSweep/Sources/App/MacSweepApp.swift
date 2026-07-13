@@ -40,7 +40,7 @@ struct MacSweepApp: App {
     }
 
     private var mainWindowContent: some View {
-        ContentView()
+        ContentView(allowsInitialSidebarFocus: hasCompletedOnboarding && !showingOnboarding)
             .environmentObject(appDelegate.appState)
             .background(MainWindowIdentifierAccessor())
             // Open compact and centered every launch (CleanMyMac-style), instead of
@@ -100,7 +100,13 @@ private struct MacSweepCommands: Commands {
 
         CommandMenu("Navigate") {
             Button("Focus Sidebar") {
-                sidebarFocus?.wrappedValue = true
+                guard let sidebarFocus else { return }
+
+                sidebarFocus.columnVisibility.wrappedValue = .all
+                // Let the split view restore the sidebar before assigning focus.
+                DispatchQueue.main.async {
+                    sidebarFocus.isFocused.wrappedValue = true
+                }
             }
             .keyboardShortcut("l", modifiers: [.command, .option])
             .disabled(sidebarFocus == nil)

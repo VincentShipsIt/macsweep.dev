@@ -1,12 +1,18 @@
 import SwiftUI
 import AppKit
 
+struct MacSweepSidebarFocus {
+    let isFocused: FocusState<Bool>.Binding
+    let columnVisibility: Binding<NavigationSplitViewVisibility>
+}
+
 extension FocusedValues {
-    @Entry var macSweepSidebarFocus: FocusState<Bool>.Binding?
+    @Entry var macSweepSidebarFocus: MacSweepSidebarFocus?
 }
 
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
+    var allowsInitialSidebarFocus = true
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -29,7 +35,10 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .focusedSceneValue(\.macSweepSidebarFocus, $isSidebarFocused)
+        .focusedSceneValue(
+            \.macSweepSidebarFocus,
+            MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
+        )
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -59,7 +68,7 @@ struct ContentView: View {
         }
         .listStyle(.sidebar)
         .focused($isSidebarFocused)
-        .defaultFocus($isSidebarFocused, true)
+        .defaultFocus($isSidebarFocused, allowsInitialSidebarFocus)
         .accessibilityLabel("Feature navigation")
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing

@@ -242,7 +242,7 @@ struct MacSweepErrorBanner: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss error")
-            .accessibilityHint(message)
+            .accessibilityHint("Dismisses this message")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
