@@ -28,6 +28,8 @@ struct SelectionCheckmark: View {
             .accessibilityLabel(isSelected ? "Deselect item" : "Select item")
         } else {
             image
+                .accessibilityLabel("Selection")
+                .accessibilityValue(isSelected ? "Selected" : "Not selected")
         }
     }
 }
@@ -202,13 +204,22 @@ extension View {
 struct RescanButton: View {
     var title: String = "Rescan"
     let isScanning: Bool
+    var usesNativeToolbarStyle = false
     let action: () -> Void
 
+    @ViewBuilder
     var body: some View {
+        if usesNativeToolbarStyle {
+            button
+        } else {
+            button.glassButton()
+        }
+    }
+
+    private var button: some View {
         Button(action: action) {
             Label(title, systemImage: "arrow.clockwise")
         }
-        .glassButton()
         .controlSize(.small)
         .disabled(isScanning)
     }

@@ -38,7 +38,7 @@ struct LargeFilesView: View {
             title: "Large & Old Files",
             subtitle: "Find large files and folders by size and age.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanLargeFiles() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanLargeFiles() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty

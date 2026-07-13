@@ -11,7 +11,7 @@ struct DuplicateFinderView: View {
             title: "Duplicate Files",
             subtitle: "Find redundant copies and keep the best version.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanDuplicates() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanDuplicates() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty

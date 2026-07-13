@@ -20,7 +20,7 @@ struct PrivacyView: View {
             title: "Privacy",
             subtitle: "Remove traces of your recent activity.",
             trailing: (hasScanned && !isScanning) ? AnyView(
-                RescanButton(isScanning: isScanning) { Task { await scanPrivacy() } }
+                RescanButton(isScanning: isScanning, usesNativeToolbarStyle: true) { Task { await scanPrivacy() } }
             ) : nil,
             hidesChrome: isScanning || !hasScanned,
             scrolls: isScanning || !hasScanned

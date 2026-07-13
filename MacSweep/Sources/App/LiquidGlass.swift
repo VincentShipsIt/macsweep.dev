@@ -102,13 +102,13 @@ enum MacSweepTheme {
         lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.10),
         darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.14)
     )
-    static let glassCardTint = Color.adaptive(
+    static let cardTint = Color.adaptive(
         light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.18),
         dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.055),
         lightHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.28),
         darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.12)
     )
-    static let glassCardStroke = Color.adaptive(
+    static let cardStroke = Color.adaptive(
         light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.12),
         dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.15),
         lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.24),
@@ -142,12 +142,9 @@ struct MacSweepCompanionSurface: View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
         shape
-            .fill(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color.clear)
-            .background {
-                if !reduceTransparency {
-                    shape.fill(.ultraThinMaterial)
-                }
-            }
+            .fill(reduceTransparency
+                  ? Color(nsColor: .windowBackgroundColor)
+                  : Color(nsColor: .controlBackgroundColor))
             .overlay {
                 if !reduceTransparency {
                     shape.fill(MacSweepTheme.companionTint)
@@ -166,7 +163,7 @@ struct MacSweepCompanionSurface: View {
                 .clipShape(shape)
             }
             .overlay {
-                shape.stroke(MacSweepTheme.glassCardStroke, lineWidth: 1)
+                shape.stroke(MacSweepTheme.cardStroke, lineWidth: 1)
             }
     }
 }
@@ -180,20 +177,12 @@ private struct MacSweepCardModifier: ViewModifier {
 
         content
             .background {
-                shape.fill(reduceTransparency ? Color(nsColor: .windowBackgroundColor) : Color.clear)
-            }
-            .background {
-                if !reduceTransparency {
-                    shape.fill(.ultraThinMaterial)
-                }
+                shape.fill(reduceTransparency
+                           ? Color(nsColor: .windowBackgroundColor)
+                           : Color(nsColor: .controlBackgroundColor))
             }
             .overlay {
-                if !reduceTransparency {
-                    shape.fill(MacSweepTheme.glassCardTint)
-                }
-            }
-            .overlay {
-                shape.stroke(MacSweepTheme.glassCardStroke, lineWidth: 0.6)
+                shape.stroke(MacSweepTheme.cardStroke, lineWidth: 0.6)
             }
     }
 }

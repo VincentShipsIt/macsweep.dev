@@ -18,7 +18,6 @@ struct BatteryMonitorView: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .glassButton()
             )
         ) {
             ScrollView {

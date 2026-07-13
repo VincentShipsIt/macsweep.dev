@@ -200,8 +200,6 @@ struct CircularScanButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(MacSweepTheme.panel)
-                Circle()
                     .strokeBorder(MacSweepTheme.accent.opacity(0.95), lineWidth: 2)
                     .shadow(color: MacSweepTheme.accent.opacity(!reduceMotion && isHovering ? 0.7 : 0.45),
                             radius: !reduceMotion && isHovering ? 16 : 9)
@@ -212,6 +210,11 @@ struct CircularScanButton: View {
             .frame(width: 96, height: 96)
             .scaleEffect(!reduceMotion && isHovering ? 1.04 : 1.0)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+            .glassControl(
+                in: Circle(),
+                tint: MacSweepTheme.accent.opacity(0.18),
+                interactive: true
+            )
         }
         .buttonStyle(.plain)
         .keyboardShortcut("r", modifiers: .command)

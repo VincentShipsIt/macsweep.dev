@@ -355,7 +355,7 @@ private struct AssistantMessageBubble: View {
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(MacSweepTheme.glassCardStroke.opacity(message.role == .user ? 0.45 : 0.8), lineWidth: 1)
+                .stroke(MacSweepTheme.cardStroke.opacity(message.role == .user ? 0.45 : 0.8), lineWidth: 1)
         }
     }
 
@@ -377,7 +377,7 @@ private struct AssistantMessageBubble: View {
         case .user:
             return Color.accentColor.opacity(0.16)
         case .assistant:
-            return MacSweepTheme.glassCardTint
+            return MacSweepTheme.cardTint
         }
     }
 }
