@@ -2,6 +2,8 @@ import Foundation
 
 /// Module for cleaning up developer tool artifacts
 struct DevToolsModule: ScanModule {
+    static let defaultMaxDepth = 6
+
     let id = "dev-tools"
     let name = "Developer Tools"
     let description = "Clean node_modules, DerivedData, build artifacts"
@@ -13,7 +15,7 @@ struct DevToolsModule: ScanModule {
     ]
 
     /// Maximum depth to search for projects
-    var maxDepth: Int = 6
+    var maxDepth: Int = Self.defaultMaxDepth
 
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
@@ -651,7 +653,10 @@ actor ProjectScanner {
     /// carrying two indicator files of the same type (Podfile + *.xcodeproj) is
     /// one project; indicators of different types (package.json + Cargo.toml)
     /// keep one entry per type, as the old hand-written table did.
-    func discoverProjects(in baseURL: URL, maxDepth: Int = 5) async -> [ProjectInfo] {
+    func discoverProjects(
+        in baseURL: URL,
+        maxDepth: Int = DevToolsModule.defaultMaxDepth
+    ) async -> [ProjectInfo] {
         var projects: [ProjectInfo] = []
         var seenProjects = Set<String>()
         let checker = SafetyChecker()

@@ -6,6 +6,7 @@ struct DevToolsView: View {
     @State private var selectedTab: DevToolsTab = .artifacts
     @State private var hasCompletedBuildArtifactScan = false
     @State private var isBuildArtifactScanRunning = false
+    @State private var buildArtifactScanState = BuildArtifactScanState()
 
     enum DevToolsTab: String, CaseIterable {
         case artifacts = "Build Artifacts"
@@ -39,6 +40,7 @@ struct DevToolsView: View {
                 switch selectedTab {
                 case .artifacts:
                     BuildArtifactsView(
+                        scanState: $buildArtifactScanState,
                         hasCompletedScan: $hasCompletedBuildArtifactScan,
                         isScanRunning: $isBuildArtifactScanRunning
                     )
@@ -50,20 +52,29 @@ struct DevToolsView: View {
     }
 }
 
+/// Scan-owned state lives above `FeaturePageShell` because that shell changes
+/// from a landing-page scroll container to the results container when a scan
+/// completes. Keeping these values in `BuildArtifactsView` caused SwiftUI to
+/// recreate the child at that boundary and replace real findings with an empty
+/// result state.
+struct BuildArtifactScanState {
+    var projects: [ProjectInfo] = []
+    var projectCleanupItems: [CleanupItem] = []
+    var systemArtifacts: [CleanupItem] = []
+    var gitArtifacts: [GitCleanupItem] = []
+    var selectedItems: Set<UUID> = []
+    var selectedGitItems: Set<UUID> = []
+    var errorMessage: String?
+    var gitToolStatus: GitToolStatus?
+}
+
 /// View for cleaning up build artifacts (node_modules, DerivedData, etc.)
 struct BuildArtifactsView: View {
     @EnvironmentObject var appState: AppState
+    @Binding private var scanState: BuildArtifactScanState
     @Binding private var hasCompletedScan: Bool
     @Binding private var isScanRunning: Bool
     @State private var isScanning = false
-    @State private var projects: [ProjectInfo] = []
-    @State private var projectCleanupItems: [CleanupItem] = []
-    @State private var systemArtifacts: [CleanupItem] = []
-    @State private var gitArtifacts: [GitCleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var selectedGitItems: Set<UUID> = []
-    @State private var errorMessage: String?
-    @State private var gitToolStatus: GitToolStatus?
     @State private var showingConfirmation = false
     @State private var viewMode: ViewMode = .projects
     @State private var filterType: ProjectType? = nil
@@ -75,11 +86,48 @@ struct BuildArtifactsView: View {
     }
 
     init(
+        scanState: Binding<BuildArtifactScanState>,
         hasCompletedScan: Binding<Bool> = .constant(false),
         isScanRunning: Binding<Bool> = .constant(false)
     ) {
+        self._scanState = scanState
         self._hasCompletedScan = hasCompletedScan
         self._isScanRunning = isScanRunning
+    }
+
+    private var projects: [ProjectInfo] {
+        get { scanState.projects }
+        nonmutating set { scanState.projects = newValue }
+    }
+
+    private var projectCleanupItems: [CleanupItem] {
+        get { scanState.projectCleanupItems }
+        nonmutating set { scanState.projectCleanupItems = newValue }
+    }
+
+    private var systemArtifacts: [CleanupItem] {
+        get { scanState.systemArtifacts }
+        nonmutating set { scanState.systemArtifacts = newValue }
+    }
+
+    private var gitArtifacts: [GitCleanupItem] {
+        get { scanState.gitArtifacts }
+        nonmutating set { scanState.gitArtifacts = newValue }
+    }
+
+    private var selectedItems: Set<UUID> {
+        get { scanState.selectedItems }
+        nonmutating set { scanState.selectedItems = newValue }
+    }
+
+    private var selectedGitItems: Set<UUID> {
+        get { scanState.selectedGitItems }
+        nonmutating set { scanState.selectedGitItems = newValue }
+    }
+
+    private var gitToolStatus: GitToolStatus? {
+        get { scanState.gitToolStatus }
+        nonmutating set { scanState.gitToolStatus = newValue }
     }
 
     var body: some View {
@@ -125,7 +173,7 @@ struct BuildArtifactsView: View {
                 }
             }
         }
-        .errorAlert("Cleanup Failed", message: $errorMessage)
+        .errorAlert("Cleanup Failed", message: $scanState.errorMessage)
     }
 
     private var noArtifactsView: some View {
@@ -482,7 +530,7 @@ struct BuildArtifactsView: View {
             }
         }
 
-        errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
+        scanState.errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
 
         // Refresh
         await scan()
