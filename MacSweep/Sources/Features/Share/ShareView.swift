@@ -114,7 +114,7 @@ struct ShareView: View {
         }
 
         let cleaned = numberFormatter.string(from: NSNumber(value: summary.totalItemsProcessed)) ?? "\(summary.totalItemsProcessed)"
-        let success = summary.successRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "100%"
+        let success = summary.successRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "--"
 
         return """
         MacSweep cleanup receipt: \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.

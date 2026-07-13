@@ -35,7 +35,7 @@ struct AIAnalysisView: View {
                     apiKeyPopover
                 }
             ),
-            hidesChrome: service.findings.isEmpty && !service.isScanning,
+            hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
             if service.findings.isEmpty && !service.isScanning {
@@ -52,6 +52,7 @@ struct AIAnalysisView: View {
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,
+                    hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
             } else {
