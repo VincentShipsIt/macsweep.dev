@@ -461,6 +461,7 @@ private struct TreemapTile: Identifiable {
     let node: DiskNode
     let rect: CGRect
     let color: Color
+    let containsChildren: Bool
     var id: DiskNode.ID { node.id }
 }
 
@@ -483,6 +484,7 @@ struct TreemapView: View {
                         node: tile.node,
                         rect: tile.rect,
                         color: tile.color,
+                        containsChildren: tile.containsChildren,
                         isSelected: selectedNode?.id == tile.node.id,
                         onTap: { selectedNode = tile.node },
                         onDoubleTap: { if tile.node.isDirectory { onDrillDown(tile.node) } }
@@ -492,93 +494,23 @@ struct TreemapView: View {
             .onAppear { rebuild(for: geometry.size) }
             .onChange(of: geometry.size) { _, newSize in rebuild(for: newSize) }
             .onChange(of: node.id) { _, _ in rebuild(for: geometry.size) }
+            .onChange(of: node.children.map(\.id)) { _, _ in rebuild(for: geometry.size) }
         }
         .padding()
     }
 
     private func rebuild(for size: CGSize) {
-        let rects = calculateTreemap(
-            items: node.children,
+        tiles = DiskVisualizationLayout.treemap(
+            root: node,
             bounds: CGRect(origin: .zero, size: size)
-        )
-        tiles = zip(node.children, rects).map { child, rect in
-            TreemapTile(node: child, rect: rect, color: Color(diskCategory: child.color))
+        ).map { segment in
+            TreemapTile(
+                node: segment.node,
+                rect: segment.rect,
+                color: Color(diskCategory: segment.node.visualizationColor),
+                containsChildren: segment.containsChildren
+            )
         }
-    }
-
-    private func calculateTreemap(items: [DiskNode], bounds: CGRect) -> [CGRect] {
-        guard !items.isEmpty else { return [] }
-
-        let totalSize = items.reduce(0) { $0 + $1.size }
-        guard totalSize > 0 else { return items.map { _ in .zero } }
-
-        var rects: [CGRect] = []
-        var remaining = bounds
-        var remainingItems = items
-
-        while !remainingItems.isEmpty {
-            // Take items for this row
-            let rowItems: [DiskNode]
-            let isHorizontal = remaining.width >= remaining.height
-
-            if remainingItems.count == 1 {
-                rowItems = remainingItems
-                remainingItems = []
-            } else {
-                // Take roughly half by size
-                var rowSize: Int64 = 0
-                let targetSize = remainingItems.reduce(0) { $0 + $1.size } / 2
-                var splitIndex = 0
-
-                for (index, item) in remainingItems.enumerated() {
-                    rowSize += item.size
-                    if rowSize >= targetSize {
-                        splitIndex = max(1, index)
-                        break
-                    }
-                }
-
-                rowItems = Array(remainingItems.prefix(splitIndex + 1))
-                remainingItems = Array(remainingItems.dropFirst(splitIndex + 1))
-            }
-
-            let rowTotal = rowItems.reduce(0) { $0 + $1.size }
-            let remainingTotal = remainingItems.reduce(0) { $0 + $1.size }
-            let rowRatio = Double(rowTotal) / Double(rowTotal + remainingTotal)
-
-            // Calculate row bounds
-            let rowBounds: CGRect
-            if isHorizontal {
-                let width = remaining.width * rowRatio
-                rowBounds = CGRect(x: remaining.minX, y: remaining.minY, width: width, height: remaining.height)
-                remaining = CGRect(x: remaining.minX + width, y: remaining.minY, width: remaining.width - width, height: remaining.height)
-            } else {
-                let height = remaining.height * rowRatio
-                rowBounds = CGRect(x: remaining.minX, y: remaining.minY, width: remaining.width, height: height)
-                remaining = CGRect(x: remaining.minX, y: remaining.minY + height, width: remaining.width, height: remaining.height - height)
-            }
-
-            // Layout items within row
-            var offset: CGFloat = 0
-            for item in rowItems {
-                let itemRatio = Double(item.size) / Double(rowTotal)
-
-                let rect: CGRect
-                if isHorizontal {
-                    let height = rowBounds.height * itemRatio
-                    rect = CGRect(x: rowBounds.minX, y: rowBounds.minY + offset, width: rowBounds.width, height: height)
-                    offset += height
-                } else {
-                    let width = rowBounds.width * itemRatio
-                    rect = CGRect(x: rowBounds.minX + offset, y: rowBounds.minY, width: width, height: rowBounds.height)
-                    offset += width
-                }
-
-                rects.append(rect)
-            }
-        }
-
-        return rects
     }
 }
 
@@ -586,20 +518,27 @@ struct TreemapCell: View {
     let node: DiskNode
     let rect: CGRect
     let color: Color
+    let containsChildren: Bool
     let isSelected: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
-            .fill(color.opacity(0.8))
+            .fill(color.opacity(containsChildren ? 0.35 : 0.8))
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(isSelected ? .white : .clear, lineWidth: 3)
             )
             .overlay(
-                VStack(spacing: 2) {
-                    if rect.width > 60 && rect.height > 40 {
+                VStack(alignment: containsChildren ? .leading : .center, spacing: 2) {
+                    if containsChildren {
+                        Text(node.name)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if rect.width > 60 && rect.height > 40 {
                         Text(node.name)
                             .font(.caption)
                             .fontWeight(.medium)
@@ -610,7 +549,8 @@ struct TreemapCell: View {
                     }
                 }
                 .foregroundStyle(.white)
-                .padding(4)
+                .padding(containsChildren ? 5 : 4)
+                .frame(maxHeight: .infinity, alignment: containsChildren ? .top : .center)
             )
             .frame(width: rect.width - 2, height: rect.height - 2)
             .position(x: rect.midX, y: rect.midY)
@@ -625,6 +565,11 @@ struct SunburstView: View {
     let node: DiskNode
     @Binding var selectedNode: DiskNode?
     let onDrillDown: (DiskNode) -> Void
+
+    // The normalized layout and dominant descendant colors depend only on the
+    // scanned tree, not selection or geometry. Cache them outside `body` so a
+    // render never recursively walks the tree.
+    @State private var arcs: [SunburstArcData] = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -647,75 +592,76 @@ struct SunburstView: View {
                         }
                     )
 
-                // Arcs for children
-                ForEach(Array(arcs(radius: maxRadius).enumerated()), id: \.element.node.id) { index, arc in
+                // Multiple rings expose the scanned hierarchy instead of reducing
+                // every folder-heavy level to one solid blue ring.
+                ForEach(arcs) { arc in
                     SunburstArc(
                         arc: arc,
                         center: center,
+                        radius: maxRadius,
                         isSelected: selectedNode?.id == arc.node.id,
                         onTap: { selectedNode = arc.node },
                         onDoubleTap: { if arc.node.isDirectory { onDrillDown(arc.node) } }
                     )
                 }
             }
+            .onAppear { rebuild() }
+            .onChange(of: node.id) { _, _ in rebuild() }
+            .onChange(of: node.children.map(\.id)) { _, _ in rebuild() }
         }
         .padding()
     }
 
-    private func arcs(radius: CGFloat) -> [SunburstArcData] {
-        var result: [SunburstArcData] = []
-        var startAngle: Double = -90
-
-        let totalSize = node.children.reduce(0) { $0 + $1.size }
-        guard totalSize > 0 else { return [] }
-
-        for child in node.children {
-            let sweep = 360 * (Double(child.size) / Double(totalSize))
-            result.append(SunburstArcData(
-                node: child,
-                startAngle: startAngle,
-                endAngle: startAngle + sweep,
-                innerRadius: radius * 0.25,
-                outerRadius: radius * 0.9
-            ))
-            startAngle += sweep
+    private func rebuild() {
+        arcs = DiskVisualizationLayout.sunburst(root: node).map { segment in
+            SunburstArcData(
+                node: segment.node,
+                startAngle: segment.startAngle,
+                endAngle: segment.endAngle,
+                innerRadius: segment.innerRadius,
+                outerRadius: segment.outerRadius,
+                color: Color(diskCategory: segment.node.visualizationColor)
+            )
         }
-
-        return result
     }
 }
 
-struct SunburstArcData {
+struct SunburstArcData: Identifiable {
     let node: DiskNode
     let startAngle: Double
     let endAngle: Double
-    let innerRadius: CGFloat
-    let outerRadius: CGFloat
+    let innerRadius: Double
+    let outerRadius: Double
+    let color: Color
+
+    var id: DiskNode.ID { node.id }
 }
 
 struct SunburstArc: View {
     let arc: SunburstArcData
     let center: CGPoint
+    let radius: CGFloat
     let isSelected: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
-    private var color: Color { Color(diskCategory: arc.node.color) }
-
     var body: some View {
+        let innerRadius = radius * CGFloat(arc.innerRadius)
+        let outerRadius = radius * CGFloat(arc.outerRadius)
+
         ArcShape(
             startAngle: .degrees(arc.startAngle),
             endAngle: .degrees(arc.endAngle),
-            innerRadius: arc.innerRadius,
-            outerRadius: isSelected ? arc.outerRadius + 10 : arc.outerRadius
+            innerRadius: innerRadius,
+            outerRadius: isSelected ? outerRadius + 10 : outerRadius
         )
-        .fill(color.opacity(isSelected ? 1 : 0.8))
+        .fill(arc.color.opacity(isSelected ? 1 : 0.8))
         .overlay(
             ArcShape(
                 startAngle: .degrees(arc.startAngle),
                 endAngle: .degrees(arc.endAngle),
-                innerRadius: arc.innerRadius,
-                outerRadius: isSelected ? arc.outerRadius + 10 : arc.outerRadius
+                innerRadius: innerRadius,
+                outerRadius: isSelected ? outerRadius + 10 : outerRadius
             )
             .stroke(.white.opacity(0.3), lineWidth: 1)
         )
@@ -735,7 +681,6 @@ struct ArcShape: Shape {
         var path = Path()
 
         let startOuter = pointOnCircle(angle: startAngle, radius: outerRadius)
-        let endOuter = pointOnCircle(angle: endAngle, radius: outerRadius)
         let startInner = pointOnCircle(angle: startAngle, radius: innerRadius)
         let endInner = pointOnCircle(angle: endAngle, radius: innerRadius)
 
