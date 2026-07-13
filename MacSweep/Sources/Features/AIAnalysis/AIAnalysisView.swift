@@ -52,6 +52,7 @@ struct AIAnalysisView: View {
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,
+                    hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
             } else {
