@@ -120,6 +120,18 @@ enum MacSweepTheme {
         lightHighContrast: NSColor(srgbRed: 0.50, green: 0.66, blue: 0.72, alpha: 0.20),
         darkHighContrast: NSColor(srgbRed: 0.08, green: 0.20, blue: 0.24, alpha: 0.20)
     )
+    static let companionCardTint = Color.adaptive(
+        light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.07),
+        lightHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.34),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.13)
+    )
+    static let companionCardStroke = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.05),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.06),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.14),
+        darkHighContrast: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.16)
+    )
     static let accent = Color(red: 0.22, green: 0.86, blue: 0.58)
     static let accentBlue = Color(red: 0.22, green: 0.52, blue: 0.84)
     static let warningPanel = Color.orange.opacity(0.12)
@@ -187,9 +199,44 @@ private struct MacSweepCardModifier: ViewModifier {
     }
 }
 
+/// The companion popover has a translucent, tinted shell, so its compact cards
+/// use a lighter material surface that lets that context show through. Regular
+/// app content continues to use the semantic, non-glass `macSweepCard` fill.
+private struct MacSweepCompanionCardModifier: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+
+        content
+            .background {
+                if reduceTransparency {
+                    shape.fill(Color(nsColor: .windowBackgroundColor))
+                } else {
+                    shape.fill(.ultraThinMaterial)
+                }
+            }
+            .overlay {
+                if !reduceTransparency {
+                    shape.fill(MacSweepTheme.companionCardTint)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                shape.stroke(MacSweepTheme.companionCardStroke, lineWidth: 0.5)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
 extension View {
     func macSweepCard(radius: CGFloat = MacSweepTheme.mediumRadius) -> some View {
         modifier(MacSweepCardModifier(radius: radius))
+    }
+
+    func macSweepCompanionCard(radius: CGFloat = MacSweepTheme.mediumRadius) -> some View {
+        modifier(MacSweepCompanionCardModifier(radius: radius))
     }
 
     func macSweepListSurface() -> some View {

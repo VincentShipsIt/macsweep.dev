@@ -51,11 +51,6 @@ struct MenuBarView: View {
 
                 quickActions
             }
-
-            Divider()
-                .padding(.vertical, 6)
-
-            footer
         }
         .padding(16)
     }
@@ -77,7 +72,33 @@ struct MenuBarView: View {
                 ProgressView()
                     .controlSize(.small)
             }
+
+            headerControls
         }
+    }
+
+    private var headerControls: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                Button(action: openMainWindow) {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .companionGlassIconButton()
+                .accessibilityLabel("Open MacSweep")
+                .help("Open MacSweep")
+
+                Button(action: quitApplication) {
+                    Image(systemName: "power")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .companionGlassIconButton()
+                .accessibilityLabel("Quit MacSweep")
+                .help("Quit MacSweep")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("MacSweep controls")
     }
 
     // MARK: - System Overview Grid
@@ -143,29 +164,6 @@ struct MenuBarView: View {
                     Spacer()
                 }
             }
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack {
-            Button {
-                openMainWindow()
-            } label: {
-                Label("Open \(MacSweepVersion.productName)", systemImage: "macwindow")
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Button {
-                NSApplication.shared.terminate(nil)
-            } label: {
-                Image(systemName: "power")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
         }
     }
 
@@ -304,6 +302,10 @@ struct MenuBarView: View {
         }
     }
 
+    private func quitApplication() {
+        NSApplication.shared.terminate(nil)
+    }
+
     private func configureMenuWindow(_ window: NSWindow?) {
         guard let window else { return }
         window.isOpaque = false
@@ -407,7 +409,7 @@ struct SystemStatCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: MenuBarStatCardLayout.height, maxHeight: MenuBarStatCardLayout.height, alignment: .topLeading)
-        .macSweepCard(radius: 10)
+        .macSweepCompanionCard(radius: 10)
         .contentShape(Rectangle())
         .onTapGesture {
             onTap?()
@@ -432,6 +434,15 @@ struct SystemStatCard: View {
             Color.clear
                 .frame(height: MenuBarStatCardLayout.footerHeight)
         }
+    }
+}
+
+private extension View {
+    func companionGlassIconButton() -> some View {
+        frame(width: 30, height: 30)
+            .contentShape(Circle())
+            .glassControl(in: Circle(), interactive: true)
+            .buttonStyle(.plain)
     }
 }
 
