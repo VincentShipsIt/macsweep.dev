@@ -300,5 +300,6 @@ jobs:
     uses: ./.github/workflows/dmg.yml
     with:
       tag: ${{ github.ref_name }}
+    secrets: inherit
     permissions:
       contents: write
