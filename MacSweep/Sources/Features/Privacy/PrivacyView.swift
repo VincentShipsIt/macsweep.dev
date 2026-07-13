@@ -170,20 +170,14 @@ struct PrivacyView: View {
                 .padding(.top)
             }
         }
-        .confirmationDialog(
-            "Clear Privacy Items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Selected", role: .destructive) {
-                Task {
-                    await cleanSelected()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently remove \(selectedSize) of privacy data. This cannot be undone.")
-        }
+            items: selectedPrivacyItems,
+            disposition: .permanent,
+            note: "Only the selected privacy categories are cleared. "
+                + "Browsing data may be recreated by the relevant apps.",
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     private var noPrivacyItemsView: some View {
@@ -217,8 +211,8 @@ struct PrivacyView: View {
         }
     }
 
-    private func cleanSelected() async {
-        let itemsToClean = privacyItems.filter { selectedCategories.contains($0.moduleName) }
+    private func cleanSelected() async -> CleanupResult? {
+        let itemsToClean = selectedPrivacyItems
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
@@ -226,8 +220,10 @@ struct PrivacyView: View {
         // SafetyChecker failures come back in result.errors with nothing deleted.
         let engine = ScanEngine()
         var cleanupError: String?
+        var cleanupResult: CleanupResult?
         do {
             let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
+            cleanupResult = result
             if !result.errors.isEmpty {
                 let count = result.errors.count
                 cleanupError = "\(count) item\(count == 1 ? "" : "s") couldn't be cleared and were kept."
@@ -239,6 +235,7 @@ struct PrivacyView: View {
         // Refresh (scanPrivacy clears errorMessage, so restore any cleanup error after)
         await scanPrivacy()
         if let cleanupError { errorMessage = cleanupError }
+        return cleanupResult
     }
 
     private func clearClipboard() {
@@ -292,6 +289,10 @@ struct PrivacyView: View {
         privacyItems
             .filter { selectedCategories.contains($0.moduleName) }
             .formattedTotalSize()
+    }
+
+    private var selectedPrivacyItems: [CleanupItem] {
+        privacyItems.filter { selectedCategories.contains($0.moduleName) }
     }
 }
 
