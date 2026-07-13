@@ -37,9 +37,32 @@ struct SmartCareAnalyzerTests {
 
         #expect(summary.findings.count == 3)
         #expect(summary.findings.first?.moduleID == "similar-photos")
+        #expect(summary.recommendedFindings.map(\.moduleID) == ["system-cache"])
+        #expect(Set(summary.reviewRequiredFindings.map(\.moduleID)) == ["duplicates", "similar-photos"])
         #expect(summary.recommendedCleanupItemIDs.contains(cacheItem.id))
         #expect(!summary.recommendedCleanupItemIDs.contains(duplicateItem.id))
         #expect(!summary.recommendedCleanupItemIDs.contains(similarPhoto.id))
         #expect(summary.score < 100)
+    }
+
+    @Test func personalFileModulesAlwaysRequireReview() {
+        let tmp = FileManager.default.temporaryDirectory
+        let modules = ["large-files", "duplicates", "similar-photos"]
+        let items = modules.enumerated().map { index, module in
+            CleanupItem(
+                id: UUID(),
+                path: tmp.appendingPathComponent("review-\(index)"),
+                size: Int64(index + 1) * 1_024,
+                type: .file,
+                module: module,
+                moduleName: module
+            )
+        }
+
+        let summary = SmartCareAnalyzer().summarize(items: items, diskUsage: nil)
+
+        #expect(summary.recommendedFindings.isEmpty)
+        #expect(Set(summary.reviewRequiredFindings.map(\.moduleID)) == Set(modules))
+        #expect(summary.recommendedCleanupItemIDs.isEmpty)
     }
 }

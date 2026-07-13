@@ -190,14 +190,14 @@ struct LargeFilesView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Move \(model.selectedItems.count) items to Trash?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Move to Trash",
-            message: "This will move \(selectedSize) of files and folders to Trash. You can restore them from Trash if needed."
-        ) {
-            Task { await deleteSelected() }
-        }
+            items: selectedLargeItems,
+            disposition: .trash,
+            note: "Large files are never selected for automatic cleanup; "
+                + "this sheet reflects only your manual selection.",
+            onConfirm: { await deleteSelected() }
+        )
     }
 
     // MARK: - Actions
@@ -218,40 +218,8 @@ struct LargeFilesView: View {
         }
     }
 
-    private func deleteSelected() async {
-        let itemsToDelete = filteredItems.filter { model.selectedItems.contains($0.id) }
-
-        // Route through ScanEngine so the full safety pipeline (per-item
-        // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
-        // module's own delete. The aggregate DeletionGuard veto throws; per-item
-        // SafetyChecker failures come back in result.errors and nothing is deleted
-        // for those, so we must not blindly clear them from the list. This keeps
-        // its own epilogue (blocked-path bookkeeping + a bespoke banner) rather
-        // than the shared prune, so it does not use `model.clean`.
-        let engine = ScanEngine()
-        let result: CleanupResult
-        do {
-            result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
-        } catch {
-            model.errorMessage = "Couldn't move files to Trash: \(error.localizedDescription)"
-            return
-        }
-
-        // Only the items that actually deleted should leave the list. CleanupError
-        // identifies a blocked item by its path, so keep those (they were never
-        // deleted) and remove the rest. Surface a message when any were blocked.
-        let blockedPaths = Set(result.errors.map(\.path))
-        let deletedIDs = Set(itemsToDelete.filter { !blockedPaths.contains($0.path) }.map(\.id))
-
-        model.items.removeAll { deletedIDs.contains($0.id) }
-        model.selectedItems.subtract(deletedIDs)
-
-        if blockedPaths.isEmpty {
-            model.errorMessage = nil
-        } else {
-            let count = blockedPaths.count
-            model.errorMessage = "\(count) item\(count == 1 ? "" : "s") couldn't be moved to Trash and were kept."
-        }
+    private func deleteSelected() async -> CleanupResult? {
+        await model.clean(selectedLargeItems) { "Couldn't move files to Trash: \($0.localizedDescription)" }
     }
 
     // MARK: - Computed
@@ -287,6 +255,10 @@ struct LargeFilesView: View {
 
     private var selectedSize: String {
         filteredItems.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedLargeItems: [CleanupItem] {
+        filteredItems.filter { model.selectedItems.contains($0.id) }
     }
 }
 
