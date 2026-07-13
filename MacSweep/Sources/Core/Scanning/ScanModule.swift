@@ -29,7 +29,18 @@ extension ScanModule {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
         guard size > 0 else { return nil }
-        return CleanupItem(id: UUID(), path: url, size: size, type: type, module: id, moduleName: displayName)
+        let lastModified = try? url.resourceValues(
+            forKeys: [.contentModificationDateKey]
+        ).contentModificationDate
+        return CleanupItem(
+            id: UUID(),
+            path: url,
+            size: size,
+            type: type,
+            module: id,
+            moduleName: displayName,
+            lastModified: lastModified
+        )
     }
 
     /// Shared implementation for modules that clean `CleanupItem`s one by one.
@@ -141,6 +152,32 @@ enum DockerCleanupAction: String, CaseIterable, Hashable, Sendable {
         case .pruneImages: return ["image", "prune", "-f"]
         case .pruneContainers: return ["container", "prune", "-f"]
         case .pruneVolumes: return ["volume", "prune", "-f"]
+        }
+    }
+
+    var commandPreview: String {
+        (["docker"] + arguments).joined(separator: " ")
+    }
+
+    var impactDescription: String {
+        switch self {
+        case .pruneBuildCache:
+            return "Runs Docker's native prune command for unused build cache."
+        case .pruneImages:
+            return "Runs Docker's native prune command for dangling images."
+        case .pruneContainers:
+            return "Runs Docker's native prune command for stopped containers."
+        case .pruneVolumes:
+            return "Runs Docker's native prune command for unused volumes. Volume data is permanently removed."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .pruneBuildCache: return "hammer"
+        case .pruneImages: return "photo.stack"
+        case .pruneContainers: return "cube.box"
+        case .pruneVolumes: return "cylinder"
         }
     }
 }
