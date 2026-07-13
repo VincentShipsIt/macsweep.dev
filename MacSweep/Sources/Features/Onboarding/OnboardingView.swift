@@ -4,6 +4,7 @@ import AppKit
 /// Onboarding view shown on first launch
 struct OnboardingView: View {
     @Binding var isPresented: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage: Int
     @State private var hasFullDiskAccess: Bool
     @State private var fdaTimer: Timer?
@@ -22,7 +23,7 @@ struct OnboardingView: View {
         OnboardingPage(
             icon: "sparkles",
             iconColor: .purple,
-            title: "Welcome to macsweep.dev",
+            title: "Welcome to MacSweep",
             description: "Keep your Mac clean, fast, and organized with powerful cleanup tools.",
             features: [
                 ("trash.circle", "Remove junk files and caches"),
@@ -35,7 +36,7 @@ struct OnboardingView: View {
             icon: "shield.checkered",
             iconColor: .green,
             title: "Safe & Secure",
-            description: "macsweep.dev protects your important files and never deletes anything without your permission.",
+            description: "MacSweep protects your important files and never deletes anything without your permission.",
             features: [
                 ("lock.shield", "Protected paths are never touched"),
                 ("eye", "Preview before you delete"),
@@ -49,7 +50,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             // Page content
             TabView(selection: $currentPage) {
-                ForEach(Array(welcomePages.enumerated()), id: \.offset) { index, page in
+                ForEach(welcomePages.enumerated(), id: \.element.id) { index, page in
                     OnboardingPageView(page: page)
                         .tag(index)
                 }
@@ -78,18 +79,14 @@ struct OnboardingView: View {
                 // Navigation buttons
                 if currentPage > 0 {
                     Button("Back") {
-                        withAnimation {
-                            currentPage -= 1
-                        }
+                        changePage(to: currentPage - 1)
                     }
                     .glassButton()
                 }
 
                 if currentPage < welcomePages.count {
                     Button("Next") {
-                        withAnimation {
-                            currentPage += 1
-                        }
+                        changePage(to: currentPage + 1)
                     }
                     .glassButton(prominent: true)
                 } else {
@@ -118,6 +115,16 @@ struct OnboardingView: View {
         .onDisappear {
             fdaTimer?.invalidate()
             fdaTimer = nil
+        }
+    }
+
+    private func changePage(to page: Int) {
+        if reduceMotion {
+            currentPage = page
+        } else {
+            withAnimation {
+                currentPage = page
+            }
         }
     }
 }
@@ -171,8 +178,8 @@ struct FDAPermissionPageView: View {
 
     private var description: some View {
         Text(hasAccess
-            ? "macsweep.dev has the permissions it needs to scan and clean your Mac."
-            : "macsweep.dev needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
+            ? "MacSweep has the permissions it needs to scan and clean your Mac."
+            : "MacSweep needs Full Disk Access to scan protected folders like Safari data, Mail attachments, and system caches.")
             .font(.body)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
@@ -199,14 +206,14 @@ struct FDAPermissionPageView: View {
 
             FDAStepRow(
                 step: 3,
-                title: "Add this macsweep.dev app",
-                description: "macsweep.dev may not appear automatically. Click + and choose the exact app that Finder reveals below."
+                title: "Add this MacSweep app",
+                description: "MacSweep may not appear automatically. Click + and choose the exact app that Finder reveals below."
             )
 
             FDAStepRow(
                 step: 4,
                 title: "Enable and relaunch",
-                description: "Turn macsweep.dev on, then quit and reopen it if macOS asks."
+                description: "Turn MacSweep on, then quit and reopen it if macOS asks."
             )
         }
         .padding(16)
@@ -260,7 +267,7 @@ struct FDAPermissionPageView: View {
             .padding()
             .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
 
-            Text("You can now use all of macsweep.dev's features.")
+            Text("You can now use all of MacSweep's features.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -310,12 +317,14 @@ struct FDAStepRow: View {
 
 // MARK: - Onboarding Page Model
 
-struct OnboardingPage {
+struct OnboardingPage: Identifiable {
     let icon: String
     let iconColor: Color
     let title: String
     let description: String
     let features: [(icon: String, text: String)]
+
+    var id: String { title }
 }
 
 // MARK: - Onboarding Page View

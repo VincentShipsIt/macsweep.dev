@@ -70,8 +70,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --pattern "macsweep-${RELEASE_TAG}-macos.zip"
           ditto -x -k "macsweep-${RELEASE_TAG}-macos.zip" extracted
-          APP_PATH="$(find extracted -maxdepth 1 -name '*.app' -type d | head -1)"
-          [[ -n "$APP_PATH" ]] || { echo "::error::No .app in release zip"; exit 1; }
+          APP_PATH="extracted/MacSweep.app"
+          [[ -d "$APP_PATH" ]] || { echo "::error::Release zip does not contain MacSweep.app"; exit 1; }
           # The zip's app must already be notarized + stapled; the DMG inherits
           # a broken app otherwise, so fail closed here.
           xcrun stapler validate "$APP_PATH"

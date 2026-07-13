@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     @Published var scanResults: [CleanupItem] = []
     @Published var selectedItems: Set<CleanupItem.ID> = []
     @Published var smartCareSummary: SmartCareSummary?
+    @Published var scanFailures: [ModuleScanFailure] = []
 
     /// Last scan failure, surfaced to the UI. Cleared at the start of each scan.
     @Published var lastError: String?
@@ -29,6 +30,7 @@ final class AppState: ObservableObject {
     // MARK: - UI State
     @Published var selectedFeature: Feature = .smartScan
     @Published var showingConfirmation = false
+    @Published private(set) var hasFullDiskAccess: Bool
 
     // MARK: - Menu Bar
     var menuBarIcon: String {
@@ -48,9 +50,16 @@ final class AppState: ObservableObject {
     private let cleanupPerformanceStore = CleanupPerformanceStore.shared
     private var activeScanTask: Task<Void, Never>?
     private var activeScanID: UUID?
+    private var lastScanScope: ScanScope?
+
+    private struct ScanScope {
+        let modules: [String]?
+        let assistantTargets: [AssistantScanTarget]
+    }
 
     // MARK: - Initialization
-    init() {
+    init(initialFullDiskAccess: Bool = FullDiskAccess.hasAccess) {
+        hasFullDiskAccess = initialFullDiskAccess
         cleanupPerformanceHistory = cleanupPerformanceStore.history
 
         Task {
@@ -69,19 +78,25 @@ final class AppState: ObservableObject {
     }
 
     func quickScan() async {
-        await startScan(
-            moduleScan: { progress in try await self.scanEngine.smartCareScan(progress: progress) },
+        await startScan(scope: ScanScope(
             modules: SmartCareDefaults.moduleIDs,
             assistantTargets: assistant.enabledTargets
-        )
+        ))
     }
 
     func scan(modules: [String]? = nil) async {
-        await startScan(
-            moduleScan: { progress in try await self.scanEngine.scan(modules: modules, progress: progress) },
+        await startScan(scope: ScanScope(
             modules: modules,
             assistantTargets: modules == nil ? assistant.enabledTargets : []
-        )
+        ))
+    }
+
+    func retryLastScan() async {
+        guard let lastScanScope else {
+            await quickScan()
+            return
+        }
+        await startScan(scope: lastScanScope)
     }
 
     func deleteSelected(dryRun: Bool = false, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
@@ -125,6 +140,10 @@ final class AppState: ObservableObject {
 
     func refreshDiskUsage() async {
         diskUsage = await DiskUsage.current()
+    }
+
+    func refreshFullDiskAccess() {
+        hasFullDiskAccess = FullDiskAccess.hasAccess
     }
 
     func selectAll() {
@@ -183,14 +202,10 @@ final class AppState: ObservableObject {
     }
 
     func runAssistantPlan(_ plan: AssistantScanPlan) async {
-        await startScan(
-            moduleScan: { [scanEngine] progress in
-                guard !plan.modules.isEmpty else { return [] }
-                return try await scanEngine.scan(modules: plan.modules, progress: progress)
-            },
+        await startScan(scope: ScanScope(
             modules: plan.modules,
             assistantTargets: plan.customTargets
-        )
+        ))
     }
 
     private func applyScanResults(_ items: [CleanupItem], modules: [String]?) {
@@ -206,11 +221,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func startScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
-        modules: [String]?,
-        assistantTargets: [AssistantScanTarget]
-    ) async {
+    private func startScan(scope: ScanScope) async {
         // Serialize concurrent scan requests instead of dropping them. The previous
         // early `return` discarded this caller's modules/targets and let them see an
         // unrelated in-flight scan's results (e.g. an assistant plan showing a
@@ -225,9 +236,7 @@ final class AppState: ObservableObject {
 
         let task = Task { @MainActor in
             await self.performScan(
-                moduleScan: moduleScan,
-                modules: modules,
-                assistantTargets: assistantTargets
+                scope: scope
             )
 
             if self.activeScanID == scanID {
@@ -240,17 +249,15 @@ final class AppState: ObservableObject {
         await task.value
     }
 
-    private func performScan(
-        moduleScan: @escaping (ScanProgressHandler?) async throws -> [CleanupItem],
-        modules: [String]?,
-        assistantTargets: [AssistantScanTarget]
-    ) async {
+    private func performScan(scope: ScanScope) async {
+        lastScanScope = scope
         isScanning = true
         scanProgress = 0
         currentScanModule = "Preparing scan"
         scanResults = []
         selectedItems = []
         smartCareSummary = nil
+        scanFailures = []
         lastError = nil
 
         defer {
@@ -273,14 +280,22 @@ final class AppState: ObservableObject {
         }
 
         do {
-            async let primaryItems = moduleScan(progressHandler)
-            async let watchlistItems = scanEngine.scanAssistantTargets(assistantTargets)
-            let scannedItems = try await primaryItems
-            currentScanModule = assistantTargets.isEmpty ? "Finalizing results" : "Checking assistant watchlist"
+            async let primaryResult = scanEngine.scanWithDiagnostics(
+                modules: scope.modules,
+                progress: progressHandler
+            )
+            async let watchlistItems = scanEngine.scanAssistantTargets(scope.assistantTargets)
+            let result = await primaryResult
+            currentScanModule = scope.assistantTargets.isEmpty
+                ? "Finalizing results"
+                : "Checking assistant watchlist"
             scanProgress = max(scanProgress, 0.95)
             let persistentItems = try await watchlistItems
-            let combined = deduplicated(items: scannedItems + persistentItems)
-            applyScanResults(combined, modules: modules)
+            let combined = deduplicated(items: result.items + persistentItems)
+            scanFailures = result.failures.sorted {
+                $0.moduleName.localizedStandardCompare($1.moduleName) == .orderedAscending
+            }
+            applyScanResults(combined, modules: scope.modules)
             scanProgress = 1
         } catch is CancellationError {
             // User-initiated stop — not an error worth a banner.
@@ -295,125 +310,6 @@ final class AppState: ObservableObject {
         return items.filter { item in
             let key = "\(item.module)|\(item.path.path)"
             return seen.insert(key).inserted
-        }
-    }
-}
-
-// MARK: - Feature Navigation (CleanMyMac-style structure)
-
-enum FeatureSection: String, CaseIterable, Identifiable {
-    case main = ""
-    case cleanup = "Cleanup"
-    case protection = "Protection"
-    case speed = "Speed"
-    case applications = "Applications"
-    case files = "Files"
-
-    var id: String { rawValue }
-
-    var features: [Feature] {
-        switch self {
-        case .main:
-            return [.smartScan, .assistant]
-        case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup]
-        case .protection:
-            return [.malwareRemoval, .privacy, .loginItems]
-        case .speed:
-            return [.optimization, .networkCleanup, .batteryMonitor, .maintenance]
-        case .applications:
-            return [.uninstaller, .homebrewUpdater]
-        case .files:
-            return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
-        }
-    }
-}
-
-enum Feature: String, CaseIterable, Identifiable {
-    // Main
-    case smartScan = "Smart Care"
-    case assistant = "Assistant"
-    case share = "Share"
-
-    // Cleanup
-    case systemJunk = "System Junk"
-    case mailAttachments = "Mail Attachments"
-    case trashBins = "Trash Bins"
-    case devTools = "Developer Tools"
-    case aiAnalysis = "AI Analysis"
-    case networkCleanup = "Network Cleanup"
-    case cloudCleanup = "Cloud Cleanup"
-
-    // Protection
-    case malwareRemoval = "Malware Removal"
-    case privacy = "Privacy"
-    case loginItems = "Login Items"
-
-    // Speed
-    case optimization = "Optimization"
-    case batteryMonitor = "Battery Monitor"
-    case maintenance = "Maintenance"
-
-    // Applications
-    case uninstaller = "Uninstaller"
-    case homebrewUpdater = "Homebrew Updater"
-
-    // Files
-    case spaceLens = "Space Lens"
-    case largeOldFiles = "Large & Old Files"
-    case duplicateFiles = "Duplicate Files"
-    case similarPhotos = "Similar Photos"
-    case shredder = "Shredder"
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        // Main
-        case .smartScan: return "sparkles.rectangle.stack"
-        case .assistant: return "bubble.left"
-        case .share: return "square.and.arrow.up"
-
-        // Cleanup
-        case .systemJunk: return "gearshape.2"
-        case .mailAttachments: return "envelope"
-        case .trashBins: return "trash"
-        case .devTools: return "hammer"
-        case .aiAnalysis: return "brain.head.profile"
-        case .networkCleanup: return "network"
-        case .cloudCleanup: return "icloud"
-
-        // Protection
-        case .malwareRemoval: return "shield.slash"
-        case .privacy: return "hand.raised"
-        case .loginItems: return "shield.lefthalf.filled"
-
-        // Speed
-        case .optimization: return "slider.horizontal.3"
-        case .batteryMonitor: return "battery.100"
-        case .maintenance: return "wrench.and.screwdriver"
-
-        // Applications
-        case .uninstaller: return "xmark.app"
-        case .homebrewUpdater: return "arrow.up.circle"
-
-        // Files
-        case .spaceLens: return "chart.pie"
-        case .largeOldFiles: return "doc.badge.clock"
-        case .duplicateFiles: return "doc.on.doc"
-        case .similarPhotos: return "photo.stack"
-        case .shredder: return "scissors"
-        }
-    }
-
-    var section: FeatureSection {
-        switch self {
-        case .smartScan, .assistant, .share: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
-        case .malwareRemoval, .privacy, .loginItems: return .protection
-        case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
-        case .uninstaller, .homebrewUpdater: return .applications
-        case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }
     }
 }

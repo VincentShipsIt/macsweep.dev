@@ -1,12 +1,24 @@
 import SwiftUI
 import AppKit
 
+struct MacSweepSidebarFocus {
+    let isFocused: FocusState<Bool>.Binding
+    let columnVisibility: Binding<NavigationSplitViewVisibility>
+}
+
+extension FocusedValues {
+    @Entry var macSweepSidebarFocus: MacSweepSidebarFocus?
+}
+
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
+    var allowsInitialSidebarFocus = true
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
     @State private var usesSlideTransition = true
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -23,6 +35,10 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(
+            \.macSweepSidebarFocus,
+            MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
+        )
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -51,6 +67,9 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($isSidebarFocused)
+        .defaultFocus($isSidebarFocused, allowsInitialSidebarFocus)
+        .accessibilityLabel("Feature navigation")
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking
@@ -73,7 +92,9 @@ struct ContentView: View {
             detailView(for: activeFeature)
                 .id(activeFeature)
                 .transition(
-                    usesSlideTransition
+                    reduceMotion
+                        ? .identity
+                        : usesSlideTransition
                         ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
                         : .opacity
                 )
@@ -84,6 +105,12 @@ struct ContentView: View {
     private func showFeature(_ newFeature: Feature) {
         let oldFeature = activeFeature
         guard oldFeature != newFeature else { return }
+
+        if reduceMotion {
+            usesSlideTransition = false
+            displayedFeature = newFeature
+            return
+        }
 
         let shouldSlide = usesCenteredLandingTransition(oldFeature)
             && usesCenteredLandingTransition(newFeature)
@@ -113,6 +140,8 @@ struct ContentView: View {
             staticDetail(AssistantView())
         case .share:
             staticDetail(ShareView())
+        case .cleanupHistory:
+            staticDetail(CleanupHistoryView())
 
         // Cleanup
         case .systemJunk:
@@ -194,6 +223,7 @@ private extension Feature {
         case .smartScan,
              .assistant,
              .share,
+             .cleanupHistory,
              .networkCleanup,
              .loginItems,
              .optimization,
@@ -469,7 +499,7 @@ struct SafetySettingsView: View {
 
             Toggle("Confirm deletes over 1 GB", isOn: $confirmLargeDeletes)
 
-            Text("Protected paths cannot be modified. macsweep.dev will never delete system files, credentials, or user documents.")
+            Text("Protected paths cannot be modified. MacSweep will never delete system files, credentials, or user documents.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -730,7 +760,7 @@ struct AboutView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.purple)
 
-            Text("macsweep.dev")
+            Text("MacSweep")
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
@@ -742,7 +772,7 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
-                Link("macsweep.dev", destination: URL(string: "https://macsweep.dev")!)
+                Link("MacSweep website", destination: URL(string: "https://macsweep.dev")!)
 
                 Divider()
                     .frame(height: 12)
