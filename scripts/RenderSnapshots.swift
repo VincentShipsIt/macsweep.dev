@@ -248,9 +248,9 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(1),
             leftovers: [
-                leftover("~/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
-                leftover("~/Library/Caches/Google/Chrome", 540_000_000, .caches),
-                leftover("~/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
+                leftover("/Users/you/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Caches/Google/Chrome", 540_000_000, .caches),
+                leftover("/Users/you/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
             ]
         )
         let figma = InstalledApp(
@@ -262,8 +262,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(6),
             leftovers: [
-                leftover("~/Library/Application Support/Figma", 410_000_000, .applicationSupport),
-                leftover("~/Library/Logs/Figma", 26_000_000, .logs),
+                leftover("/Users/you/Library/Application Support/Figma", 410_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Logs/Figma", 26_000_000, .logs),
             ]
         )
         let slack = InstalledApp(
@@ -275,8 +275,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(30),
             leftovers: [
-                leftover("~/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
-                leftover("~/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
+                leftover("/Users/you/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
+                leftover("/Users/you/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
             ]
         )
         return [chrome, figma, slack]
@@ -287,9 +287,9 @@ struct SnapshotRenderer {
     @MainActor
     static func sampleOrphans() -> [AppLeftover] {
         [
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
         ]
     }
 
