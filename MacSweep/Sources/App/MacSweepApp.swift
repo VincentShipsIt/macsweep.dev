@@ -5,6 +5,7 @@ import AppKit
 struct MacSweepApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
     @State private var showingOnboarding = false
 
     /// App-global run-once guard for lifecycle side effects.
@@ -24,7 +25,7 @@ struct MacSweepApp: App {
         }
 
         // Menu bar widget
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $showMenuBarIcon) {
             MenuBarView()
                 .environmentObject(appDelegate.appState)
         } label: {

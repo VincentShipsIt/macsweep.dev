@@ -12,6 +12,14 @@ final class ScanScheduler {
     static let shared = ScanScheduler()
     static let taskIdentifier = "dev.macsweep.weeklyscan"
 
+    /// Defaults key backing Settings → General → "Weekly background scan".
+    static let enabledDefaultsKey = "backgroundScanEnabled"
+
+    /// Enabled unless the user has explicitly turned the setting off.
+    private static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: enabledDefaultsKey) as? Bool ?? true
+    }
+
     // Interval and next-scan date live in the shared suite domain so the `macsweep`
     // CLI (`schedule status` / `set-interval`) can read and steer this scheduler
     // even though it runs as a separate process.
@@ -19,6 +27,10 @@ final class ScanScheduler {
     private var timer: Timer?
 
     func register() {
+        // Respect the user's setting across launches. Disabling the scan clears
+        // the next-scan date, which would otherwise look like a first launch
+        // here and silently re-schedule the scan the user turned off.
+        guard Self.isEnabled else { return }
         scheduleIfNeeded()
     }
 
@@ -60,7 +72,9 @@ final class ScanScheduler {
     private func runBackgroundScan() async {
         let engine = ScanEngine()
         guard let items = try? await engine.scan() else {
-            scheduleWeeklyScan()
+            if Self.isEnabled {
+                scheduleWeeklyScan()
+            }
             return
         }
 
@@ -79,7 +93,9 @@ final class ScanScheduler {
             NotificationManager.shared.sendScanComplete(bytesFound: totalSize)
         }
 
-        // Schedule next scan
-        scheduleWeeklyScan()
+        // Schedule next scan, unless the user disabled the setting mid-scan.
+        if Self.isEnabled {
+            scheduleWeeklyScan()
+        }
     }
 }
