@@ -434,7 +434,7 @@ struct GeneralSettingsView: View {
             Divider()
 
             Toggle("Weekly background scan", isOn: $backgroundScanEnabled)
-                .onChange(of: backgroundScanEnabled) { enabled in
+                .onChange(of: backgroundScanEnabled) { _, enabled in
                     if enabled {
                         ScanScheduler.shared.scheduleWeeklyScan()
                     } else {
