@@ -7,6 +7,8 @@
 #
 #   1. MacSweep/Sources/Core/MacSweepVersion.swift  .current  (SSoT; CLI `version`)
 #   2. MacSweep/MacSweep.xcodeproj/...pbxproj  MARKETING_VERSION (app bundle)
+#   3. MacSweep/MacSweep.xcodeproj/...pbxproj  CURRENT_PROJECT_VERSION
+#      (Sparkle's monotonically increasing update version)
 #
 # The xcodeproj is hand-maintained (synchronized folder references — file
 # adds/removals never touch it), NOT generated: XcodeGen and project.yml are
@@ -49,23 +51,32 @@ swift_version()   { grep 'static let current' "$VERSION_SWIFT" | head -1 | sed '
 pbxproj_version() {
   grep 'MARKETING_VERSION = ' "$PBXPROJ" | sed 's/.*= \(.*\);/\1/' | sort -u
 }
+pbxproj_build() {
+  grep 'CURRENT_PROJECT_VERSION = ' "$PBXPROJ" | sed 's/.*= \(.*\);/\1/' | sort -u
+}
 
 die()  { print -u2 "error: $*"; exit 1; }
 usage() { print -u2 "usage: release.sh {check|bump X.Y.Z|sha [X.Y.Z]}"; exit 2; }
 
 cmd_check() {
-  local swift pbx
+  local swift pbx build
   swift="$(swift_version)"
   pbx="$(pbxproj_version)"   # may be multiple lines if configs disagree
+  build="$(pbxproj_build)"
 
   print "version sources:"
   print "  MacSweepVersion.swift $swift"
   print "  pbxproj               ${pbx//$'\n'/, }"
+  print "  bundle build          ${build//$'\n'/, }"
 
   local ok=1
   # pbx must be exactly one distinct value AND equal to the SSoT.
   if [[ "$(print -r -- "$pbx" | wc -l | tr -d ' ')" != "1" || "$pbx" != "$swift" ]]; then
     print -u2 "  ✗ pbxproj MARKETING_VERSION ($pbx) != MacSweepVersion.swift ($swift) — run: scripts/release.sh bump $swift"
+    ok=0
+  fi
+  if [[ "$(print -r -- "$build" | wc -l | tr -d ' ')" != "1" || "$build" != "$swift" ]]; then
+    print -u2 "  ✗ pbxproj CURRENT_PROJECT_VERSION ($build) != MacSweepVersion.swift ($swift) — run: scripts/release.sh bump $swift"
     ok=0
   fi
 
@@ -81,12 +92,13 @@ cmd_bump() {
   [[ -n "$new" ]] || usage
   [[ "$new" =~ $SEMVER_RE ]] || die "version must be X.Y.Z, got '$new'"
 
-  # Edit both version carriers in place (the pbxproj is hand-maintained, not
+  # Edit all version carriers in place (the pbxproj is hand-maintained, not
   # generated — sed is the whole story).
   sed -i '' "s/static let current = \".*\"/static let current = \"$new\"/" "$VERSION_SWIFT"
   sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $new;/" "$PBXPROJ"
+  sed -i '' "s/CURRENT_PROJECT_VERSION = .*;/CURRENT_PROJECT_VERSION = $new;/" "$PBXPROJ"
 
-  print "bumped MacSweepVersion.swift + pbxproj MARKETING_VERSION -> $new"
+  print "bumped app, CLI, and Sparkle build versions -> $new"
   print ""
   cmd_check || die "post-bump verification failed"
   print ""

@@ -7,6 +7,7 @@ struct MacSweepApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
     @State private var showingOnboarding = false
+    private let appUpdater = AppUpdater()
 
     /// App-global run-once guard for lifecycle side effects.
     @MainActor private static var didRunLaunchSideEffects = false
@@ -21,6 +22,9 @@ struct MacSweepApp: App {
         .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(appUpdater: appUpdater)
+            }
             MacSweepCommands(appState: appDelegate.appState)
         }
 
