@@ -42,9 +42,31 @@ extension ScanModule {
         errorMessage: @escaping (Error) -> String = { $0.localizedDescription },
         remove: (CleanupItem, SafetyChecker) async throws -> Void
     ) async -> CleanupResult {
+        await cleanItemsRecordingActions(
+            items,
+            dryRun: dryRun,
+            blockedMessage: blockedMessage,
+            errorMessage: errorMessage
+        ) { item, checker in
+            try await remove(item, checker)
+            return nil
+        }
+    }
+
+    /// Variant of ``cleanItems(_:dryRun:blockedMessage:errorMessage:remove:)``
+    /// for removers whose successful operation determines the factual history
+    /// action at cleanup time.
+    func cleanItemsRecordingActions(
+        _ items: [CleanupItem],
+        dryRun: Bool,
+        blockedMessage: String = "Blocked by safety checks",
+        errorMessage: @escaping (Error) -> String = { $0.localizedDescription },
+        remove: (CleanupItem, SafetyChecker) async throws -> CleanupHistoryAction?
+    ) async -> CleanupResult {
         var processed = 0
         var freed: Int64 = 0
         var errors: [CleanupError] = []
+        var historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:]
         let checker = SafetyChecker()
 
         for item in items where item.module == id {
@@ -64,9 +86,12 @@ extension ScanModule {
             }
 
             do {
-                try await remove(item, checker)
+                let action = try await remove(item, checker)
                 processed += 1
                 freed += item.size
+                if let action {
+                    historyActions[item.id] = action
+                }
             } catch {
                 errors.append(CleanupError(
                     path: item.path,
@@ -76,7 +101,12 @@ extension ScanModule {
             }
         }
 
-        return CleanupResult(itemsProcessed: processed, bytesFreed: freed, errors: errors)
+        return CleanupResult(
+            itemsProcessed: processed,
+            bytesFreed: freed,
+            errors: errors,
+            historyActions: historyActions
+        )
     }
 }
 
@@ -249,6 +279,7 @@ struct CleanupResult: Sendable {
     let itemsProcessed: Int
     let bytesFreed: Int64
     let errors: [CleanupError]
+    let historyActions: [CleanupItem.ID: CleanupHistoryAction]
     let timestamp: Date
 
     var formattedBytesFreed: String {
@@ -264,10 +295,16 @@ struct CleanupResult: Sendable {
         errors.failureSummaryMessage
     }
 
-    init(itemsProcessed: Int, bytesFreed: Int64, errors: [CleanupError] = []) {
+    init(
+        itemsProcessed: Int,
+        bytesFreed: Int64,
+        errors: [CleanupError] = [],
+        historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:]
+    ) {
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
         self.errors = errors
+        self.historyActions = historyActions
         self.timestamp = Date()
     }
 }

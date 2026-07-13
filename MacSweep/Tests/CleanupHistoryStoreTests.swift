@@ -13,20 +13,31 @@ final class CleanupHistoryStoreTests {
         let description = "Test cleanup module"
         let icon = "testtube.2"
         var shouldThrow = false
+        var historyAction: CleanupHistoryAction?
 
-        init(id: String = "system-cache", name: String = "System Cache", shouldThrow: Bool = false) {
+        init(
+            id: String = "system-cache",
+            name: String = "System Cache",
+            shouldThrow: Bool = false,
+            historyAction: CleanupHistoryAction? = nil
+        ) {
             self.id = id
             self.name = name
             self.shouldThrow = shouldThrow
+            self.historyAction = historyAction
         }
 
         func scan() async throws -> [CleanupItem] { [] }
 
         func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
             if shouldThrow { throw InjectedFailure() }
+            let historyActions = historyAction.map { action in
+                Dictionary(uniqueKeysWithValues: items.map { ($0.id, action) })
+            } ?? [:]
             return CleanupResult(
                 itemsProcessed: items.count,
-                bytesFreed: items.reduce(0) { $0 + $1.size }
+                bytesFreed: items.reduce(0) { $0 + $1.size },
+                historyActions: historyActions
             )
         }
     }
@@ -99,10 +110,34 @@ final class CleanupHistoryStoreTests {
         #expect(run.records.allSatisfy { $0.errorMessage == "Cleanup exceeds the deletion cap" })
     }
 
-    @Test func classifiesCloudDownloadsAndToolActionsFactually() {
-        let cloudDownload = item(
+    @Test func classifiesEveryBrowserModuleCleanupAsPermanent() {
+        let moduleIDs = [
+            SafariModule().id,
+            ChromeModule().id,
+            FirefoxModule().id,
+            BraveModule().id,
+            ArcModule().id,
+            EdgeModule().id
+        ]
+
+        #expect(BrowserModuleID.matches(EdgeModule().id))
+        for moduleID in moduleIDs {
+            let browserItem = item(module: moduleID, moduleName: "Browser Cache")
+            #expect(CleanupHistoryAction.action(for: browserItem) == .deletePermanently)
+        }
+    }
+
+    @Test func recordsActualCloudDispositionAndToolActionsFactually() async throws {
+        let store = store()
+        let cloudCacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloud-cache-\(UUID().uuidString)")
+        try Data(repeating: 0xCA, count: 4096).write(to: cloudCacheURL)
+        defer { try? FileManager.default.removeItem(at: cloudCacheURL) }
+
+        let cloudCache = item(
+            path: cloudCacheURL.path,
             module: "cloud-cleanup",
-            moduleName: "iCloud Local Copy"
+            moduleName: "Cloud Cache"
         )
         let docker = CleanupItem(
             id: UUID(),
@@ -110,8 +145,16 @@ final class CleanupHistoryStoreTests {
             size: 8192
         )
 
-        #expect(CleanupHistoryAction.action(for: cloudDownload) == .removeLocalDownload)
+        #expect(CleanupHistoryAction.action(for: cloudCache) == .removeLocalDownload)
         #expect(CleanupHistoryAction.action(for: docker) == .runToolCleanup)
+
+        let result = try await CloudCleanupModule().clean(items: [cloudCache], dryRun: false)
+        let run = try #require(store.record(items: [cloudCache], result: result))
+
+        #expect(result.historyActions[cloudCache.id] == .deletePermanently)
+        #expect(!FileManager.default.fileExists(atPath: cloudCacheURL.path))
+        #expect(run.records.map(\.action) == [.deletePermanently])
+        #expect(run.containsTrashRecovery == false)
     }
 
     @Test func ignoresEmptyAttempts() {
@@ -147,7 +190,11 @@ final class CleanupHistoryStoreTests {
         let store = store()
         let engine = ScanEngine(
             modules: [
-                TestModule(id: "system-cache", name: "System Cache"),
+                TestModule(
+                    id: "cloud-cleanup",
+                    name: "Cloud Cleanup",
+                    historyAction: .deletePermanently
+                ),
                 TestModule(id: "large-files", name: "Large Files", shouldThrow: true)
             ],
             cleanupHistoryStore: store
@@ -155,8 +202,8 @@ final class CleanupHistoryStoreTests {
         let temporaryDirectory = FileManager.default.temporaryDirectory
         let first = item(
             path: temporaryDirectory.appendingPathComponent("completed.cache").path,
-            module: "system-cache",
-            moduleName: "System Cache"
+            module: "cloud-cleanup",
+            moduleName: "Cloud Cache"
         )
         let second = item(
             path: temporaryDirectory.appendingPathComponent("failed.cache").path,
@@ -180,10 +227,11 @@ final class CleanupHistoryStoreTests {
 
         let runs = store.history
         #expect(runs.count == 2)
-        let completedRun = try #require(runs.first { $0.records.first?.moduleID == "system-cache" })
+        let completedRun = try #require(runs.first { $0.records.first?.moduleID == "cloud-cleanup" })
         let failedRun = try #require(runs.first { $0.records.first?.moduleID == "large-files" })
         #expect(completedRun.records.map(\.originalPath) == [first.path.path])
         #expect(completedRun.completedCount == 1)
+        #expect(completedRun.records[0].action == .deletePermanently)
         #expect(completedRun.containsTrashRecovery == false)
         #expect(failedRun.records.map(\.originalPath) == [second.path.path])
         #expect(failedRun.failedCount == 1)

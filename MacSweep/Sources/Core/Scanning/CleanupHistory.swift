@@ -27,15 +27,17 @@ enum CleanupHistoryAction: String, Codable, Equatable, Sendable {
             break
         }
 
+        if BrowserModuleID.matches(item.module) {
+            return .deletePermanently
+        }
+
         switch item.module {
-        case "system-cache", "trash-bins", "network",
-             "browser-safari", "browser-chrome", "browser-firefox",
-             "browser-brave", "browser-arc":
+        case "system-cache", "trash-bins", "network":
             return .deletePermanently
         case "cloud-cleanup":
-            return item.moduleName.contains("Local Copy")
-                ? .removeLocalDownload
-                : .deletePermanently
+            // The exact live disposition is threaded through CleanupResult.
+            // Without one, avoid claiming that cloud-backed data was deleted.
+            return .removeLocalDownload
         default:
             return .moveToTrash
         }
@@ -146,19 +148,32 @@ final class CleanupHistoryStore: @unchecked Sendable {
 
     @discardableResult
     func record(items: [CleanupItem], result: CleanupResult) -> CleanupHistoryRun? {
-        record(items: items, timestamp: result.timestamp, errors: result.errors, overallError: nil)
+        record(
+            items: items,
+            timestamp: result.timestamp,
+            errors: result.errors,
+            overallError: nil,
+            actions: result.historyActions
+        )
     }
 
     @discardableResult
     func recordFailure(items: [CleanupItem], error: Error, timestamp: Date = Date()) -> CleanupHistoryRun? {
-        record(items: items, timestamp: timestamp, errors: [], overallError: error.localizedDescription)
+        record(
+            items: items,
+            timestamp: timestamp,
+            errors: [],
+            overallError: error.localizedDescription,
+            actions: [:]
+        )
     }
 
     private func record(
         items: [CleanupItem],
         timestamp: Date,
         errors: [CleanupError],
-        overallError: String?
+        overallError: String?,
+        actions: [CleanupItem.ID: CleanupHistoryAction]
     ) -> CleanupHistoryRun? {
         guard !items.isEmpty else { return nil }
 
@@ -171,7 +186,7 @@ final class CleanupHistoryStore: @unchecked Sendable {
                 moduleID: item.module,
                 moduleName: item.moduleName,
                 originalPath: item.path.isFileURL ? item.path.path : item.path.absoluteString,
-                action: CleanupHistoryAction.action(for: item),
+                action: actions[item.id] ?? CleanupHistoryAction.action(for: item),
                 bytes: item.size,
                 outcome: itemError == nil ? .completed : .failed,
                 errorMessage: itemError

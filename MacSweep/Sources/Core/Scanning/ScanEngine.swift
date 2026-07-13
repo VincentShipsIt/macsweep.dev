@@ -66,6 +66,7 @@ actor ScanEngine {
         var processedCount = 0
         var bytesFreed: Int64 = 0
         var errors: [CleanupError] = []
+        var historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:]
         var finalizedItems: [CleanupItem] = []
         var finalizedItemIDs = Set<CleanupItem.ID>()
 
@@ -73,7 +74,8 @@ actor ScanEngine {
             CleanupResult(
                 itemsProcessed: processedCount,
                 bytesFreed: bytesFreed,
-                errors: errors
+                errors: errors,
+                historyActions: historyActions
             )
         }
 
@@ -88,6 +90,7 @@ actor ScanEngine {
                 )
                 bytesFreed = bytesOverflow ? Int64.max : nextBytesFreed
                 errors.append(contentsOf: result.errors)
+                historyActions.merge(result.historyActions) { _, action in action }
             }
             finalizedItems.append(contentsOf: items)
             finalizedItemIDs.formUnion(items.map(\.id))
