@@ -205,14 +205,13 @@ struct PackageManagersView: View {
             onAction: { showingConfirmation = true },
             showsPanelBackground: true
         )
-        .deleteConfirmation(
-            "Clean \(selectedItems.count) developer items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            confirmTitle: "Clean Selected",
-            message: cleanConfirmationMessage
-        ) {
-            Task { await cleanSelected() }
-        }
+            items: selectedCleanupItems,
+            disposition: .mixed,
+            note: cleanConfirmationMessage,
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     // MARK: - Actions
@@ -238,16 +237,18 @@ struct PackageManagersView: View {
         dockerInfo = await currentDockerInfo
     }
 
-    private func cleanSelected() async {
-        let itemsToClean = allCleanupItems.filter { selectedItems.contains($0.id) }
+    private func cleanSelected() async -> CleanupResult? {
+        let itemsToClean = selectedCleanupItems
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete.
         let engine = ScanEngine()
         var cleanupError: String?
+        var cleanupResult: CleanupResult?
         do {
             let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
+            cleanupResult = result
             cleanupError = result.failureSummaryMessage
         } catch {
             // Total failure (e.g. DeletionGuard cap): nothing was deleted.
@@ -258,9 +259,13 @@ struct PackageManagersView: View {
         // removing items that may still be present after a throw/block.
         await scan()
         errorMessage = cleanupError
+        return cleanupResult
     }
+}
 
-    // MARK: - Helpers
+// MARK: - Helpers
+
+private extension PackageManagersView {
 
     private func extractPackageManager(from moduleName: String) -> String {
         let parts = moduleName.split(separator: " ")
@@ -277,6 +282,10 @@ struct PackageManagersView: View {
 
     private var selectedSize: String {
         allCleanupItems.formattedTotalSize(selected: selectedItems)
+    }
+
+    private var selectedCleanupItems: [CleanupItem] {
+        allCleanupItems.filter { selectedItems.contains($0.id) }
     }
 
     private var cleanConfirmationMessage: String {

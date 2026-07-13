@@ -145,9 +145,7 @@ struct AppUninstallerView: View {
                 AppDetailView(
                     app: app,
                     onUninstall: { includeLeftovers in
-                        Task {
-                            await uninstallApp(app, includeLeftovers: includeLeftovers)
-                        }
+                        await uninstallApp(app, includeLeftovers: includeLeftovers)
                     }
                 )
             } else {
@@ -212,19 +210,13 @@ struct AppUninstallerView: View {
             .padding()
         }
         .background(MacSweepTheme.panel)
-        .confirmationDialog(
-            "Move \(orphanedLeftovers.count) orphaned items to Trash?",
+        .cleanupReview(
             isPresented: $showingCleanOrphansConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Move to Trash", role: .destructive) {
-                Task { await cleanOrphans() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            let totalSize = orphanedLeftovers.reduce(0) { $0 + $1.size }
-            Text("This will move \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) of leftover files from uninstalled apps to Trash. You can restore them from Trash if needed.")
-        }
+            items: orphanCleanupItems,
+            disposition: .trash,
+            note: "These files were attributed to apps that are no longer installed.",
+            onConfirm: { await cleanOrphans() }
+        )
     }
 
     // MARK: - Actions
@@ -238,8 +230,11 @@ struct AppUninstallerView: View {
 
         // Load leftovers for each app
         let scanner = LeftoverScanner()
-        for i in loadedApps.indices {
-            loadedApps[i].leftovers = await scanner.findLeftovers(for: loadedApps[i], among: loadedApps)
+        for appIndex in loadedApps.indices {
+            loadedApps[appIndex].leftovers = await scanner.findLeftovers(
+                for: loadedApps[appIndex],
+                among: loadedApps
+            )
         }
 
         apps = loadedApps
@@ -249,18 +244,20 @@ struct AppUninstallerView: View {
         orphanedLeftovers = await scanner.findOrphanedLeftovers(installedBundleIDs: installedIDs)
     }
 
-    private func uninstallApp(_ app: InstalledApp, includeLeftovers: Bool) async {
+    private func uninstallApp(_ app: InstalledApp, includeLeftovers: Bool) async -> CleanupResult? {
         let uninstaller = AppUninstaller()
 
         do {
-            _ = try await uninstaller.uninstall(app, includeLeftovers: includeLeftovers)
+            let result = try await uninstaller.uninstall(app, includeLeftovers: includeLeftovers)
             errorMessage = nil
 
             // Refresh list
             await loadApps()
             selectedApp = nil
+            return result
         } catch {
             errorMessage = "Couldn't uninstall \(app.name): \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -268,29 +265,24 @@ struct AppUninstallerView: View {
     /// (per-item SafetyChecker + aggregate DeletionGuard cap) vets each path — the
     /// same route the other GUI cleanups take. A blocked delete throws and surfaces
     /// in the error banner rather than failing silently.
-    private func cleanOrphans() async {
+    private func cleanOrphans() async -> CleanupResult? {
         isCleaningOrphans = true
         defer { isCleaningOrphans = false }
 
-        let items = orphanedLeftovers.map { leftover in
-            CleanupItem(
-                id: leftover.id,
-                path: leftover.path,
-                size: leftover.size,
-                type: .directory,
-                module: "app-uninstaller",
-                moduleName: "App Uninstaller"
-            )
-        }
-
         do {
-            _ = try await ScanEngine().clean(items: items, dryRun: false, confirmedLargeDeletion: true)
+            let result = try await ScanEngine().clean(
+                items: orphanCleanupItems,
+                dryRun: false,
+                confirmedLargeDeletion: true
+            )
             errorMessage = nil
             orphanedLeftovers = []
             // Re-scan so anything the safety pipeline refused stays visible.
             await loadApps()
+            return result
         } catch {
             errorMessage = "Couldn't clean orphaned leftovers: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -318,6 +310,19 @@ struct AppUninstallerView: View {
         }
 
         return result
+    }
+
+    private var orphanCleanupItems: [CleanupItem] {
+        orphanedLeftovers.map { leftover in
+            CleanupItem(
+                id: leftover.id,
+                path: leftover.path,
+                size: leftover.size,
+                type: .directory,
+                module: "app-uninstaller",
+                moduleName: "App Uninstaller"
+            )
+        }
     }
 }
 
@@ -368,10 +373,11 @@ struct AppListRow: View {
 
 struct AppDetailView: View {
     let app: InstalledApp
-    let onUninstall: (Bool) -> Void
+    let onUninstall: (Bool) async -> CleanupResult?
 
     @State private var includeLeftovers = true
     @State private var showingConfirmation = false
+    @State private var appBundleItemID = UUID()
 
     var body: some View {
         ScrollView {
@@ -452,22 +458,40 @@ struct AppDetailView: View {
                 .padding(.bottom)
             }
         }
-        .confirmationDialog(
-            "Uninstall \(app.name)?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Uninstall", role: .destructive) {
-                onUninstall(includeLeftovers)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if includeLeftovers && !app.leftovers.isEmpty {
-                Text("This will move \(app.name) and \(app.leftovers.count) leftover items to Trash, freeing \(app.formattedSize).")
-            } else {
-                Text("This will move \(app.name) to Trash, freeing \(app.formattedBundleSize).")
-            }
+            items: uninstallItems,
+            disposition: .trash,
+            note: includeLeftovers
+                ? "The app bundle and selected support files move to Trash. "
+                    + "Running and protected apps are refused at execution."
+                : "Only the app bundle moves to Trash; its support files remain.",
+            onConfirm: { await onUninstall(includeLeftovers) }
+        )
+    }
+
+    private var uninstallItems: [CleanupItem] {
+        var items = [CleanupItem(
+            id: appBundleItemID,
+            path: app.bundlePath,
+            size: app.bundleSize,
+            type: .directory,
+            module: "app-uninstaller",
+            moduleName: "App Uninstaller"
+        )]
+        if includeLeftovers {
+            items.append(contentsOf: app.leftovers.map { leftover in
+                CleanupItem(
+                    id: leftover.id,
+                    path: leftover.path,
+                    size: leftover.size,
+                    type: .directory,
+                    module: "app-uninstaller",
+                    moduleName: "App Uninstaller"
+                )
+            })
         }
+        return items
     }
 }
 

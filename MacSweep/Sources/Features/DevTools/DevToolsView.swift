@@ -365,14 +365,17 @@ struct BuildArtifactsView: View {
             .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
-        .deleteConfirmation(
-            "Clean \(selectedCount) items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            confirmTitle: "Clean Selected",
-            message: cleanConfirmationMessage
-        ) {
-            Task { await cleanSelected() }
-        }
+            items: selectedCleanupItems,
+            disposition: .mixed,
+            note: cleanConfirmationMessage,
+            additionalCount: selectedGitCleanupItems.count,
+            additionalBytes: selectedGitCleanupItems.reduce(0) { $0 + $1.size },
+            additionalModules: Array(repeating: "Git", count: selectedGitCleanupItems.count),
+            additionalPaths: selectedGitCleanupItems.map { $0.displayPath ?? $0.repositoryPath },
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     private var cleanConfirmationMessage: String {
@@ -473,28 +476,43 @@ struct BuildArtifactsView: View {
         selectedGitItems = Set(gitArtifacts.map(\.id))
     }
 
-    private func cleanSelected() async {
-        let itemsToClean = allCleanupItems.filter { selectedItems.contains($0.id) }
-        let gitItemsToClean = gitArtifacts.filter { selectedGitItems.contains($0.id) }
+    private func cleanSelected() async -> CleanupResult? {
+        let itemsToClean = selectedCleanupItems
+        let gitItemsToClean = selectedGitCleanupItems
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         var failures: [String] = []
+        var processed = 0
+        var bytesFreed: Int64 = 0
+        var cleanupErrors: [CleanupError] = []
         if !itemsToClean.isEmpty {
             let engine = ScanEngine()
             do {
                 let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
+                processed += result.itemsProcessed
+                bytesFreed += result.bytesFreed
+                cleanupErrors.append(contentsOf: result.errors)
                 if let summary = result.failureSummaryMessage {
                     failures.append(summary)
                 }
             } catch {
-                failures.append("Cleanup failed: \(error.localizedDescription)")
+                let message = "Cleanup failed: \(error.localizedDescription)"
+                failures.append(message)
+                cleanupErrors.append(CleanupError(
+                    path: itemsToClean.first?.path ?? URL(string: "macsweep-action://dev-tools/cleanup")!,
+                    message: message,
+                    underlyingError: error
+                ))
             }
         }
 
         if !gitItemsToClean.isEmpty {
             let result = await GitArtifactCleaner().clean(items: gitItemsToClean, dryRun: false)
+            processed += result.itemsProcessed
+            bytesFreed += result.bytesFreed
+            cleanupErrors.append(contentsOf: result.errors)
             if let summary = result.errors.failureSummaryMessage {
                 failures.append("Git artifacts: \(summary)")
             }
@@ -504,6 +522,7 @@ struct BuildArtifactsView: View {
 
         // Refresh
         await scan()
+        return CleanupResult(itemsProcessed: processed, bytesFreed: bytesFreed, errors: cleanupErrors)
     }
 
     // MARK: - Computed
@@ -534,6 +553,14 @@ struct BuildArtifactsView: View {
 
     private var selectedCount: Int {
         selectedItems.count + selectedGitItems.count
+    }
+
+    private var selectedCleanupItems: [CleanupItem] {
+        allCleanupItems.filter { selectedItems.contains($0.id) }
+    }
+
+    private var selectedGitCleanupItems: [GitCleanupItem] {
+        gitArtifacts.filter { selectedGitItems.contains($0.id) }
     }
 
     private var recentlyModifiedCount: Int {

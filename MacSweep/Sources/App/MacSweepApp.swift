@@ -70,7 +70,7 @@ struct MacSweepApp: App {
                 NotificationManager.shared.requestPermission()
                 #endif
             }
-            .onChange(of: showingOnboarding) { newValue in
+            .onChange(of: showingOnboarding) { _, newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
                 }
@@ -79,8 +79,15 @@ struct MacSweepApp: App {
 }
 
 private struct MacSweepMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Label("MacSweep", image: "MenuBarIcon")
+            .onReceive(NotificationCenter.default.publisher(for: AppDelegate.openMainWindowRequest)) { _ in
+                AppDelegate.openMainWindowIfNeeded {
+                    openWindow(id: "main")
+                }
+            }
     }
 }
 

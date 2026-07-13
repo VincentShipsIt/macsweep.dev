@@ -113,6 +113,8 @@ struct ContentView: View {
             staticDetail(AssistantView())
         case .share:
             staticDetail(ShareView())
+        case .cleanupHistory:
+            staticDetail(CleanupHistoryView())
 
         // Cleanup
         case .systemJunk:
@@ -198,6 +200,7 @@ private extension Feature {
         case .smartScan,
              .assistant,
              .share,
+             .cleanupHistory,
              .networkCleanup,
              .loginItems,
              .optimization,

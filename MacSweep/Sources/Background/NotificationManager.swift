@@ -50,9 +50,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         // main-thread on macOS, so hop to the main actor before touching AppKit.
         // completionHandler() stays outside the Task so the system gets it promptly.
         Task { @MainActor in
-            NSApp.activate(ignoringOtherApps: true)
-            // Open main window
-            NSApp.windows.first(where: { $0.level == .normal })?.makeKeyAndOrderFront(nil)
+            AppDelegate.openMainWindowIfNeeded()
         }
         completionHandler()
     }
