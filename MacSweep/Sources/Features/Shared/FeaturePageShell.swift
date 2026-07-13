@@ -249,3 +249,51 @@ struct MacSweepErrorBanner: View {
         .background(Color.red.opacity(0.1))
     }
 }
+
+struct FullDiskAccessWarningBanner: View {
+    let scope: FullDiskAccessScope
+    var onDismiss: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.title3)
+                .foregroundStyle(.orange)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(scope.title)
+                    .font(.headline)
+                Text(scope.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Button("Open System Settings") {
+                FullDiskAccess.openSystemPreferences()
+            }
+            .glassButton(prominent: true)
+            .controlSize(.small)
+            .tint(.orange)
+
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(12)
+        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        }
+    }
+}

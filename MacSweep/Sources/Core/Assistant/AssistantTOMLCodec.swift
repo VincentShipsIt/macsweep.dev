@@ -67,7 +67,7 @@ enum AssistantTOMLCodec {
 
     static func renderProviders(_ config: AssistantProvidersConfiguration) -> String {
         var lines = [
-            "# macsweep.dev assistant provider configuration",
+            "# MacSweep assistant provider configuration",
             "# Codex is the default provider and uses GPT-5.4-mini with medium reasoning.",
             "default_provider = \"\(config.defaultProvider.rawValue)\"",
             "fallback_order = \(renderStringArray(config.fallbackOrder.map(\.rawValue)))",
@@ -161,8 +161,8 @@ enum AssistantTOMLCodec {
 
     static func renderWatchlists(_ rules: [AssistantWatchlistRule]) -> String {
         var lines = [
-            "# macsweep.dev persistent watchlists",
-            "# Each rule adds scan roots the assistant or user wants macsweep.dev to monitor.",
+            "# MacSweep persistent watchlists",
+            "# Each rule adds scan roots the assistant or user wants MacSweep to monitor.",
             "version = 1",
             "",
         ]

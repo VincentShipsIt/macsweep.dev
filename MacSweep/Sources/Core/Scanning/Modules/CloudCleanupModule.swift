@@ -130,15 +130,19 @@ struct CloudCleanupModule: ScanModule {
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        await cleanItems(items, dryRun: dryRun) { item, _ in
+        await cleanItemsRecordingActions(items, dryRun: dryRun) { item, _ in
             // Route on the AUTHORITATIVE live ubiquitous status, not a display
             // string: an iCloud-backed file must be evicted (non-destructive,
             // stays in the cloud), never permanently deleted.
-            let isUbiquitous = (try? item.path.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem ?? false
+            let isUbiquitous = (try? item.path.resourceValues(
+                forKeys: [.isUbiquitousItemKey]
+            ))?.isUbiquitousItem ?? false
             if isUbiquitous || item.moduleName.contains("Local Copy") {
                 try FileManager.default.evictUbiquitousItem(at: item.path)
+                return .removeLocalDownload
             } else {
                 try CleanupFileRemover.permanent(item.path, module: item.module)
+                return .deletePermanently
             }
         }
     }

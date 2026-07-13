@@ -7,6 +7,7 @@ struct AIAnalysisView: View {
     @State private var hasLocalAIProvider = false
     @State private var showKeyField = false
     @State private var keySaveError = false
+    @State private var isCleaning = false
 
     private var selectedFindings: [CacheFinding] {
         service.findings.filter { $0.isSelected }
@@ -35,7 +36,7 @@ struct AIAnalysisView: View {
                     apiKeyPopover
                 }
             ),
-            hidesChrome: service.findings.isEmpty && !service.isScanning,
+            hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
             if service.findings.isEmpty && !service.isScanning {
@@ -52,6 +53,7 @@ struct AIAnalysisView: View {
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,
+                    hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
             } else {
@@ -74,7 +76,7 @@ struct AIAnalysisView: View {
             Text("Anthropic API Key Fallback")
                 .font(.headline)
 
-            Text("macsweep.dev uses signed-in Claude or Codex CLIs first. A key is only needed as a fallback when local CLIs are unavailable.")
+            Text("MacSweep uses signed-in Claude or Codex CLIs first. A key is only needed as a fallback when local CLIs are unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 280)
@@ -210,7 +212,7 @@ struct AIAnalysisView: View {
                 }
                 .glassButton(prominent: true)
                 .tint(.red)
-                .disabled(selectedFindings.isEmpty || service.isScanning)
+                .disabled(selectedFindings.isEmpty || service.isScanning || isCleaning)
             }
         }
         .padding(.horizontal, 20)
@@ -228,8 +230,11 @@ struct AIAnalysisView: View {
     }
 
     private func cleanSelected() {
+        guard !isCleaning else { return }
+        isCleaning = true
         let pathsToDelete = selectedFindings.map { $0.path }
         Task {
+            defer { isCleaning = false }
             // Do the blocking trashItem I/O OFF the main thread (returns only
             // Sendable [String] arrays, so no @StateObject is captured by the
             // detached task), then apply UI mutations back on the main actor.
