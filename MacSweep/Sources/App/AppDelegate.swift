@@ -31,6 +31,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        appState.refreshFullDiskAccess()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         if let observer = windowObserver {
             NotificationCenter.default.removeObserver(observer)
