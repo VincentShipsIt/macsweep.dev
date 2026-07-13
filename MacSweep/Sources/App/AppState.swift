@@ -29,6 +29,7 @@ final class AppState: ObservableObject {
     // MARK: - UI State
     @Published var selectedFeature: Feature = .smartScan
     @Published var showingConfirmation = false
+    @Published private(set) var hasFullDiskAccess: Bool
 
     // MARK: - Menu Bar
     var menuBarIcon: String {
@@ -50,7 +51,8 @@ final class AppState: ObservableObject {
     private var activeScanID: UUID?
 
     // MARK: - Initialization
-    init() {
+    init(initialFullDiskAccess: Bool = FullDiskAccess.hasAccess) {
+        hasFullDiskAccess = initialFullDiskAccess
         cleanupPerformanceHistory = cleanupPerformanceStore.history
 
         Task {
@@ -125,6 +127,10 @@ final class AppState: ObservableObject {
 
     func refreshDiskUsage() async {
         diskUsage = await DiskUsage.current()
+    }
+
+    func refreshFullDiskAccess() {
+        hasFullDiskAccess = FullDiskAccess.hasAccess
     }
 
     func selectAll() {

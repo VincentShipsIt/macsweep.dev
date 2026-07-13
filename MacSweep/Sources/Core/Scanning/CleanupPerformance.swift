@@ -31,7 +31,7 @@ struct CleanupPerformanceEntry: Codable, Equatable, Identifiable, Sendable {
     }
 
     var hasCleanupWork: Bool {
-        bytesFreed > 0 || itemsProcessed > 0
+        bytesFreed > 0 || itemsProcessed > 0 || errorCount > 0
     }
 }
 
@@ -60,21 +60,30 @@ struct CleanupPerformanceSummary: Equatable, Sendable {
     }
 
     var totalBytesFreed: Int64 {
-        entries.reduce(0) { $0 + $1.bytesFreed }
+        entries.reduce(0) { total, entry in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, entry.bytesFreed))
+            return overflow ? Int64.max : sum
+        }
     }
 
     var totalItemsProcessed: Int {
-        entries.reduce(0) { $0 + $1.itemsProcessed }
+        entries.reduce(0) { total, entry in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, entry.itemsProcessed))
+            return overflow ? Int.max : sum
+        }
     }
 
     var totalErrors: Int {
-        entries.reduce(0) { $0 + $1.errorCount }
+        entries.reduce(0) { total, entry in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, entry.errorCount))
+            return overflow ? Int.max : sum
+        }
     }
 
     var successRate: Double? {
-        let attempts = totalItemsProcessed + totalErrors
+        let attempts = Double(totalItemsProcessed) + Double(totalErrors)
         guard attempts > 0 else { return nil }
-        return Double(totalItemsProcessed) / Double(attempts)
+        return Double(totalItemsProcessed) / attempts
     }
 
     var lastCleanup: CleanupPerformanceEntry? {

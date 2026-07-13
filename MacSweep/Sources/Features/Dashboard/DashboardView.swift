@@ -14,14 +14,13 @@ struct DashboardView: View {
     @StateObject private var processMonitor = ProcessMonitor()
     @State private var expandedWidget: WidgetType? = nil
     @State private var isCleanupReviewExpanded = false
-    @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
     @State private var showingConfirmation = false
     @State private var recommendedItemsToClean: Set<CleanupItem.ID> = []
 
     var body: some View {
         VStack(spacing: 0) {
-            if !hasFullDiskAccess && showFDABanner {
+            if !appState.hasFullDiskAccess && showFDABanner {
                 fdaBanner
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -132,31 +131,28 @@ struct DashboardView: View {
                 cleanRecommendedButton
             }
         }
-        .onAppear {
-            hasFullDiskAccess = FullDiskAccess.hasAccess
-        }
         .onChange(of: appState.isScanning) { _, isScanning in
             if !isScanning && !appState.scanResults.isEmpty {
                 isCleanupReviewExpanded = false
             }
         }
-        .confirmationDialog(
-            "Clean \(recommendedItemsToClean.count) selected item\(recommendedItemsToClean.count == 1 ? "" : "s")?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clean", role: .destructive) {
+            items: recommendedCleanupItems,
+            disposition: .mixed,
+            note: "Recommended items remain separated from review-only personal files. "
+                + "Every path is checked again immediately before its module runs.",
+            onConfirm: {
+                // Apply the reviewed recommended set to the shared selection only
+                // on confirm — Cancel must never clobber a curated selection.
                 appState.selectedItems = recommendedItemsToClean
-                Task {
-                    // Behind this dialog → confirm the large-deletion gate.
-                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
-                }
+                return try? await appState.deleteSelected(confirmedLargeDeletion: true)
             }
-            Button("Cancel", role: .cancel) {
+        )
+        .onChange(of: showingConfirmation) { _, isPresented in
+            if !isPresented {
                 recommendedItemsToClean = []
             }
-        } message: {
-            Text("This will free \(appState.scanResults.formattedTotalSize(selected: recommendedItemsToClean)). Some items are deleted permanently and can't be recovered.")
         }
     }
 
@@ -185,46 +181,10 @@ struct DashboardView: View {
     // MARK: - FDA Banner
 
     private var fdaBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title3)
-                .foregroundStyle(.orange)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Full Disk Access Required")
-                    .font(.headline)
-
-                Text("macsweep.dev needs permission to scan protected folders. Some features may be limited.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        FullDiskAccessWarningBanner(scope: .smartCare) {
+            withAnimation {
+                showFDABanner = false
             }
-
-            Spacer()
-
-            Button("Grant Access") {
-                FullDiskAccess.openSystemPreferences()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(.orange)
-
-            Button {
-                withAnimation {
-                    showFDABanner = false
-                }
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Dismiss")
-        }
-        .padding(12)
-        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
         }
     }
 
@@ -313,7 +273,7 @@ struct DashboardView: View {
 
     private var smartCareDescription: String {
         if appState.isScanning {
-            return appState.currentScanModule ?? "macsweep.dev is scanning in the background."
+            return appState.currentScanModule ?? "MacSweep is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
             return "\(summary.issueCount) items across \(summary.findings.count) categories. Recommended safe items are preselected."
@@ -390,6 +350,10 @@ struct DashboardView: View {
 
     private var selectedCleanupItems: [CleanupItem] {
         appState.scanResults.filter { appState.selectedItems.contains($0.id) }
+    }
+
+    private var recommendedCleanupItems: [CleanupItem] {
+        appState.scanResults.filter { recommendedItemsToClean.contains($0.id) }
     }
 
     private var selectedCleanupSizeText: String {
