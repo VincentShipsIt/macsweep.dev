@@ -56,7 +56,7 @@ enum DiskVisualizationLayout {
     static func sunburst(root: DiskNode, maxDepth: Int = 2) -> [DiskSunburstSegment] {
         guard maxDepth > 0 else { return [] }
 
-        let visibleDepth = min(maxDepth, treeDepth(of: root))
+        let visibleDepth = treeDepth(of: root, limit: maxDepth)
         guard visibleDepth > 0 else { return [] }
 
         let innerRadius = 0.25
@@ -282,9 +282,11 @@ enum DiskVisualizationLayout {
         }
     }
 
-    private static func treeDepth(of node: DiskNode) -> Int {
-        guard !node.children.isEmpty else { return 0 }
-        return 1 + (node.children.map(treeDepth).max() ?? 0)
+    private static func treeDepth(of node: DiskNode, limit: Int) -> Int {
+        guard limit > 0, !node.children.isEmpty else { return 0 }
+        return 1 + (node.children.map {
+            treeDepth(of: $0, limit: limit - 1)
+        }.max() ?? 0)
     }
 }
 

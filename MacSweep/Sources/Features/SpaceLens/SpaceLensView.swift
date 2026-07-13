@@ -494,6 +494,7 @@ struct TreemapView: View {
             .onAppear { rebuild(for: geometry.size) }
             .onChange(of: geometry.size) { _, newSize in rebuild(for: newSize) }
             .onChange(of: node.id) { _, _ in rebuild(for: geometry.size) }
+            .onChange(of: node.children.map(\.id)) { _, _ in rebuild(for: geometry.size) }
         }
         .padding()
     }
@@ -565,6 +566,11 @@ struct SunburstView: View {
     @Binding var selectedNode: DiskNode?
     let onDrillDown: (DiskNode) -> Void
 
+    // The normalized layout and dominant descendant colors depend only on the
+    // scanned tree, not selection or geometry. Cache them outside `body` so a
+    // render never recursively walks the tree.
+    @State private var arcs: [SunburstArcData] = []
+
     var body: some View {
         GeometryReader { geometry in
             let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -588,28 +594,33 @@ struct SunburstView: View {
 
                 // Multiple rings expose the scanned hierarchy instead of reducing
                 // every folder-heavy level to one solid blue ring.
-                ForEach(arcs(radius: maxRadius)) { arc in
+                ForEach(arcs) { arc in
                     SunburstArc(
                         arc: arc,
                         center: center,
+                        radius: maxRadius,
                         isSelected: selectedNode?.id == arc.node.id,
                         onTap: { selectedNode = arc.node },
                         onDoubleTap: { if arc.node.isDirectory { onDrillDown(arc.node) } }
                     )
                 }
             }
+            .onAppear { rebuild() }
+            .onChange(of: node.id) { _, _ in rebuild() }
+            .onChange(of: node.children.map(\.id)) { _, _ in rebuild() }
         }
         .padding()
     }
 
-    private func arcs(radius: CGFloat) -> [SunburstArcData] {
-        DiskVisualizationLayout.sunburst(root: node).map { segment in
+    private func rebuild() {
+        arcs = DiskVisualizationLayout.sunburst(root: node).map { segment in
             SunburstArcData(
                 node: segment.node,
                 startAngle: segment.startAngle,
                 endAngle: segment.endAngle,
-                innerRadius: radius * segment.innerRadius,
-                outerRadius: radius * segment.outerRadius
+                innerRadius: segment.innerRadius,
+                outerRadius: segment.outerRadius,
+                color: Color(diskCategory: segment.node.visualizationColor)
             )
         }
     }
@@ -619,8 +630,9 @@ struct SunburstArcData: Identifiable {
     let node: DiskNode
     let startAngle: Double
     let endAngle: Double
-    let innerRadius: CGFloat
-    let outerRadius: CGFloat
+    let innerRadius: Double
+    let outerRadius: Double
+    let color: Color
 
     var id: DiskNode.ID { node.id }
 }
@@ -628,26 +640,28 @@ struct SunburstArcData: Identifiable {
 struct SunburstArc: View {
     let arc: SunburstArcData
     let center: CGPoint
+    let radius: CGFloat
     let isSelected: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
 
-    private var color: Color { Color(diskCategory: arc.node.visualizationColor) }
-
     var body: some View {
+        let innerRadius = radius * CGFloat(arc.innerRadius)
+        let outerRadius = radius * CGFloat(arc.outerRadius)
+
         ArcShape(
             startAngle: .degrees(arc.startAngle),
             endAngle: .degrees(arc.endAngle),
-            innerRadius: arc.innerRadius,
-            outerRadius: isSelected ? arc.outerRadius + 10 : arc.outerRadius
+            innerRadius: innerRadius,
+            outerRadius: isSelected ? outerRadius + 10 : outerRadius
         )
-        .fill(color.opacity(isSelected ? 1 : 0.8))
+        .fill(arc.color.opacity(isSelected ? 1 : 0.8))
         .overlay(
             ArcShape(
                 startAngle: .degrees(arc.startAngle),
                 endAngle: .degrees(arc.endAngle),
-                innerRadius: arc.innerRadius,
-                outerRadius: isSelected ? arc.outerRadius + 10 : arc.outerRadius
+                innerRadius: innerRadius,
+                outerRadius: isSelected ? outerRadius + 10 : outerRadius
             )
             .stroke(.white.opacity(0.3), lineWidth: 1)
         )
