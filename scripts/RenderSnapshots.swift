@@ -26,6 +26,8 @@ struct SnapshotRenderer {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
+        validateNavigationContract()
+
         let outDir = snapshotOutputDir()
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
@@ -88,6 +90,35 @@ struct SnapshotRenderer {
         FileHandle.standardError.write(Data("SNAPSHOT_SUMMARY rendered=\(results.count) usable=\(good) dir=\(outDir.path)\n".utf8))
         print("SNAPSHOT_DONE \(results.count) \(good) \(outDir.path)")
         exit(0)
+    }
+
+    @MainActor
+    static func validateNavigationContract() {
+        let expectedReachableFeatures: [FeatureSection: [Feature]] = [
+            .cleanup: [.aiAnalysis],
+            .protection: [.loginItems],
+            .speed: [.maintenance],
+            .applications: [.homebrewUpdater]
+        ]
+
+        for (section, features) in expectedReachableFeatures {
+            precondition(
+                features.allSatisfy(section.features.contains),
+                "Expected \(features) to be reachable from the \(section.rawValue) sidebar section"
+            )
+        }
+
+        let sidebarFeatures = FeatureSection.allCases.flatMap(\.features)
+        precondition(
+            sidebarFeatures.count == Set(sidebarFeatures).count,
+            "Each sidebar feature must appear in exactly one section"
+        )
+        precondition(
+            FeatureSection.allCases.allSatisfy { section in
+                section.features.allSatisfy { $0.section == section }
+            },
+            "Every sidebar feature must report the section that contains it"
+        )
     }
 
     // MARK: - Data-state variants
@@ -512,8 +543,6 @@ extension Feature {
         case .maintenance: return "maintenance"
         case .uninstaller: return "uninstaller"
         case .homebrewUpdater: return "homebrew-updater"
-        case .updater: return "updater"
-        case .extensions: return "extensions"
         case .spaceLens: return "space-lens"
         case .largeOldFiles: return "large-old-files"
         case .duplicateFiles: return "duplicate-files"

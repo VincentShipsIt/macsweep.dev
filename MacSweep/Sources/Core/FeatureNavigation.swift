@@ -17,13 +17,13 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant, .cleanupHistory]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .cloudCleanup]
+            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup]
         case .protection:
-            return [.malwareRemoval, .privacy]
+            return [.malwareRemoval, .privacy, .loginItems]
         case .speed:
-            return [.optimization, .networkCleanup, .batteryMonitor]
+            return [.optimization, .networkCleanup, .batteryMonitor, .maintenance]
         case .applications:
-            return [.uninstaller]
+            return [.uninstaller, .homebrewUpdater]
         case .files:
             return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
         }
@@ -54,8 +54,6 @@ enum Feature: String, CaseIterable, Identifiable {
 
     case uninstaller = "Uninstaller"
     case homebrewUpdater = "Homebrew Updater"
-    case updater = "Updater"
-    case extensions = "Extensions"
 
     case spaceLens = "Space Lens"
     case largeOldFiles = "Large & Old Files"
@@ -86,8 +84,6 @@ enum Feature: String, CaseIterable, Identifiable {
         case .maintenance: return "wrench.and.screwdriver"
         case .uninstaller: return "xmark.app"
         case .homebrewUpdater: return "arrow.up.circle"
-        case .updater: return "arrow.clockwise.circle"
-        case .extensions: return "puzzlepiece.extension"
         case .spaceLens: return "chart.pie"
         case .largeOldFiles: return "doc.badge.clock"
         case .duplicateFiles: return "doc.on.doc"
@@ -102,7 +98,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
-        case .uninstaller, .homebrewUpdater, .updater, .extensions: return .applications
+        case .uninstaller, .homebrewUpdater: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
         }
     }

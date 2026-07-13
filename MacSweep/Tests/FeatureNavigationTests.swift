@@ -12,6 +12,6 @@ struct FeatureNavigationTests {
     }
 
     @Test func keyboardDestinationsLeadTheSidebar() {
-        #expect(FeatureSection.main.features == [.smartScan, .assistant])
+        #expect(FeatureSection.main.features == [.smartScan, .assistant, .cleanupHistory])
     }
 }
