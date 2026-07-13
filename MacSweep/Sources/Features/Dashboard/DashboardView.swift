@@ -17,6 +17,7 @@ struct DashboardView: View {
     @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
     @State private var showingConfirmation = false
+    @State private var recommendedItemsToClean: Set<CleanupItem.ID> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -94,7 +95,7 @@ struct DashboardView: View {
                             icon: "doc.text.magnifyingglass",
                             tint: .orange,
                             title: "Your decision",
-                            detail: "Personal files and look-alike matches are never selected automatically. "
+                            detail: "Smart Care never includes personal files or look-alike matches in recommended cleanup. "
                                 + "Open a category to review them."
                         )
 
@@ -140,19 +141,22 @@ struct DashboardView: View {
             }
         }
         .confirmationDialog(
-            "Clean \(appState.selectedItems.count) selected item\(appState.selectedItems.count == 1 ? "" : "s")?",
+            "Clean \(recommendedItemsToClean.count) selected item\(recommendedItemsToClean.count == 1 ? "" : "s")?",
             isPresented: $showingConfirmation,
             titleVisibility: .visible
         ) {
             Button("Clean", role: .destructive) {
+                appState.selectedItems = recommendedItemsToClean
                 Task {
                     // Behind this dialog → confirm the large-deletion gate.
                     _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                recommendedItemsToClean = []
+            }
         } message: {
-            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). Some items are deleted permanently and can't be recovered.")
+            Text("This will free \(appState.scanResults.formattedTotalSize(selected: recommendedItemsToClean)). Some items are deleted permanently and can't be recovered.")
         }
     }
 
@@ -322,7 +326,7 @@ struct DashboardView: View {
     }
 
     private func confirmRecommendedCleanup() {
-        appState.selectRecommended()
+        recommendedItemsToClean = appState.smartCareSummary?.recommendedCleanupItemIDs ?? []
         showingConfirmation = true
     }
 
