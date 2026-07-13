@@ -309,12 +309,68 @@ struct CleanupResult: Sendable {
     }
 }
 
-struct CleanupError: Error, Sendable {
+// MARK: - Cleanup Review
+
+/// Stable, UI-independent facts shown before every destructive GUI cleanup.
+/// Keeping the aggregation in Core makes the review contract testable and keeps
+/// every feature page honest about the cleanup scope it can preview.
+struct CleanupReviewSummary: Equatable, Sendable {
+    let itemCount: Int
+    let totalBytes: Int64
+    let moduleCounts: [(name: String, count: Int)]
+    let paths: [URL]
+    let exceedsConfirmationThreshold: Bool
+
+    init(
+        items: [CleanupItem],
+        additionalCount: Int = 0,
+        additionalBytes: Int64 = 0,
+        additionalModules: [String] = [],
+        additionalPaths: [URL] = [],
+        confirmationThreshold: Int64 = DeletionGuard().confirmationThreshold
+    ) {
+        let (combinedCount, countOverflow) = items.count.addingReportingOverflow(max(0, additionalCount))
+        itemCount = countOverflow ? Int.max : combinedCount
+        totalBytes = (items.map(\.size) + [additionalBytes]).reduce(0) { total, bytes in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, bytes))
+            return overflow ? Int64.max : sum
+        }
+
+        var counts = Dictionary(grouping: items, by: \.moduleName).mapValues(\.count)
+        for module in additionalModules {
+            counts[module, default: 0] += 1
+        }
+        moduleCounts = counts
+            .map { (name: $0.key, count: $0.value) }
+            .sorted { lhs, rhs in
+                lhs.count == rhs.count ? lhs.name < rhs.name : lhs.count > rhs.count
+            }
+        var seenPaths = Set<URL>()
+        paths = (items.map(\.path) + additionalPaths).filter {
+            seenPaths.insert($0).inserted
+        }
+        exceedsConfirmationThreshold = totalBytes > confirmationThreshold
+    }
+
+    static func == (lhs: CleanupReviewSummary, rhs: CleanupReviewSummary) -> Bool {
+        lhs.itemCount == rhs.itemCount
+            && lhs.totalBytes == rhs.totalBytes
+            && lhs.moduleCounts.elementsEqual(rhs.moduleCounts) {
+                $0.name == $1.name && $0.count == $1.count
+            }
+            && lhs.paths == rhs.paths
+            && lhs.exceedsConfirmationThreshold == rhs.exceedsConfirmationThreshold
+    }
+}
+
+struct CleanupError: Error, Identifiable, Sendable {
+    let id: UUID
     let path: URL
     let message: String
     let underlyingError: Error?
 
-    init(path: URL, message: String, underlyingError: Error? = nil) {
+    init(id: UUID = UUID(), path: URL, message: String, underlyingError: Error? = nil) {
+        self.id = id
         self.path = path
         self.message = message
         self.underlyingError = underlyingError

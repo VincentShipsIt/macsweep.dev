@@ -110,11 +110,11 @@ struct ShareView: View {
 
     private var tweetText: String {
         guard !summary.isEmpty else {
-            return "Run a macsweep.dev cleanup to generate a cleanup receipt."
+            return "Run a MacSweep cleanup to generate a cleanup receipt."
         }
 
         let cleaned = numberFormatter.string(from: NSNumber(value: summary.totalItemsProcessed)) ?? "\(summary.totalItemsProcessed)"
-        let success = summary.successRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "100%"
+        let success = summary.successRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "--"
 
         return """
         MacSweep cleanup receipt: \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.
@@ -250,7 +250,7 @@ private struct CleanupPerformanceShareCard: View {
             .frame(width: 50, height: 50)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("macsweep.dev")
+                Text("MacSweep")
                     .font(.system(size: 29, weight: .heavy))
                     .foregroundStyle(.white)
 
@@ -357,7 +357,7 @@ private struct CleanupPerformanceShareCard: View {
 
     private var detailLine: String {
         guard !summary.isEmpty else {
-            return "macsweep.dev tracks local cleanup wins after you clean selected items."
+            return "MacSweep tracks local cleanup wins after you clean selected items."
         }
 
         if let last = summary.lastCleanup {

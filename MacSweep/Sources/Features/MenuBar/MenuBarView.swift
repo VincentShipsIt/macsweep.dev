@@ -68,7 +68,7 @@ struct MenuBarView: View {
                 .font(.title2)
                 .foregroundStyle(.purple)
 
-            Text("macsweep.dev")
+            Text("MacSweep")
                 .font(.headline)
 
             Spacer()
@@ -299,16 +299,8 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
-        if !AppDelegate.focusMainWindow() {
+        AppDelegate.openMainWindowIfNeeded {
             openWindow(id: "main")
-        }
-
-        DispatchQueue.main.async {
-            AppDelegate.focusMainWindow()
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            AppDelegate.focusMainWindow()
         }
     }
 

@@ -37,13 +37,16 @@ final class ProcessMonitor: ObservableObject {
         // re-fires). The leaked-timer case is handled by the views calling
         // stopMonitoring() in .onDisappear.
         guard timer == nil else { return }
-        await refresh()
-
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
             }
         }
+
+        // Assign the timer before suspending in refresh(). Main-actor methods
+        // are re-entrant across await, so assigning afterwards allowed a second
+        // caller to pass the nil guard and schedule another timer.
+        await refresh()
     }
 
     func stopMonitoring() {

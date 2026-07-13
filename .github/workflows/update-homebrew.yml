@@ -125,14 +125,14 @@ jobs:
 
             url "https://github.com/VincentShipsIt/macsweep/releases/download/v#{version}/macsweep-v#{version}-macos.zip",
                 verified: "github.com/VincentShipsIt/macsweep/"
-            name "macsweep.dev"
+            name "MacSweep"
             desc "Native system cleaner"
             homepage "https://macsweep.dev/"
 
             depends_on formula: "vincentshipsit/tap/macsweep"
             depends_on macos: :tahoe
 
-            app "macsweep.dev.app"
+            app "MacSweep.app"
             binary "#{HOMEBREW_PREFIX}/opt/macsweep/bin/macsweep", target: "macsweep"
           end
           RUBY
@@ -147,7 +147,7 @@ jobs:
           grep -q 'macsweep-v#{version}-macos.zip' "$C" || { echo "::error::cask url does not reference the app zip"; exit 1; }
           grep -q 'verified: "github.com/VincentShipsIt/macsweep/"' "$C" || { echo "::error::cask url verification host is missing"; exit 1; }
           grep -q 'depends_on formula: "vincentshipsit/tap/macsweep"' "$C" || { echo "::error::cask does not depend on the CLI formula"; exit 1; }
-          grep -q 'app "macsweep.dev.app"' "$C" || { echo "::error::cask does not install macsweep.dev.app"; exit 1; }
+          grep -q 'app "MacSweep.app"' "$C" || { echo "::error::cask does not install MacSweep.app"; exit 1; }
 
       - name: Commit + push
         env:
