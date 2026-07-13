@@ -88,7 +88,7 @@ struct LoginItemsView: View {
             VStack(spacing: 4) {
                 ForEach(items) { item in
                     LoginItemRow(item: item, onToggle: { enabled in
-                        Task { await service.setEnabled(enabled, for: item) }
+                        await service.setEnabled(enabled, for: item)
                     }, onDelete: {
                         showDeleteConfirm = item
                     })
@@ -129,12 +129,12 @@ struct LoginItemsView: View {
 
 struct LoginItemRow: View {
     let item: LoginItem
-    let onToggle: (Bool) -> Void
+    let onToggle: (Bool) async -> Bool
     let onDelete: () -> Void
 
     @State private var isEnabled: Bool
 
-    init(item: LoginItem, onToggle: @escaping (Bool) -> Void, onDelete: @escaping () -> Void) {
+    init(item: LoginItem, onToggle: @escaping (Bool) async -> Bool, onDelete: @escaping () -> Void) {
         self.item = item
         self.onToggle = onToggle
         self.onDelete = onDelete
@@ -193,7 +193,12 @@ struct LoginItemRow: View {
                     }
                     .onChange(of: isEnabled) { _, newValue in
                         if newValue != item.isEnabled {
-                            onToggle(newValue)
+                            Task { @MainActor in
+                                if !(await onToggle(newValue)) {
+                                    // A failed plist write leaves the model unchanged; snap the switch back to it.
+                                    isEnabled = item.isEnabled
+                                }
+                            }
                         }
                     }
 

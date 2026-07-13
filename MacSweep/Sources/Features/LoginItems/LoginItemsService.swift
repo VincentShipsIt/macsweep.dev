@@ -166,10 +166,11 @@ final class LoginItemsService: ObservableObject {
 
     // MARK: - Enable / Disable
 
-    func setEnabled(_ enabled: Bool, for item: LoginItem) async {
-        guard item.type != .appService else { return } // SMAppService items managed differently
+    @discardableResult
+    func setEnabled(_ enabled: Bool, for item: LoginItem) async -> Bool {
+        guard item.type != .appService else { return false } // SMAppService items managed differently
 
-        guard let plistURL = plistURL(for: item) else { return }
+        guard let plistURL = plistURL(for: item) else { return false }
 
         // Read/patch/write off the main actor so a slow disk doesn't freeze the UI,
         // and PRESERVE the on-disk plist format — a binary plist must stay binary,
@@ -187,13 +188,14 @@ final class LoginItemsService: ObservableObject {
             }.value
         } catch {
             errorMessage = "Couldn't update \(item.name): \(error.localizedDescription)"
-            return
+            return false
         }
 
         // Back on the main actor after the await — safe to mutate @Published state.
         if let idx = items.firstIndex(where: { $0.id == item.id }) {
             items[idx].isEnabled = enabled
         }
+        return true
     }
 
     // MARK: - Delete
