@@ -7,8 +7,19 @@ import SwiftUI
 /// Release builds receive `SUPublicEDKey` from the protected release environment.
 /// Local and CI builds intentionally leave it empty, so they can build without a
 /// production signing key and never contact the production appcast by accident.
+/// Routes Sparkle to the appcast for the user-selected update channel.
+/// Returning nil keeps the stable SUFeedURL baked into Info.plist, so the
+/// production feed is untouched unless the user opts into nightlies.
+private final class ChannelFeedDelegate: NSObject, SPUUpdaterDelegate {
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        UpdateChannel.resolved().feedURLString
+    }
+}
+
 @MainActor
 final class AppUpdater {
+    // Sparkle holds its delegate weakly; keep it alive for the app's lifetime.
+    private let channelFeedDelegate = ChannelFeedDelegate()
     let updaterController: SPUStandardUpdaterController
     let isConfigured: Bool
 
@@ -17,7 +28,7 @@ final class AppUpdater {
     init(bundle: Bundle = .main) {
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
-            updaterDelegate: nil,
+            updaterDelegate: channelFeedDelegate,
             userDriverDelegate: nil
         )
 
