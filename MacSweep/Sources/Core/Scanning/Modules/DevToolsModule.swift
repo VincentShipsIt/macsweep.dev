@@ -645,6 +645,8 @@ enum ProjectType: String, CaseIterable {
 }
 
 actor ProjectScanner {
+    static let defaultMaxDepth = DevToolsModule.defaultMaxDepth
+
     /// Discover projects with cleanable artifacts.
     ///
     /// Root indicators and per-type artifact directories are derived from
@@ -655,7 +657,7 @@ actor ProjectScanner {
     /// keep one entry per type, as the old hand-written table did.
     func discoverProjects(
         in baseURL: URL,
-        maxDepth: Int = DevToolsModule.defaultMaxDepth
+        maxDepth: Int = ProjectScanner.defaultMaxDepth
     ) async -> [ProjectInfo] {
         var projects: [ProjectInfo] = []
         var seenProjects = Set<String>()

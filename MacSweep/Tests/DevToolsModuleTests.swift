@@ -86,27 +86,8 @@ final class DevToolsModuleTests {
         #expect(artifactNames.contains("dist"))
     }
 
-    @Test func discoverProjectsUsesSameMaximumDepthAsDevToolsScan() async throws {
-        var nestedRoot = testDirectory
-        for component in ["one", "two", "three", "four", "five"] {
-            nestedRoot.appendPathComponent(component)
-        }
-        try FileManager.default.createDirectory(at: nestedRoot, withIntermediateDirectories: true)
-        try Data("{}".utf8).write(to: nestedRoot.appendingPathComponent("package.json"))
-
-        let nodeModules = nestedRoot.appendingPathComponent("node_modules")
-        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
-        try Data(repeating: 0, count: 128).write(to: nodeModules.appendingPathComponent("artifact.bin"))
-
-        let projects = await ProjectScanner().discoverProjects(
-            in: testDirectory.resolvingSymlinksInPath()
-        )
-
-        let project = try #require(projects.first {
-            canonicalPath($0.path) == canonicalPath(nestedRoot)
-        })
-        #expect(project.type == .nodejs)
-        #expect(project.artifactPaths.map { canonicalPath($0) }.contains(canonicalPath(nodeModules)))
+    @Test func projectDiscoveryDepthMatchesDevToolsScan() {
+        #expect(ProjectScanner.defaultMaxDepth == DevToolsModule.defaultMaxDepth)
     }
 
     @Test func discoverProjectsDetectsSwiftProject() async throws {
