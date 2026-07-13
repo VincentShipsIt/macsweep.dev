@@ -62,7 +62,7 @@ struct ModuleScanFailure: Sendable, Equatable {
 }
 
 /// Result of a scan that records which modules failed instead of silently
-/// returning a short item list. A partial scan (some modules threw) is still a
+/// returning a short item list. A partial scan (some modules failed) is still a
 /// useful result, but the caller must be able to tell the user it was partial.
 struct PartialScanResult: Sendable {
     let items: [CleanupItem]
@@ -193,7 +193,8 @@ actor ScanEngine {
     ///
     /// Unlike ``scan(modules:)``, a thrown module error is recorded as a
     /// ``ModuleScanFailure`` rather than silently swallowed, so the caller can
-    /// surface that the result is partial.
+    /// surface that the result is partial. Cancellation is excluded because a
+    /// user stopping a scan is not a module failure.
     func scanWithDiagnostics(modules moduleIDs: [String]? = nil, progress: ScanProgressHandler? = nil) async -> PartialScanResult {
         let modulesToScan: [any ScanModule]
 
@@ -207,6 +208,7 @@ actor ScanEngine {
         // a failing module never tears down the whole group.
         enum ModuleOutcome: Sendable {
             case items(moduleID: String, moduleName: String, items: [CleanupItem])
+            case cancelled(moduleID: String, moduleName: String)
             case failure(ModuleScanFailure, moduleName: String)
         }
 
@@ -228,6 +230,8 @@ actor ScanEngine {
                             self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
+                    } catch is CancellationError {
+                        return .cancelled(moduleID: module.id, moduleName: module.name)
                     } catch {
                         return .failure(ModuleScanFailure(
                             moduleID: module.id,
@@ -247,6 +251,13 @@ actor ScanEngine {
                 switch outcome {
                 case .items(let moduleID, let moduleName, let items):
                     allItems.append(contentsOf: items)
+                    await progress?(ScanProgressUpdate(
+                        completedModules: completedModules,
+                        totalModules: totalModules,
+                        moduleID: moduleID,
+                        moduleName: moduleName
+                    ))
+                case .cancelled(let moduleID, let moduleName):
                     await progress?(ScanProgressUpdate(
                         completedModules: completedModules,
                         totalModules: totalModules,

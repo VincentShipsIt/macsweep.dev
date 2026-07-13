@@ -463,6 +463,21 @@ struct ScanEngineTests {
         }
     }
 
+    struct CancelledScanModule: ScanModule {
+        let id: String
+        let name: String
+        let description: String
+        let icon: String = "testtube.2"
+
+        func scan() async throws -> [CleanupItem] {
+            throw CancellationError()
+        }
+
+        func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
+            CleanupResult(itemsProcessed: 0, bytesFreed: 0)
+        }
+    }
+
     @Test func scanWithDiagnosticsCapturesModuleFailures() async {
         // A temp-dir path resolves under /var/folders (a safe cache root), so the
         // healthy module's item survives the scan-time safety filter.
@@ -506,6 +521,30 @@ struct ScanEngineTests {
         let engine = ScanEngine(modules: [
             ScanOutcomeModule(id: "healthy", name: "Healthy", description: "Healthy",
                               shouldThrow: false, itemsToReturn: [healthyItem]),
+        ])
+
+        let result = await engine.scanWithDiagnostics()
+
+        #expect(result.items == [healthyItem])
+        #expect(!result.isPartial)
+        #expect(result.failures.isEmpty)
+    }
+
+    @Test func scanWithDiagnosticsDoesNotSurfaceCancellationAsFailure() async {
+        let tmp = FileManager.default.temporaryDirectory
+        let healthyItem = CleanupItem(
+            id: UUID(),
+            path: tmp.appendingPathComponent("healthy.tmp"),
+            size: 256,
+            type: .file,
+            module: "healthy",
+            moduleName: "Healthy"
+        )
+
+        let engine = ScanEngine(modules: [
+            ScanOutcomeModule(id: "healthy", name: "Healthy", description: "Healthy",
+                              shouldThrow: false, itemsToReturn: [healthyItem]),
+            CancelledScanModule(id: "cancelled", name: "Cancelled", description: "Cancelled"),
         ])
 
         let result = await engine.scanWithDiagnostics()
