@@ -50,11 +50,11 @@ struct SystemCleanupView: View {
                     }
 
                     resultsList
+
+                    Divider()
+
+                    footer
                 }
-
-                Divider()
-
-                footer
             }
         }
         .errorAlert("Cleanup Failed", message: $appState.lastDeletionError)
