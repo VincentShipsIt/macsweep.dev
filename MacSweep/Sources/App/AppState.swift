@@ -329,7 +329,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
     var features: [Feature] {
         switch self {
         case .main:
-            return [.smartScan, .assistant]
+            return [.smartScan, .assistant, .cleanupHistory]
         case .cleanup:
             return [.systemJunk, .mailAttachments, .trashBins, .devTools, .cloudCleanup]
         case .protection:
@@ -349,6 +349,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case smartScan = "Smart Care"
     case assistant = "Assistant"
     case share = "Share"
+    case cleanupHistory = "Cleanup History"
 
     // Cleanup
     case systemJunk = "System Junk"
@@ -390,6 +391,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .smartScan: return "sparkles.rectangle.stack"
         case .assistant: return "bubble.left"
         case .share: return "square.and.arrow.up"
+        case .cleanupHistory: return "clock.arrow.circlepath"
 
         // Cleanup
         case .systemJunk: return "gearshape.2"
@@ -427,7 +429,7 @@ enum Feature: String, CaseIterable, Identifiable {
 
     var section: FeatureSection {
         switch self {
-        case .smartScan, .assistant, .share: return .main
+        case .smartScan, .assistant, .share, .cleanupHistory: return .main
         case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
