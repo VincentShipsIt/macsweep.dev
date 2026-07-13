@@ -3,8 +3,8 @@
 #
 # Deterministic, non-destructive end-to-end checks of the built `macsweep`
 # binary: command parsing and exit codes, scan/dry-run behavior against a
-# self-created fixture, protected-path refusal, and the apply confirmation
-# gate. The suite NEVER modifies real user directories:
+# self-created fixture, protected-path refusal, and both shared confirmation
+# call paths. The suite NEVER modifies real user directories:
 #   * scans are read-only by design;
 #   * cleanup is exercised only via dry-run and via apply WITHOUT --yes
 #     (stdin is not a tty here, so the CLI must stop at the confirmation gate);
@@ -119,6 +119,10 @@ if [[ -f "$SCAN_FIXTURE/junk.bin" ]]; then
 else
   fail "gated apply DELETED the fixture — confirmation gate regressed"
 fi
+
+# Exercise a generic confirmation caller too. Both cleanup previews and direct
+# destructive commands must share the same non-TTY refusal behavior.
+run_expect 3 "privacy action without --yes stops at the confirmation gate" privacy clear-clipboard
 
 # --------------------------------------------------- protected-path refusal
 # Shred refuses symlinks (overwriting would destroy the link target). The

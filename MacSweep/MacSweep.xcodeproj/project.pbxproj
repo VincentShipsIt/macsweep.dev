@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000004 /* Sparkle */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacSweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -85,6 +89,17 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
 		C5EB2394C8E6771356D95724 /* Sources */ = {
 			isa = PBXGroup;
@@ -125,6 +140,7 @@
 			buildConfigurationList = D0D1BA2797585E20D75D3F2D /* Build configuration list for PBXNativeTarget "MacSweep" */;
 			buildPhases = (
 				4D17E5002B7A397948873882 /* Sources */,
+				A10000000000000000000002 /* Frameworks */,
 				CB4F605D116263252299690B /* Resources */,
 			);
 			buildRules = (
@@ -141,6 +157,7 @@
 			);
 			name = MacSweep;
 			packageProductDependencies = (
+				A10000000000000000000004 /* Sparkle */,
 			);
 			productName = MacSweep;
 			productReference = E5E7FAAC9E7BE7D1A5ABEAF5 /* MacSweep.app */;
@@ -171,6 +188,9 @@
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F707815E5D63601C3AB1F204 /* Products */;
+			packageReferences = (
+				A10000000000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -235,7 +255,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.1.1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -302,7 +322,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 1.1.1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -349,6 +369,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.app;
 				PRODUCT_NAME = MacSweep;
 				SDKROOT = macosx;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				SWIFT_VERSION = 5.9;
 			};
 			name = Debug;
@@ -376,6 +397,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.app;
 				PRODUCT_NAME = MacSweep;
 				SDKROOT = macosx;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				SWIFT_VERSION = 5.9;
 			};
 			name = Release;
@@ -402,6 +424,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000000000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000004 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = EA0DD96A467C5000B98BB1D1 /* Project object */;
 }

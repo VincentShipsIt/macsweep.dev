@@ -178,7 +178,7 @@ struct ScanLandingView: View {
                             .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
                     }
 
-                    CircularScanButton(action: action)
+                    CircularScanButton(accessibilityLabel: ctaTitle, action: action)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
@@ -191,7 +191,9 @@ struct ScanLandingView: View {
 /// The signature CleanMyMac circular Scan button — a glowing accent ring.
 struct CircularScanButton: View {
     var title: String = "Scan"
+    var accessibilityLabel: String = "Start scan"
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     var body: some View {
@@ -199,15 +201,15 @@ struct CircularScanButton: View {
             ZStack {
                 Circle()
                     .strokeBorder(MacSweepTheme.accent.opacity(0.95), lineWidth: 2)
-                    .shadow(color: MacSweepTheme.accent.opacity(isHovering ? 0.7 : 0.45),
-                            radius: isHovering ? 16 : 9)
+                    .shadow(color: MacSweepTheme.accent.opacity(!reduceMotion && isHovering ? 0.7 : 0.45),
+                            radius: !reduceMotion && isHovering ? 16 : 9)
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(.primary)
             }
             .frame(width: 96, height: 96)
-            .scaleEffect(isHovering ? 1.04 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: isHovering)
+            .scaleEffect(!reduceMotion && isHovering ? 1.04 : 1.0)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
             .glassControl(
                 in: Circle(),
                 tint: MacSweepTheme.accent.opacity(0.18),
@@ -215,6 +217,10 @@ struct CircularScanButton: View {
             )
         }
         .buttonStyle(.plain)
+        .keyboardShortcut("r", modifiers: .command)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Scans only. You can review results before anything is removed.")
+        .help("\(accessibilityLabel) (Command-R)")
         .onHover { isHovering = $0 }
     }
 }
@@ -238,9 +244,59 @@ struct MacSweepErrorBanner: View {
                     .font(.caption)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
+            .accessibilityHint("Dismisses this message")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.red.opacity(0.1))
+    }
+}
+
+struct FullDiskAccessWarningBanner: View {
+    let scope: FullDiskAccessScope
+    var onDismiss: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.title3)
+                .foregroundStyle(.orange)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(scope.title)
+                    .font(.headline)
+                Text(scope.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Button("Open System Settings") {
+                FullDiskAccess.openSystemPreferences()
+            }
+            .glassButton(prominent: true)
+            .controlSize(.small)
+            .tint(.orange)
+
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(12)
+        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        }
     }
 }

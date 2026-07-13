@@ -25,8 +25,7 @@ struct SelectionCheckmark: View {
                 image
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Selection")
-            .accessibilityValue(isSelected ? "Selected" : "Not selected")
+            .accessibilityLabel(isSelected ? "Deselect item" : "Select item")
         } else {
             image
                 .accessibilityLabel("Selection")

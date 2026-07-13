@@ -147,7 +147,7 @@ final class SystemMonitor: ObservableObject {
         connectedDevices = await ConnectedDeviceScanner.scan()
     }
 
-    func refresh() async {
+    func refresh(forceSlowMetrics: Bool = false) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -164,7 +164,11 @@ final class SystemMonitor: ObservableObject {
 
         // Battery health (cycle count / condition) comes from a slow profiler spawn
         // refreshed on the coarse cadence below; the per-tick read is IOKit-only.
-        let runSlowMetrics = tickCount % slowMetricInterval == 0
+        let runSlowMetrics = Self.shouldRefreshSlowMetrics(
+            force: forceSlowMetrics,
+            tickCount: tickCount,
+            interval: slowMetricInterval
+        )
         if runSlowMetrics {
             await refreshBatteryHealth()
         }
@@ -203,6 +207,10 @@ final class SystemMonitor: ObservableObject {
         if networkUploadHistory.count > maxHistorySize {
             networkUploadHistory.removeFirst()
         }
+    }
+
+    nonisolated static func shouldRefreshSlowMetrics(force: Bool, tickCount: Int, interval: Int) -> Bool {
+        force || tickCount % interval == 0
     }
 
     // MARK: - Memory Management

@@ -44,6 +44,13 @@ Scan, clean, and optimize your Mac with safety-first defaults.
   <img src="scripts/screenshots/02-assistant.png" alt="macsweep.dev AI assistant with suggested cleanup tasks" width="100%">
 </p>
 
+### Recover protected-folder access
+
+First-run onboarding explains why Full Disk Access is needed and links to the
+correct System Settings pane.
+
+![Full Disk Access onboarding](docs/assets/screenshots/full-disk-access-onboarding.png)
+
 ## Requirements
 
 - macOS 26.0 (Tahoe) or later
@@ -52,6 +59,15 @@ Scan, clean, and optimize your Mac with safety-first defaults.
 - Full Disk Access permission (for scanning protected folders)
 
 ## Installation
+
+Choose the artifact that matches how you want to use MacSweep:
+
+| Install | Includes | Use when |
+| --- | --- | --- |
+| Homebrew cask | Signed and notarized `MacSweep.app` plus the `macsweep` CLI formula | You want the recommended desktop install with automatic Homebrew upgrades |
+| [Latest `MacSweep.dmg`](https://github.com/VincentShipsIt/macsweep/releases/latest/download/MacSweep.dmg) | Signed and notarized native app | You want the GUI without installing the CLI |
+| Homebrew formula | Headless `macsweep` CLI only | You use MacSweep from a terminal or automation |
+| Source checkout | Local CLI build; Xcode project for the app | You are developing or auditing MacSweep |
 
 ### Agent-first install
 
@@ -122,6 +138,10 @@ brew upgrade --cask vincentshipsit/tap/macsweep
 brew upgrade --formula vincentshipsit/tap/macsweep
 ```
 
+The GUI also checks for signed updates with Sparkle and exposes **MacSweep ›
+Check for Updates…**. Sparkle updates the app bundle; the separately packaged CLI
+continues to update through Homebrew.
+
 The CLI formula still supports self-update helpers:
 
 ```bash
@@ -167,19 +187,78 @@ CI runs the unit suite with coverage floors and the e2e smoke suite on every
 push/PR, renders GUI snapshots as a PR artifact, and repeats e2e + coverage on
 a daily schedule (`.github/workflows/nightly.yml`).
 
+### Release signing for app updates
+
+The protected GitHub `release` environment must contain both Sparkle values:
+
+- Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
+  release builds.
+- Secret `SPARKLE_PRIVATE_ED_KEY`: the matching base64 private seed exported by
+  Sparkle's `generate_keys` tool.
+
+The private key must be backed up outside GitHub and must never be committed.
+On every version tag, the release workflow verifies the embedded public key,
+signs the notarized app ZIP, generates `appcast.xml`, and publishes both files
+to the GitHub release. `scripts/release.sh bump X.Y.Z` advances both the visible
+version and Sparkle's bundle build version.
+
 ## Safety
 
-MacSweep is designed with safety in mind:
+MacSweep treats scan results as a proposal, not permission to delete:
 
-- **Dry-run by default** - Always preview before deleting
-- **Protected paths** - Critical directories are never touched:
-  - `~/Documents`, `~/Desktop`, `~/Pictures`, `~/Downloads`
-  - `~/.ssh`, `~/.gnupg`, `~/.aws`
-  - `/System`, `/Applications`
-- **Confirmation prompts** - Large deletions require explicit confirmation
-- **Size limits** - Configurable max delete size (default 10GB)
-- **Assistant guardrails** - AI-planned scans still pass through MacSweep safety checks before cleanup
+- **Dry-run first** - The CLI's `dry-run` command reports the plan without
+  deleting. Destructive CLI commands require their explicit command and
+  confirmation flags; GUI scans do not clean until you review and confirm.
+- **Trash-first for user data** - Review-oriented cleanup such as large files,
+  developer artifacts, app bundles and leftovers moves items to Trash for
+  recovery. Operations that are inherently irreversible, including secure
+  shredding, emptying Trash, privacy clearing, and removal of regenerable cache
+  data, say so in their confirmation copy.
+- **Protected paths** - Automated cleanup is default-deny and refuses whole
+  critical roots such as `~/Documents`, `~/Desktop`, `~/Pictures`, `~/Downloads`,
+  credential directories (`~/.ssh`, `~/.gnupg`, `~/.aws`), `/System`,
+  `/Applications`, and `~/Applications`. Explicit app removal is narrower:
+  a non-symlink `.app` directly inside `/Applications` or `~/Applications` may
+  move to Trash after dedicated validation, but removal of either root remains
+  blocked. Paths are re-checked immediately before removal.
+- **Confirmation and deletion caps** - Operations above 1 GiB require explicit
+  confirmation. The cleanup engine blocks a single run above its 10 GiB hard cap.
+- **Live preflight checks** - MacSweep re-measures selected paths and applies the
+  safety policy at deletion time instead of trusting stale scan metadata.
+- **Assistant guardrails** - AI-planned scans use the same safety checks as
+  deterministic scans; the assistant cannot bypass confirmation or protected
+  paths.
 
+## Full Disk Access
+
+Full Disk Access is optional for launching MacSweep, but protected data sources
+such as Safari data, Mail attachments, and some system caches cannot be scanned
+completely without it.
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**.
+2. Add and enable the exact `MacSweep.app` bundle you installed. If it is not
+   listed, use the **+** button and select that bundle wherever it is installed,
+   commonly `/Applications` or `~/Applications`.
+3. Quit and reopen MacSweep if macOS asks you to relaunch it.
+4. Run the scan again. A partial result is not proof that protected folders are
+   empty.
+
+Grant Full Disk Access only to the signed app you intended to install. The CLI
+reports inaccessible paths rather than treating them as clean.
+
+## Known Limitations and Deferred Work
+
+- MacSweep currently requires macOS 26 Tahoe or later; older macOS releases
+  are not supported.
+- Results can be partial when macOS denies access, a volume is offline, or an
+  external tool such as Docker or Homebrew is unavailable.
+- Large files, duplicates, similar photos, uninstaller leftovers, and developer
+  project findings require manual review; they are not automatic background
+  cleanup.
+- The extensions manager, iOS companion, cloud sync, paid licensing, App Store
+  distribution, and automatic background deletion are deferred.
+- AI analysis is optional and needs a user-supplied provider key. Deterministic
+  scanning and safety checks remain available without AI.
 ## Assistant Config
 
 MacSweep seeds persistent assistant config under:
@@ -206,6 +285,7 @@ identification. This feature:
 - **SwiftUI** - Modern declarative UI
 - **Combine** - Reactive state management
 - **Swift Concurrency** - Async/await for scanning
+- **Sparkle 2** - Signed in-app updates for the macOS app
 
 ## License
 

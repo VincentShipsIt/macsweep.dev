@@ -82,4 +82,16 @@ struct SafetyCheckerCaseSensitivityTests {
         let result = checker.validateForTrash(variant)
         #expect(!result.isSafe, "Trashing a case-variant of ~/.aws must be refused")
     }
+
+    @Test func privacyArtifactCaseVariantsAreAllowedOnCaseInsensitiveVolumes() {
+        guard homeVolumeIsCaseInsensitive else { return }
+
+        let sharedFileList = home.appendingPathComponent(
+            "LiBrArY/ApPlIcAtIoN SuPpOrT/CoM.ApPlE.ShArEdFiLeLiSt/item.sfl2"
+        )
+        let downloads = home.appendingPathComponent("LiBrArY/SaFaRi/DoWnLoAdS.PlIsT")
+
+        #expect(checker.validateForCleanup(sharedFileList, moduleID: "privacy", itemType: .file).isSafe)
+        #expect(checker.validateForCleanup(downloads, moduleID: "privacy", itemType: .file).isSafe)
+    }
 }

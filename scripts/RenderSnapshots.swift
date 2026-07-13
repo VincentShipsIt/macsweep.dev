@@ -26,6 +26,8 @@ struct SnapshotRenderer {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
+        validateNavigationContract()
+
         let outDir = snapshotOutputDir()
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
@@ -39,7 +41,15 @@ struct SnapshotRenderer {
             let name = String(format: "%02d-%@", index, slug)
             let url = outDir.appendingPathComponent("\(name).png")
 
-            let appState = AppState()
+            // Keep missing-permission recovery deterministic on the three
+            // protected-data feature landings even when the host has granted
+            // Full Disk Access to the harness. Smart Care gets a dedicated
+            // direct-view variant below because its live monitors make the
+            // composed navigation snapshot timing-sensitive.
+            let needsMissingAccess = feature == .systemJunk
+                || feature == .mailAttachments
+                || feature == .privacy
+            let appState = AppState(initialFullDiskAccess: !needsMissingAccess)
             appState.selectedFeature = feature
             let root = ContentView()
                 .environmentObject(appState)
@@ -82,11 +92,40 @@ struct SnapshotRenderer {
         exit(0)
     }
 
+    @MainActor
+    static func validateNavigationContract() {
+        let expectedReachableFeatures: [FeatureSection: [Feature]] = [
+            .cleanup: [.aiAnalysis],
+            .protection: [.loginItems],
+            .speed: [.maintenance],
+            .applications: [.homebrewUpdater]
+        ]
+
+        for (section, features) in expectedReachableFeatures {
+            precondition(
+                features.allSatisfy(section.features.contains),
+                "Expected \(features) to be reachable from the \(section.rawValue) sidebar section"
+            )
+        }
+
+        let sidebarFeatures = FeatureSection.allCases.flatMap(\.features)
+        precondition(
+            sidebarFeatures.count == Set(sidebarFeatures).count,
+            "Each sidebar feature must appear in exactly one section"
+        )
+        precondition(
+            FeatureSection.allCases.allSatisfy { section in
+                section.features.allSatisfy { $0.section == section }
+            },
+            "Every sidebar feature must report the section that contains it"
+        )
+    }
+
     // MARK: - Data-state variants
 
-    /// Builds the populated / error layouts for the three deletion-bearing flows.
-    /// SystemCleanup reads its rows straight off `AppState`; LargeFiles and the
-    /// Uninstaller hold local `@State`, so they take the snapshot-injection
+    /// Builds populated / error layouts for cleanup-history and deletion flows.
+    /// SystemCleanup reads its rows straight off `AppState`; the remaining views
+    /// hold local `@State`, so they take snapshot-injection
     /// initializers added on each view. Every view still renders through the real
     /// composed body — only the seed data is synthetic.
     @MainActor
@@ -105,6 +144,25 @@ struct SnapshotRenderer {
         cleanupState.scanResults = cleanupItems
         cleanupState.selectedItems = Set(cleanupItems.prefix(3).map(\.id))
 
+        let partialState = AppState()
+        partialState.scanResults = cleanupItems
+        partialState.selectedItems = Set(cleanupItems.prefix(2).map(\.id))
+        partialState.smartCareSummary = SmartCareAnalyzer().summarize(items: cleanupItems, diskUsage: nil)
+        partialState.scanFailures = [
+            ModuleScanFailure(
+                moduleID: "mail-attachments",
+                moduleName: "Mail Attachments",
+                message: "Operation not permitted while reading protected Mail data."
+            ),
+            ModuleScanFailure(
+                moduleID: "docker",
+                moduleName: "Docker",
+                message: "Docker did not respond before the scan timeout."
+            ),
+        ]
+
+        let smartCareState = sampleSmartCareState()
+
         let largeItems = sampleLargeItems()
         let largeSelection = Set(largeItems.prefix(2).map(\.id))
 
@@ -112,6 +170,16 @@ struct SnapshotRenderer {
         let orphans = sampleOrphans()
 
         return [
+            ("cleanup-history-results", wrap(
+                CleanupHistoryView(snapshotRuns: sampleCleanupHistory()),
+                appState: AppState()
+            )),
+            ("smart-care-partial-results", wrap(DashboardView(), appState: partialState)),
+            ("smart-care-results", wrap(DashboardView(), appState: smartCareState)),
+            ("smart-care-missing-full-disk-access", wrap(
+                DashboardView(),
+                appState: AppState(initialFullDiskAccess: false)
+            )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
@@ -142,6 +210,36 @@ struct SnapshotRenderer {
         ]
     }
 
+    static func sampleCleanupHistory() -> [CleanupHistoryRun] {
+        let timestamp = Date(timeIntervalSince1970: 1_782_300_600)
+        return [
+            CleanupHistoryRun(
+                timestamp: timestamp,
+                records: [
+                    CleanupHistoryRecord(
+                        timestamp: timestamp,
+                        moduleID: "dev-tools",
+                        moduleName: "Xcode DerivedData",
+                        originalPath: "/Users/example/Library/Developer/Xcode/DerivedData/Sample",
+                        action: .moveToTrash,
+                        bytes: 2_400_000_000,
+                        outcome: .completed
+                    ),
+                    CleanupHistoryRecord(
+                        timestamp: timestamp,
+                        moduleID: "system-cache",
+                        moduleName: "System Caches",
+                        originalPath: "/Users/example/Library/Caches/locked-cache",
+                        action: .deletePermanently,
+                        bytes: 18_000_000,
+                        outcome: .failed,
+                        errorMessage: "Permission denied"
+                    ),
+                ]
+            ),
+        ]
+    }
+
     @MainActor
     static func onboardingVariants() -> [(String, AnyView, CGSize)] {
         let size = CGSize(width: 650, height: 550)
@@ -165,6 +263,39 @@ struct SnapshotRenderer {
 
     private static func daysAgo(_ days: Double) -> Date {
         sampleBaseDate.addingTimeInterval(-days * 86_400)
+    }
+
+    @MainActor
+    private static func sampleSmartCareState() -> AppState {
+        let state = AppState()
+        let items = sampleSmartCareItems()
+        state.scanResults = items
+        state.smartCareSummary = SmartCareAnalyzer().summarize(items: items, diskUsage: nil)
+        state.selectRecommended()
+        return state
+    }
+
+    @MainActor
+    static func sampleSmartCareItems() -> [CleanupItem] {
+        func item(_ name: String, _ size: Int64, _ module: String, _ moduleName: String) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/\(name)"),
+                size: size,
+                type: .file,
+                module: module,
+                moduleName: moduleName,
+                lastModified: daysAgo(8)
+            )
+        }
+
+        return [
+            item("Library/Caches/Xcode", 2_600_000_000, "dev-tools", "Developer Tools"),
+            item("Library/Caches/Safari", 840_000_000, "system-cache", "System Junk"),
+            item("Movies/archive.mov", 6_400_000_000, "large-files", "Large Files"),
+            item("Pictures/duplicate.jpg", 18_000_000, "duplicates", "Duplicate Files"),
+            item("Pictures/similar.jpg", 16_000_000, "similar-photos", "Similar Photos"),
+        ]
     }
 
     /// System-junk rows for the SystemCleanup results layout: a realistic spread
@@ -236,9 +367,9 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(1),
             leftovers: [
-                leftover("~/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
-                leftover("~/Library/Caches/Google/Chrome", 540_000_000, .caches),
-                leftover("~/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
+                leftover("/Users/you/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Caches/Google/Chrome", 540_000_000, .caches),
+                leftover("/Users/you/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
             ]
         )
         let figma = InstalledApp(
@@ -250,8 +381,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(6),
             leftovers: [
-                leftover("~/Library/Application Support/Figma", 410_000_000, .applicationSupport),
-                leftover("~/Library/Logs/Figma", 26_000_000, .logs),
+                leftover("/Users/you/Library/Application Support/Figma", 410_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Logs/Figma", 26_000_000, .logs),
             ]
         )
         let slack = InstalledApp(
@@ -263,8 +394,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(30),
             leftovers: [
-                leftover("~/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
-                leftover("~/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
+                leftover("/Users/you/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
+                leftover("/Users/you/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
             ]
         )
         return [chrome, figma, slack]
@@ -275,9 +406,9 @@ struct SnapshotRenderer {
     @MainActor
     static func sampleOrphans() -> [AppLeftover] {
         [
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
         ]
     }
 
@@ -396,6 +527,7 @@ extension Feature {
         case .smartScan: return "smart-care"
         case .assistant: return "assistant"
         case .share: return "share"
+        case .cleanupHistory: return "cleanup-history"
         case .systemJunk: return "system-junk"
         case .mailAttachments: return "mail-attachments"
         case .trashBins: return "trash-bins"
@@ -411,8 +543,6 @@ extension Feature {
         case .maintenance: return "maintenance"
         case .uninstaller: return "uninstaller"
         case .homebrewUpdater: return "homebrew-updater"
-        case .updater: return "updater"
-        case .extensions: return "extensions"
         case .spaceLens: return "space-lens"
         case .largeOldFiles: return "large-old-files"
         case .duplicateFiles: return "duplicate-files"

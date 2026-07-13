@@ -170,7 +170,10 @@ final class LoginItemsService: ObservableObject {
     func setEnabled(_ enabled: Bool, for item: LoginItem) async -> Bool {
         guard item.type != .appService else { return false } // SMAppService items managed differently
 
-        guard let plistURL = plistURL(for: item) else { return false }
+        guard let plistURL = plistURL(for: item) else {
+            errorMessage = "Couldn't locate \(item.name)'s plist. Rescan login items and try again."
+            return false
+        }
 
         // Read/patch/write off the main actor so a slow disk doesn't freeze the UI,
         // and PRESERVE the on-disk plist format — a binary plist must stay binary,
@@ -203,18 +206,20 @@ final class LoginItemsService: ObservableObject {
     func delete(_ item: LoginItem) async {
         guard item.type != .appService else { return }
 
-        if let url = plistURL(for: item) {
-            do {
-                // Move to Trash (recoverable) rather than a hard delete, matching
-                // LoginItemController.remove and the rest of the cleanup modules.
-                // Off the main actor so trashItem doesn't stall the UI.
-                try await Task.detached(priority: .userInitiated) {
-                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                }.value
-            } catch {
-                errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"
-                return
-            }
+        guard let url = plistURL(for: item) else {
+            errorMessage = "Couldn't locate \(item.name)'s plist. Rescan login items and try again."
+            return
+        }
+        do {
+            // Move to Trash (recoverable) rather than a hard delete, matching
+            // LoginItemController.remove and the rest of the cleanup modules.
+            // Off the main actor so trashItem doesn't stall the UI.
+            try await Task.detached(priority: .userInitiated) {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            }.value
+        } catch {
+            errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"
+            return
         }
         items.removeAll { $0.id == item.id }
     }

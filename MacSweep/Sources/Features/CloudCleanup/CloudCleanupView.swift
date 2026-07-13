@@ -120,14 +120,12 @@ struct CloudCleanupView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Reclaim \(model.selectedItems.count) cloud items?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Reclaim Space",
-            message: "Local cloud copies will be evicted when possible, and cloud cache folders will be moved to Trash."
-        ) {
-            Task { await cleanSelected() }
-        }
+            items: selectedCloudItems,
+            disposition: .localCloudCopy,
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     private func scanCloudStorage() async {
@@ -136,11 +134,10 @@ struct CloudCleanupView: View {
         }
     }
 
-    private func cleanSelected() async {
+    private func cleanSelected() async -> CleanupResult? {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk.
-        let itemsToClean = filteredItems.filter { model.selectedItems.contains($0.id) }
-        await model.clean(itemsToClean) { "Couldn't reclaim cloud space: \($0.localizedDescription)" }
+        await model.clean(selectedCloudItems) { "Couldn't reclaim cloud space: \($0.localizedDescription)" }
     }
 
     private var filteredItems: [CleanupItem] {
@@ -159,6 +156,10 @@ struct CloudCleanupView: View {
 
     private var selectedSize: String {
         filteredItems.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedCloudItems: [CleanupItem] {
+        filteredItems.filter { model.selectedItems.contains($0.id) }
     }
 
     private func providerName(for moduleName: String) -> String {

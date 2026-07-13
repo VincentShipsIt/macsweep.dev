@@ -56,7 +56,7 @@ struct DevToolsModule: ScanModule {
 
         guard let enumerator = FileManager.default.enumerator(
             at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
@@ -100,7 +100,10 @@ struct DevToolsModule: ScanModule {
                         size: size,
                         type: .directory,
                         module: id,
-                        moduleName: pattern.name
+                        moduleName: pattern.name,
+                        lastModified: try? url.resourceValues(
+                            forKeys: [.contentModificationDateKey]
+                        ).contentModificationDate
                     ))
 
                     // Don't descend into matched directories
