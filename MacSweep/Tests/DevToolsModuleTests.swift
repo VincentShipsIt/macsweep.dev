@@ -98,7 +98,9 @@ final class DevToolsModuleTests {
         try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
         try Data(repeating: 0, count: 128).write(to: nodeModules.appendingPathComponent("artifact.bin"))
 
-        let projects = await discoveredProjects()
+        let projects = await ProjectScanner().discoverProjects(
+            in: testDirectory.resolvingSymlinksInPath()
+        )
 
         let project = try #require(projects.first {
             canonicalPath($0.path) == canonicalPath(nestedRoot)
