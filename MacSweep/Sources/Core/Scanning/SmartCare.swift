@@ -24,6 +24,14 @@ struct SmartCareSummary: Sendable {
     var formattedBytes: String {
         ByteCountFormatter.string(fromByteCount: reclaimableBytes, countStyle: .file)
     }
+
+    var recommendedFindings: [SmartCareFinding] {
+        findings.filter(\.autoCleanRecommended)
+    }
+
+    var reviewRequiredFindings: [SmartCareFinding] {
+        findings.filter { !$0.autoCleanRecommended }
+    }
 }
 
 enum SmartCareDefaults {

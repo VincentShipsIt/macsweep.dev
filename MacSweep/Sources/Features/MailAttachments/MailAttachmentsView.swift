@@ -16,27 +16,39 @@ struct MailAttachmentsView: View {
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanAttachments() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanAttachments() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
         ) {
             if model.items.isEmpty {
-                ScanLandingView(
-                    icon: "envelope",
-                    title: "Scan for Mail Attachments",
-                    description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
-                    ctaTitle: "Scan Mail Attachments",
-                    benefits: [
-                        ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
-                        ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
-                    ],
-                    illustration: "paperclip",
-                    isScanning: model.isScanning,
-                    scanningMessage: "Scanning mail attachments",
-                    action: { Task { await scanAttachments() } }
-                )
+                ZStack(alignment: .top) {
+                    ScanLandingView(
+                        icon: "envelope",
+                        title: "Scan for Mail Attachments",
+                        description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
+                        ctaTitle: "Scan Mail Attachments",
+                        benefits: [
+                            ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
+                            ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
+                        ],
+                        illustration: "paperclip",
+                        isScanning: model.isScanning,
+                        scanningMessage: "Scanning mail attachments",
+                        action: { Task { await scanAttachments() } }
+                    )
+
+                    if !appState.hasFullDiskAccess && !model.isScanning {
+                        FullDiskAccessWarningBanner(scope: .mail)
+                            .padding(20)
+                    }
+                }
             } else {
+                if !appState.hasFullDiskAccess {
+                    FullDiskAccessWarningBanner(scope: .mail)
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                }
                 filterBar
                 Divider()
                 attachmentsList
@@ -141,14 +153,13 @@ struct MailAttachmentsView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Move \(model.selectedItems.count) Attachments to Trash?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Move to Trash",
-            message: "This will move \(selectedSize) of mail attachments to Trash. The original emails will not be affected."
-        ) {
-            Task { await deleteSelected() }
-        }
+            items: selectedAttachments,
+            disposition: .trash,
+            note: "The original email messages remain untouched and attachments can be downloaded again.",
+            onConfirm: { await deleteSelected() }
+        )
     }
 
     // MARK: - Actions
@@ -164,12 +175,11 @@ struct MailAttachmentsView: View {
         }
     }
 
-    private func deleteSelected() async {
+    private func deleteSelected() async -> CleanupResult? {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // `stats` recomputes automatically from the pruned list.
-        let itemsToDelete = filteredAttachments.filter { model.selectedItems.contains($0.id) }
-        await model.clean(itemsToDelete) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
+        await model.clean(selectedAttachments) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
     }
 
     // MARK: - Computed
@@ -200,6 +210,10 @@ struct MailAttachmentsView: View {
 
     private var selectedSize: String {
         filteredAttachments.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedAttachments: [CleanupItem] {
+        filteredAttachments.filter { model.selectedItems.contains($0.id) }
     }
 }
 

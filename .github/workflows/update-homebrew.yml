@@ -128,6 +128,7 @@ jobs:
             name "MacSweep"
             desc "Native system cleaner"
             homepage "https://macsweep.dev/"
+            auto_updates true
 
             depends_on formula: "vincentshipsit/tap/macsweep"
             depends_on macos: :tahoe
@@ -146,6 +147,7 @@ jobs:
           grep -q "sha256 \"${SHA256}\"" "$C" || { echo "::error::cask sha256 was not updated"; exit 1; }
           grep -q 'macsweep-v#{version}-macos.zip' "$C" || { echo "::error::cask url does not reference the app zip"; exit 1; }
           grep -q 'verified: "github.com/VincentShipsIt/macsweep/"' "$C" || { echo "::error::cask url verification host is missing"; exit 1; }
+          grep -q '^[[:space:]]*auto_updates true' "$C" || { echo "::error::cask does not declare Sparkle auto-updates"; exit 1; }
           grep -q 'depends_on formula: "vincentshipsit/tap/macsweep"' "$C" || { echo "::error::cask does not depend on the CLI formula"; exit 1; }
           grep -q 'app "MacSweep.app"' "$C" || { echo "::error::cask does not install MacSweep.app"; exit 1; }
 

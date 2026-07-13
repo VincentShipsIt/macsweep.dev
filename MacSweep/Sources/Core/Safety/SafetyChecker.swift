@@ -361,7 +361,7 @@ struct SafetyChecker: Sendable {
         }
 
         // 6c. Privacy artifacts — recent-file lists and Safari download history.
-        if context.moduleID == Self.privacyModuleID, isPrivacyArtifact(path) {
+        if context.moduleID == Self.privacyModuleID, isPrivacyArtifact(normalizedPath) {
             return .safe
         }
 
@@ -474,11 +474,12 @@ struct SafetyChecker: Sendable {
         "~/Library/Application Support/com.apple.sharedfilelist".expandingTilde
     private static let safariDownloadsPlist = "~/Library/Safari/Downloads.plist".expandingTilde
 
-    private func isPrivacyArtifact(_ path: String) -> Bool {
-        if path == Self.sharedFileListRoot || path.hasPrefix(Self.sharedFileListRoot + "/") {
+    private func isPrivacyArtifact(_ normalizedPath: String) -> Bool {
+        let sharedFileListRoot = Self.caseNormalized(Self.sharedFileListRoot)
+        if normalizedPath == sharedFileListRoot || normalizedPath.hasPrefix(sharedFileListRoot + "/") {
             return true
         }
-        return path == Self.safariDownloadsPlist
+        return normalizedPath == Self.caseNormalized(Self.safariDownloadsPlist)
     }
 
     private func matchesPattern(_ filename: String, pattern: String) -> Bool {
@@ -806,6 +807,21 @@ struct ProtectedPaths {
 // MARK: - Deletion Guard
 
 struct DeletionGuard {
+    /// Defaults key backing Settings → Safety → "Max delete size" (stored in GB).
+    static let maxDeleteSizeGBKey = "maxDeleteSizeGB"
+    static let defaultMaxDeleteSizeGB = 10.0
+
+    /// Guard configured from user preferences (Settings → Safety). Falls back
+    /// to the built-in defaults when the user has never touched the setting.
+    static func fromPreferences(defaults: UserDefaults = .standard) -> DeletionGuard {
+        var configured = DeletionGuard()
+        let sizeGB = defaults.double(forKey: maxDeleteSizeGBKey)
+        if sizeGB >= 1 {
+            configured.maxTotalSize = Int64(sizeGB * 1_073_741_824)
+        }
+        return configured
+    }
+
     /// Maximum total size for single operation (default 10GB)
     var maxTotalSize: Int64 = 10_737_418_240
 

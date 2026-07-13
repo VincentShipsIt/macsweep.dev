@@ -25,11 +25,44 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
 /// A single module that failed during a scan, captured rather than swallowed.
 struct ModuleScanFailure: Sendable, Equatable {
     let moduleID: String
+    let moduleName: String
     let message: String
+
+    /// Permission failures need a different recovery path from transient scan
+    /// failures. Keep the classifier in core so every UI presents the same
+    /// diagnosis instead of relying on view-specific string checks.
+    var requiresFullDiskAccess: Bool {
+        let normalized = message.lowercased()
+        if normalized.contains("full disk access") {
+            return true
+        }
+
+        let fullDiskAccessModules = ["browser-safari", "mail-attachments", "privacy"]
+        guard fullDiskAccessModules.contains(moduleID) else { return false }
+
+        return [
+            "operation not permitted",
+            "permission denied",
+            "access denied",
+            "not authorized"
+        ].contains { normalized.contains($0) }
+    }
+
+    /// A single-line reason suitable for an inline banner. The complete message
+    /// remains available for copied diagnostic reports.
+    var conciseMessage: String {
+        let singleLine = message
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = singleLine.isEmpty ? "The module did not return a reason." : singleLine
+        guard fallback.count > 160 else { return fallback }
+        return String(fallback.prefix(157)) + "…"
+    }
 }
 
 /// Result of a scan that records which modules failed instead of silently
-/// returning a short item list. A partial scan (some modules threw) is still a
+/// returning a short item list. A partial scan (some modules failed) is still a
 /// useful result, but the caller must be able to tell the user it was partial.
 struct PartialScanResult: Sendable {
     let items: [CleanupItem]
@@ -55,9 +88,52 @@ struct ScanProgressUpdate: Sendable, Equatable {
 typealias ScanProgressHandler = @Sendable (ScanProgressUpdate) async -> Void
 
 actor ScanEngine {
+    private struct PartialCleanupFailure: Error {
+        let finalizedItems: [CleanupItem]
+        let partialResult: CleanupResult
+        let remainingItems: [CleanupItem]
+        let underlyingError: Error
+    }
+
+    private struct CleanupProgress {
+        var processedCount = 0
+        var bytesFreed: Int64 = 0
+        var errors: [CleanupError] = []
+        var historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:]
+        var finalizedItems: [CleanupItem] = []
+        var finalizedItemIDs = Set<CleanupItem.ID>()
+
+        var result: CleanupResult {
+            CleanupResult(
+                itemsProcessed: processedCount,
+                bytesFreed: bytesFreed,
+                errors: errors,
+                historyActions: historyActions
+            )
+        }
+
+        mutating func finalize(_ items: [CleanupItem], result: CleanupResult? = nil) {
+            if let result {
+                let (nextProcessedCount, countOverflow) = processedCount.addingReportingOverflow(
+                    result.itemsProcessed
+                )
+                processedCount = countOverflow ? Int.max : nextProcessedCount
+                let (nextBytesFreed, bytesOverflow) = bytesFreed.addingReportingOverflow(
+                    result.bytesFreed
+                )
+                bytesFreed = bytesOverflow ? Int64.max : nextBytesFreed
+                errors.append(contentsOf: result.errors)
+                historyActions.merge(result.historyActions) { _, action in action }
+            }
+            finalizedItems.append(contentsOf: items)
+            finalizedItemIDs.formUnion(items.map(\.id))
+        }
+    }
+
     private var modules: [any ScanModule] = []
     private let safetyChecker = SafetyChecker()
     private let deletionGuard: DeletionGuard
+    private let cleanupHistoryStore: CleanupHistoryStore
     private static let cleanupPriority: [String] = [
         "trash-bins",
         "system-cache",
@@ -81,10 +157,14 @@ actor ScanEngine {
 
     init(
         modules: [any ScanModule]? = nil,
-        deletionGuard: DeletionGuard = DeletionGuard()
+        // Default to the user-configured cap (Settings → Safety) so every
+        // feature that constructs a fresh engine picks the setting up.
+        deletionGuard: DeletionGuard = .fromPreferences(),
+        cleanupHistoryStore: CleanupHistoryStore = .shared
     ) {
         self.modules = modules ?? Self.defaultModules()
         self.deletionGuard = deletionGuard
+        self.cleanupHistoryStore = cleanupHistoryStore
     }
 
     private static func defaultModules() -> [any ScanModule] {
@@ -160,7 +240,8 @@ actor ScanEngine {
     ///
     /// Unlike ``scan(modules:)``, a thrown module error is recorded as a
     /// ``ModuleScanFailure`` rather than silently swallowed, so the caller can
-    /// surface that the result is partial.
+    /// surface that the result is partial. Cancellation is excluded because a
+    /// user stopping a scan is not a module failure.
     func scanWithDiagnostics(modules moduleIDs: [String]? = nil, progress: ScanProgressHandler? = nil) async -> PartialScanResult {
         let modulesToScan: [any ScanModule]
 
@@ -174,6 +255,7 @@ actor ScanEngine {
         // a failing module never tears down the whole group.
         enum ModuleOutcome: Sendable {
             case items(moduleID: String, moduleName: String, items: [CleanupItem])
+            case cancelled(moduleID: String, moduleName: String)
             case failure(ModuleScanFailure, moduleName: String)
         }
 
@@ -195,9 +277,12 @@ actor ScanEngine {
                             self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
+                    } catch is CancellationError {
+                        return .cancelled(moduleID: module.id, moduleName: module.name)
                     } catch {
                         return .failure(ModuleScanFailure(
                             moduleID: module.id,
+                            moduleName: module.name,
                             message: error.localizedDescription
                         ), moduleName: module.name)
                     }
@@ -213,6 +298,13 @@ actor ScanEngine {
                 switch outcome {
                 case .items(let moduleID, let moduleName, let items):
                     allItems.append(contentsOf: items)
+                    await progress?(ScanProgressUpdate(
+                        completedModules: completedModules,
+                        totalModules: totalModules,
+                        moduleID: moduleID,
+                        moduleName: moduleName
+                    ))
+                case .cancelled(let moduleID, let moduleName):
                     await progress?(ScanProgressUpdate(
                         completedModules: completedModules,
                         totalModules: totalModules,
@@ -242,9 +334,48 @@ actor ScanEngine {
     /// gate, not advisory. Defaults to `false` so any caller that forgets to
     /// confirm fails closed rather than silently deleting.
     func clean(items: [CleanupItem], dryRun: Bool, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
-        var processedCount = 0
-        var bytesFreed: Int64 = 0
-        var errors: [CleanupError] = []
+        if dryRun {
+            return try await performClean(
+                items: items,
+                dryRun: true,
+                confirmedLargeDeletion: confirmedLargeDeletion
+            )
+        }
+
+        do {
+            let result = try await performClean(
+                items: items,
+                dryRun: false,
+                confirmedLargeDeletion: confirmedLargeDeletion
+            )
+            cleanupHistoryStore.record(items: items, result: result)
+            return result
+        } catch let partial as PartialCleanupFailure {
+            if !partial.finalizedItems.isEmpty {
+                cleanupHistoryStore.record(
+                    items: partial.finalizedItems,
+                    result: partial.partialResult
+                )
+            }
+            if !partial.remainingItems.isEmpty {
+                cleanupHistoryStore.recordFailure(
+                    items: partial.remainingItems,
+                    error: partial.underlyingError
+                )
+            }
+            throw partial.underlyingError
+        } catch {
+            cleanupHistoryStore.recordFailure(items: items, error: error)
+            throw error
+        }
+    }
+
+    private func performClean(
+        items: [CleanupItem],
+        dryRun: Bool,
+        confirmedLargeDeletion: Bool
+    ) async throws -> CleanupResult {
+        var progress = CleanupProgress()
         let groupedItems = Dictionary(grouping: items, by: \.module)
         let modulesByID = Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
         let orderedModuleIDs = groupedItems.keys.sorted { lhs, rhs in
@@ -265,9 +396,10 @@ actor ScanEngine {
         for moduleID in orderedModuleIDs {
             guard let moduleItems = groupedItems[moduleID] else { continue }
             guard let module = modulesByID[moduleID] else {
-                errors.append(contentsOf: moduleItems.map {
+                progress.errors.append(contentsOf: moduleItems.map {
                     CleanupError(path: $0.path, message: "No cleanup module registered for \(moduleID)")
                 })
+                progress.finalize(moduleItems)
                 continue
             }
 
@@ -275,10 +407,11 @@ actor ScanEngine {
                 let validation = safetyChecker.validateForCleanup(item, moduleID: moduleID)
 
                 if !validation.isSafe {
-                    errors.append(CleanupError(
+                    progress.errors.append(CleanupError(
                         path: item.path,
                         message: "Safety check failed: \(validation.reason ?? "protected")"
                     ))
+                    progress.finalize([item])
                 }
 
                 return validation.isSafe
@@ -314,35 +447,74 @@ actor ScanEngine {
         // Carry forward the measured impact of earlier dispatches so the 10 GiB
         // cap applies to the whole operation, even when modules return incomplete
         // or stale bytes-freed accounting.
+        try await executeCleanupPlan(
+            plan,
+            allItems: items,
+            dryRun: dryRun,
+            confirmedLargeDeletion: confirmedLargeDeletion,
+            progress: &progress
+        )
+        return progress.result
+    }
+
+    private func executeCleanupPlan(
+        _ plan: [(module: any ScanModule, items: [CleanupItem])],
+        allItems: [CleanupItem],
+        dryRun: Bool,
+        confirmedLargeDeletion: Bool,
+        progress: inout CleanupProgress
+    ) async throws {
         var authorizedImpact: Int64 = 0
         for entry in plan {
-            if !dryRun {
-                switch deletionGuard.evaluate(
-                    items: entry.items,
-                    alreadyAuthorizedSize: authorizedImpact
-                ) {
-                case .blocked(let reason):
-                    throw ScanEngineError.deletionBlocked(reason: reason)
-                case .requiresConfirmation(let cumulativeSize):
-                    guard confirmedLargeDeletion else {
-                        throw ScanEngineError.confirmationRequired(size: cumulativeSize)
-                    }
-                    authorizedImpact = cumulativeSize
-                case .allowed(let cumulativeSize):
-                    authorizedImpact = cumulativeSize
+            do {
+                if !dryRun {
+                    authorizedImpact = try evaluateAuthorizedImpact(
+                        for: entry.items,
+                        alreadyAuthorized: authorizedImpact,
+                        confirmedLargeDeletion: confirmedLargeDeletion
+                    )
                 }
+                let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
+                progress.finalize(entry.items, result: result)
+            } catch {
+                guard !dryRun else { throw error }
+                throw partialCleanupFailure(
+                    progress: progress,
+                    allItems: allItems,
+                    underlyingError: error
+                )
             }
-
-            let result = try await entry.module.clean(items: entry.items, dryRun: dryRun)
-            processedCount += result.itemsProcessed
-            bytesFreed += result.bytesFreed
-            errors.append(contentsOf: result.errors)
         }
+    }
 
-        return CleanupResult(
-            itemsProcessed: processedCount,
-            bytesFreed: bytesFreed,
-            errors: errors
+    private func evaluateAuthorizedImpact(
+        for items: [CleanupItem],
+        alreadyAuthorized: Int64,
+        confirmedLargeDeletion: Bool
+    ) throws -> Int64 {
+        switch deletionGuard.evaluate(items: items, alreadyAuthorizedSize: alreadyAuthorized) {
+        case .blocked(let reason):
+            throw ScanEngineError.deletionBlocked(reason: reason)
+        case .requiresConfirmation(let cumulativeSize):
+            guard confirmedLargeDeletion else {
+                throw ScanEngineError.confirmationRequired(size: cumulativeSize)
+            }
+            return cumulativeSize
+        case .allowed(let cumulativeSize):
+            return cumulativeSize
+        }
+    }
+
+    private func partialCleanupFailure(
+        progress: CleanupProgress,
+        allItems: [CleanupItem],
+        underlyingError: Error
+    ) -> PartialCleanupFailure {
+        PartialCleanupFailure(
+            finalizedItems: progress.finalizedItems,
+            partialResult: progress.result,
+            remainingItems: allItems.filter { !progress.finalizedItemIDs.contains($0.id) },
+            underlyingError: underlyingError
         )
     }
 }

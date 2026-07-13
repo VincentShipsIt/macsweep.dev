@@ -7,6 +7,7 @@ struct AIAnalysisView: View {
     @State private var hasLocalAIProvider = false
     @State private var showKeyField = false
     @State private var keySaveError = false
+    @State private var isCleaning = false
 
     private var selectedFindings: [CacheFinding] {
         service.findings.filter { $0.isSelected }
@@ -29,13 +30,12 @@ struct AIAnalysisView: View {
                     Label(providerStatusLabel, systemImage: hasLocalAIProvider ? "terminal" : "key")
                         .foregroundStyle(hasLocalAIProvider || hasApiKey ? .green : .orange)
                 }
-                .glassButton()
                 .controlSize(.small)
                 .popover(isPresented: $showKeyField) {
                     apiKeyPopover
                 }
             ),
-            hidesChrome: service.findings.isEmpty && !service.isScanning,
+            hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
             if service.findings.isEmpty && !service.isScanning {
@@ -52,6 +52,7 @@ struct AIAnalysisView: View {
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,
+                    hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
             } else {
@@ -210,7 +211,7 @@ struct AIAnalysisView: View {
                 }
                 .glassButton(prominent: true)
                 .tint(.red)
-                .disabled(selectedFindings.isEmpty || service.isScanning)
+                .disabled(selectedFindings.isEmpty || service.isScanning || isCleaning)
             }
         }
         .padding(.horizontal, 20)
@@ -228,8 +229,11 @@ struct AIAnalysisView: View {
     }
 
     private func cleanSelected() {
+        guard !isCleaning else { return }
+        isCleaning = true
         let pathsToDelete = selectedFindings.map { $0.path }
         Task {
+            defer { isCleaning = false }
             // Do the blocking trashItem I/O OFF the main thread (returns only
             // Sendable [String] arrays, so no @StateObject is captured by the
             // detached task), then apply UI mutations back on the main actor.
@@ -339,67 +343,73 @@ struct CacheFindingRow: View {
     @Binding var finding: CacheFinding
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Checkbox
-            Image(systemName: finding.isSelected ? "checkmark.square.fill" : "square")
-                .foregroundStyle(finding.isSelected ? .purple : .secondary)
-                .font(.body)
-                .onTapGesture { finding.isSelected.toggle() }
+        Button {
+            finding.isSelected.toggle()
+        } label: {
+            HStack(spacing: 12) {
+                // Checkbox
+                Image(systemName: finding.isSelected ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(finding.isSelected ? .purple : .secondary)
+                    .font(.body)
+                    .accessibilityHidden(true)
 
-            // Path
-            VStack(alignment: .leading, spacing: 3) {
-                Text(finding.path)
-                    .font(.system(.caption, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(finding.path)
-
-                if let reason = finding.reason {
-                    Text(reason)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                // Path
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(finding.path)
+                        .font(.system(.caption, design: .monospaced))
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(finding.path)
+
+                    if let reason = finding.reason {
+                        Text(reason)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Badges
-            HStack(spacing: 6) {
-                // Size
-                Text(finding.size)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundStyle(.blue)
-                    .cornerRadius(4)
+                // Badges
+                HStack(spacing: 6) {
+                    // Size
+                    Text(finding.size)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundStyle(.blue)
+                        .clipShape(.rect(cornerRadius: 4))
 
-                // Auto-regenerates
-                if finding.regeneratesAutomatically {
-                    Text("Auto-regenerates")
+                    // Auto-regenerates
+                    if finding.regeneratesAutomatically {
+                        Text("Auto-regenerates")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.15))
+                            .foregroundStyle(.green)
+                            .clipShape(.rect(cornerRadius: 4))
+                    }
+
+                    // Source
+                    Text(finding.source.rawValue)
                         .font(.caption2)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundStyle(.green)
-                        .cornerRadius(4)
+                        .background(finding.source == .ai ? Color.purple.opacity(0.15) : Color.gray.opacity(0.15))
+                        .foregroundStyle(finding.source == .ai ? .purple : .secondary)
+                        .clipShape(.rect(cornerRadius: 4))
                 }
-
-                // Source
-                Text(finding.source.rawValue)
-                    .font(.caption2)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(finding.source == .ai ? Color.purple.opacity(0.15) : Color.gray.opacity(0.15))
-                    .foregroundStyle(finding.source == .ai ? .purple : .secondary)
-                    .cornerRadius(4)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .onTapGesture { finding.isSelected.toggle() }
+        .buttonStyle(.plain)
+        .accessibilityLabel(finding.path)
+        .accessibilityValue(finding.isSelected ? "Selected" : "Not selected")
     }
 }
 

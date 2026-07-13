@@ -24,7 +24,6 @@ struct ShredderView: View {
                 } label: {
                     Label("Add Files", systemImage: "plus")
                 }
-                .glassButton()
                 .controlSize(.small)
             )
         ) {

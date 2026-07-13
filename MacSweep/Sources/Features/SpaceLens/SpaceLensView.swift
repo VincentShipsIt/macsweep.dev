@@ -31,7 +31,7 @@ struct SpaceLensView: View {
                 Button { Task { await scanDisk() } } label: {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
-                .glassButton().controlSize(.small).disabled(isScanning)
+                .controlSize(.small).disabled(isScanning)
             ),
             hidesChrome: isScanning || currentNode == nil,
             scrolls: isScanning || currentNode == nil
@@ -634,7 +634,7 @@ struct SunburstView: View {
             ZStack {
                 // Center circle
                 Circle()
-                    .fill(.ultraThinMaterial)
+                    .fill(MacSweepTheme.panelStrong)
                     .frame(width: maxRadius * 0.4, height: maxRadius * 0.4)
                     .overlay(
                         VStack {

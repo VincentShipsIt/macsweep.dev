@@ -43,6 +43,23 @@ final class CleanupPerformanceStoreTests {
         #expect(store.history.isEmpty)
     }
 
+    @Test func recordsFullyFailedCleanupResults() throws {
+        let store = store()
+        let result = CleanupResult(
+            itemsProcessed: 0,
+            bytesFreed: 0,
+            errors: [CleanupError(path: URL(fileURLWithPath: "/tmp/a"), message: "Permission denied")]
+        )
+
+        let entry = try #require(store.record(result))
+
+        #expect(entry.bytesFreed == 0)
+        #expect(entry.itemsProcessed == 0)
+        #expect(entry.errorCount == 1)
+        #expect(store.history == [entry])
+        #expect(store.summary().successRate == 0)
+    }
+
     @Test func summaryUsesRequestedWindowAndSuccessRate() {
         let store = store()
         let now = Date()
@@ -75,5 +92,34 @@ final class CleanupPerformanceStoreTests {
         #expect(summary.totalErrors == 1)
         #expect(summary.successRate == 8.0 / 9.0)
         #expect(summary.bestCleanup?.bytesFreed == 6_000)
+    }
+
+    @Test func summarySaturatesCorruptOrOverflowingCounters() {
+        let now = Date()
+        let summary = CleanupPerformanceSummary(entries: [
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: Int64.max,
+                itemsProcessed: Int.max,
+                errorCount: Int.max
+            ),
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: 1,
+                itemsProcessed: 1,
+                errorCount: 1
+            ),
+            CleanupPerformanceEntry(
+                timestamp: now,
+                bytesFreed: -1,
+                itemsProcessed: -1,
+                errorCount: -1
+            )
+        ], generatedAt: now)
+
+        #expect(summary.totalBytesFreed == Int64.max)
+        #expect(summary.totalItemsProcessed == Int.max)
+        #expect(summary.totalErrors == Int.max)
+        #expect(summary.successRate == 0.5)
     }
 }

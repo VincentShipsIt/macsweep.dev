@@ -11,7 +11,7 @@ struct DuplicateFinderView: View {
             title: "Duplicate Files",
             subtitle: "Find redundant copies and keep the best version.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanDuplicates() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanDuplicates() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -96,14 +96,13 @@ struct DuplicateFinderView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Move \(model.selectedItems.count) duplicates to Trash?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Move to Trash",
-            message: "This will move \(selectedSize) of duplicate files to Trash."
-        ) {
-            Task { await deleteSelected() }
-        }
+            items: selectedDuplicates,
+            disposition: .trash,
+            note: "Duplicate groups are review-only; only the files selected here will move.",
+            onConfirm: { await deleteSelected() }
+        )
     }
 
     private func scanDuplicates() async {
@@ -112,12 +111,11 @@ struct DuplicateFinderView: View {
         }
     }
 
-    private func deleteSelected() async {
+    private func deleteSelected() async -> CleanupResult? {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // engine-blocked items stay in the list and a failure summary is surfaced.
-        let itemsToDelete = sortedItems.filter { model.selectedItems.contains($0.id) }
-        await model.clean(itemsToDelete) { "Couldn't move duplicates to Trash: \($0.localizedDescription)" }
+        await model.clean(selectedDuplicates) { "Couldn't move duplicates to Trash: \($0.localizedDescription)" }
     }
 
     private var sortedItems: [CleanupItem] {
@@ -130,6 +128,10 @@ struct DuplicateFinderView: View {
 
     private var selectedSize: String {
         sortedItems.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedDuplicates: [CleanupItem] {
+        sortedItems.filter { model.selectedItems.contains($0.id) }
     }
 }
 
