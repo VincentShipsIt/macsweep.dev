@@ -111,8 +111,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.post(name: openMainWindowRequest, object: nil)
         }
 
+        guard !focusMainWindow() else { return }
+
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))
+            guard !focusMainWindow() else { return }
+
+            // SwiftUI may still be creating and tagging the window under load.
+            try? await Task.sleep(for: .milliseconds(170))
             _ = focusMainWindow()
         }
     }
