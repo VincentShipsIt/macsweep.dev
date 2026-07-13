@@ -1,12 +1,25 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
+
+struct MacSweepSidebarFocus {
+    let isFocused: FocusState<Bool>.Binding
+    let columnVisibility: Binding<NavigationSplitViewVisibility>
+}
+
+extension FocusedValues {
+    @Entry var macSweepSidebarFocus: MacSweepSidebarFocus?
+}
 
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
+    var allowsInitialSidebarFocus = true
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
     @State private var usesSlideTransition = true
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -23,6 +36,10 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(
+            \.macSweepSidebarFocus,
+            MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
+        )
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -51,6 +68,9 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($isSidebarFocused)
+        .defaultFocus($isSidebarFocused, allowsInitialSidebarFocus)
+        .accessibilityLabel("Feature navigation")
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking
@@ -73,7 +93,9 @@ struct ContentView: View {
             detailView(for: activeFeature)
                 .id(activeFeature)
                 .transition(
-                    usesSlideTransition
+                    reduceMotion
+                        ? .identity
+                        : usesSlideTransition
                         ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
                         : .opacity
                 )
@@ -84,6 +106,12 @@ struct ContentView: View {
     private func showFeature(_ newFeature: Feature) {
         let oldFeature = activeFeature
         guard oldFeature != newFeature else { return }
+
+        if reduceMotion {
+            usesSlideTransition = false
+            displayedFeature = newFeature
+            return
+        }
 
         let shouldSlide = usesCenteredLandingTransition(oldFeature)
             && usesCenteredLandingTransition(newFeature)
@@ -113,6 +141,8 @@ struct ContentView: View {
             staticDetail(AssistantView())
         case .share:
             staticDetail(ShareView())
+        case .cleanupHistory:
+            staticDetail(CleanupHistoryView())
 
         // Cleanup
         case .systemJunk:
@@ -151,10 +181,6 @@ struct ContentView: View {
             staticDetail(AppUninstallerView())
         case .homebrewUpdater:
             staticDetail(HomebrewUpdaterView())
-        case .updater:
-            staticDetail(PlaceholderFeatureView(feature: .updater))
-        case .extensions:
-            staticDetail(PlaceholderFeatureView(feature: .extensions))
 
         // Files
         case .spaceLens:
@@ -198,6 +224,7 @@ private extension Feature {
         case .smartScan,
              .assistant,
              .share,
+             .cleanupHistory,
              .networkCleanup,
              .loginItems,
              .optimization,
@@ -205,8 +232,6 @@ private extension Feature {
              .maintenance,
              .uninstaller,
              .homebrewUpdater,
-             .updater,
-             .extensions,
              .shredder:
             return false
         }
@@ -223,33 +248,6 @@ struct SidebarRow: View {
         // Liquid Glass selection highlight and tints the icon for us — no custom
         // pill, no manual foreground/weight overrides to fight it.
         Label(feature.rawValue, systemImage: feature.icon)
-    }
-}
-
-// MARK: - Placeholder Feature View
-
-struct PlaceholderFeatureView: View {
-    let feature: Feature
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: feature.icon)
-                .font(.system(size: 72))
-                .foregroundStyle(.secondary)
-
-            Text(feature.rawValue)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Text("Coming soon...")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-
-            Text("This feature is under development")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -389,8 +387,6 @@ struct MaintenanceTaskRow: View {
 // MARK: - Settings View
 
 struct SettingsView: View {
-    @EnvironmentObject var appState: AppState
-
     var body: some View {
         TabView {
             GeneralSettingsView()
@@ -423,35 +419,52 @@ struct SettingsView: View {
 }
 
 struct GeneralSettingsView: View {
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
-    @AppStorage("dryRunDefault") private var dryRunDefault = true
-    @AppStorage("backgroundScanEnabled") private var backgroundScanEnabled = true
+    // SMAppService is the source of truth for login-item state; the toggle
+    // mirrors it rather than persisting a parallel flag in defaults.
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
+    @AppStorage(ScanScheduler.enabledDefaultsKey) private var backgroundScanEnabled = true
 
     var body: some View {
         Form {
-            Toggle("Launch at login", isOn: $launchAtLogin)
-            Toggle("Show menu bar icon", isOn: $showMenuBarIcon)
-            Toggle("Dry-run by default (preview before delete)", isOn: $dryRunDefault)
+            Section {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {
+                            // Registration fails outside a proper app bundle
+                            // (e.g. `swift run`); reflect the real state.
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
 
-            Divider()
+                Toggle("Show menu bar icon", isOn: $showMenuBarIcon)
+            }
 
-            Toggle("Weekly background scan", isOn: $backgroundScanEnabled)
-                .onChange(of: backgroundScanEnabled) { enabled in
-                    if enabled {
-                        ScanScheduler.shared.scheduleWeeklyScan()
-                    } else {
-                        ScanScheduler.shared.cancelScheduledScan()
+            Section {
+                Toggle("Weekly background scan", isOn: $backgroundScanEnabled)
+                    .onChange(of: backgroundScanEnabled) { _, enabled in
+                        if enabled {
+                            ScanScheduler.shared.scheduleWeeklyScan()
+                        } else {
+                            ScanScheduler.shared.cancelScheduledScan()
+                        }
+                    }
+
+                if let lastScan = LastScanStore.shared.lastScan {
+                    LabeledContent("Last scan") {
+                        Text(lastScan.date.formatted(.relative(presentation: .named)))
+                            .foregroundStyle(.secondary)
                     }
                 }
-
-            if let lastScan = LastScanStore.shared.lastScan {
-                Text("Last scan: \(lastScan.date.formatted(.relative(presentation: .named)))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
-        .padding()
+        .formStyle(.grouped)
     }
 }
 
@@ -474,7 +487,7 @@ struct CompanionSettingsView: View {
                 }
             }
         }
-        .padding()
+        .formStyle(.grouped)
     }
 
     private func binding(for card: CompanionToolbarCard) -> Binding<Bool> {
@@ -491,22 +504,21 @@ struct CompanionSettingsView: View {
 }
 
 struct SafetySettingsView: View {
-    @AppStorage("maxDeleteSizeGB") private var maxDeleteSizeGB = 10.0
-    @AppStorage("confirmLargeDeletes") private var confirmLargeDeletes = true
+    @AppStorage(DeletionGuard.maxDeleteSizeGBKey) private var maxDeleteSizeGB = DeletionGuard.defaultMaxDeleteSizeGB
 
     var body: some View {
         Form {
-            Slider(value: $maxDeleteSizeGB, in: 1...50, step: 1) {
-                Text("Max delete size: \(Int(maxDeleteSizeGB)) GB")
+            Section {
+                Slider(value: $maxDeleteSizeGB, in: 1...50, step: 1) {
+                    Text("Max delete size: \(Int(maxDeleteSizeGB)) GB")
+                }
+            } footer: {
+                Text("Cleanups larger than this are blocked. Protected paths cannot be modified — MacSweep will never delete system files, credentials, or user documents.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-
-            Toggle("Confirm deletes over 1 GB", isOn: $confirmLargeDeletes)
-
-            Text("Protected paths cannot be modified. MacSweep will never delete system files, credentials, or user documents.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding()
+        .formStyle(.grouped)
     }
 }
 
@@ -562,50 +574,51 @@ struct AssistantSettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 0) {
             Form {
-                Picker("Default provider", selection: $draft.defaultProvider) {
-                    ForEach(AssistantProviderKind.allCases) { provider in
-                        Text(provider.displayName)
-                            .tag(provider)
+                Section {
+                    Picker("Default provider", selection: $draft.defaultProvider) {
+                        ForEach(AssistantProviderKind.allCases) { provider in
+                            Text(provider.displayName)
+                                .tag(provider)
+                        }
                     }
                 }
 
-                Picker("Provider", selection: $selectedProvider) {
-                    ForEach(AssistantProviderKind.allCases) { provider in
-                        Text(provider.displayName)
-                            .tag(provider)
+                Section {
+                    Picker("Provider", selection: $selectedProvider) {
+                        ForEach(AssistantProviderKind.allCases) { provider in
+                            Text(provider.displayName)
+                                .tag(provider)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
+                    .pickerStyle(.segmented)
 
-                Divider()
+                    Toggle("Enabled", isOn: boolBinding(\.enabled))
+                    TextField("Command", text: stringBinding(\.command))
+                    TextField("Model", text: stringBinding(\.model))
 
-                Toggle("Enabled", isOn: boolBinding(\.enabled))
-                TextField("Command", text: stringBinding(\.command))
-                TextField("Model", text: stringBinding(\.model))
+                    Picker("Reasoning", selection: stringBinding(\.reasoningEffort)) {
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
 
-                Picker("Reasoning", selection: stringBinding(\.reasoningEffort)) {
-                    Text("Low").tag("low")
-                    Text("Medium").tag("medium")
-                    Text("High").tag("high")
-                }
-                .pickerStyle(.segmented)
-
-                providerStatusRow
-
-                if let validationMessage {
-                    Text(validationMessage)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-
-                if let statusMessage {
-                    Text(statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    providerStatusRow
+                } footer: {
+                    if let validationMessage {
+                        Text(validationMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if let statusMessage {
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .formStyle(.grouped)
 
             HStack {
                 Button {
@@ -634,8 +647,9 @@ struct AssistantSettingsView: View {
                 .disabled(!canSave)
                 .keyboardShortcut(.defaultAction)
             }
+            .padding([.horizontal, .bottom])
+            .padding(.top, 8)
         }
-        .padding()
         .onAppear(perform: loadDraft)
         .onChange(of: assistant.providerConfig) { _, newConfig in
             guard !isSaving else { return }

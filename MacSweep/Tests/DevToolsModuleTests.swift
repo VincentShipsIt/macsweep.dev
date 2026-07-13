@@ -86,6 +86,10 @@ final class DevToolsModuleTests {
         #expect(artifactNames.contains("dist"))
     }
 
+    @Test func projectDiscoveryDepthMatchesDevToolsScan() {
+        #expect(ProjectScanner.defaultMaxDepth == DevToolsModule.defaultMaxDepth)
+    }
+
     @Test func discoverProjectsDetectsSwiftProject() async throws {
         let projectDir = try makeProject(
             named: "swift-pkg",

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// View for cleaning up developer artifacts
@@ -6,39 +7,40 @@ struct DevToolsView: View {
     @State private var selectedTab: DevToolsTab = .artifacts
     @State private var hasCompletedBuildArtifactScan = false
     @State private var isBuildArtifactScanRunning = false
+    @State private var buildArtifactScanState = BuildArtifactScanState()
 
     enum DevToolsTab: String, CaseIterable {
         case artifacts = "Build Artifacts"
         case packages = "Package Managers"
     }
 
-    private var showsTabPicker: Bool {
-        hasCompletedBuildArtifactScan && !isBuildArtifactScanRunning
+    private var showsBuildArtifactLanding: Bool {
+        selectedTab == .artifacts && (!hasCompletedBuildArtifactScan || isBuildArtifactScanRunning)
     }
 
     var body: some View {
         FeaturePageShell(
             title: "Developer Tools",
             subtitle: "Clean build artifacts, caches, and stale Git branches.",
-            hidesChrome: selectedTab == .artifacts && !showsTabPicker,
-            scrolls: selectedTab == .artifacts && !showsTabPicker
+            hidesChrome: showsBuildArtifactLanding,
+            scrolls: showsBuildArtifactLanding
         ) {
             VStack(spacing: 0) {
-                if showsTabPicker {
-                    Picker("", selection: $selectedTab) {
-                        ForEach(DevToolsTab.allCases, id: \.self) { tab in
-                            Text(tab.rawValue).tag(tab)
-                        }
+                Picker("Developer tool category", selection: $selectedTab) {
+                    ForEach(DevToolsTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
                     }
-                    .pickerStyle(.segmented)
-                    .padding(12)
-
-                    Divider()
                 }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .padding(12)
+
+                Divider()
 
                 switch selectedTab {
                 case .artifacts:
                     BuildArtifactsView(
+                        scanState: $buildArtifactScanState,
                         hasCompletedScan: $hasCompletedBuildArtifactScan,
                         isScanRunning: $isBuildArtifactScanRunning
                     )
@@ -50,20 +52,29 @@ struct DevToolsView: View {
     }
 }
 
+/// Scan-owned state lives above `FeaturePageShell` because that shell changes
+/// from a landing-page scroll container to the results container when a scan
+/// completes. Keeping these values in `BuildArtifactsView` caused SwiftUI to
+/// recreate the child at that boundary and replace real findings with an empty
+/// result state.
+struct BuildArtifactScanState {
+    var isScanning = false
+    var projects: [ProjectInfo] = []
+    var projectCleanupItems: [CleanupItem] = []
+    var systemArtifacts: [CleanupItem] = []
+    var gitArtifacts: [GitCleanupItem] = []
+    var selectedItems: Set<UUID> = []
+    var selectedGitItems: Set<UUID> = []
+    var errorMessage: String?
+    var gitToolStatus: GitToolStatus?
+}
+
 /// View for cleaning up build artifacts (node_modules, DerivedData, etc.)
 struct BuildArtifactsView: View {
     @EnvironmentObject var appState: AppState
+    @Binding private var scanState: BuildArtifactScanState
     @Binding private var hasCompletedScan: Bool
     @Binding private var isScanRunning: Bool
-    @State private var isScanning = false
-    @State private var projects: [ProjectInfo] = []
-    @State private var projectCleanupItems: [CleanupItem] = []
-    @State private var systemArtifacts: [CleanupItem] = []
-    @State private var gitArtifacts: [GitCleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var selectedGitItems: Set<UUID> = []
-    @State private var errorMessage: String?
-    @State private var gitToolStatus: GitToolStatus?
     @State private var showingConfirmation = false
     @State private var viewMode: ViewMode = .projects
     @State private var filterType: ProjectType? = nil
@@ -75,11 +86,53 @@ struct BuildArtifactsView: View {
     }
 
     init(
+        scanState: Binding<BuildArtifactScanState>,
         hasCompletedScan: Binding<Bool> = .constant(false),
         isScanRunning: Binding<Bool> = .constant(false)
     ) {
+        self._scanState = scanState
         self._hasCompletedScan = hasCompletedScan
         self._isScanRunning = isScanRunning
+    }
+
+    private var projects: [ProjectInfo] {
+        get { scanState.projects }
+        nonmutating set { scanState.projects = newValue }
+    }
+
+    private var isScanning: Bool {
+        get { scanState.isScanning }
+        nonmutating set { scanState.isScanning = newValue }
+    }
+
+    private var projectCleanupItems: [CleanupItem] {
+        get { scanState.projectCleanupItems }
+        nonmutating set { scanState.projectCleanupItems = newValue }
+    }
+
+    private var systemArtifacts: [CleanupItem] {
+        get { scanState.systemArtifacts }
+        nonmutating set { scanState.systemArtifacts = newValue }
+    }
+
+    private var gitArtifacts: [GitCleanupItem] {
+        get { scanState.gitArtifacts }
+        nonmutating set { scanState.gitArtifacts = newValue }
+    }
+
+    private var selectedItems: Set<UUID> {
+        get { scanState.selectedItems }
+        nonmutating set { scanState.selectedItems = newValue }
+    }
+
+    private var selectedGitItems: Set<UUID> {
+        get { scanState.selectedGitItems }
+        nonmutating set { scanState.selectedGitItems = newValue }
+    }
+
+    private var gitToolStatus: GitToolStatus? {
+        get { scanState.gitToolStatus }
+        nonmutating set { scanState.gitToolStatus = newValue }
     }
 
     var body: some View {
@@ -125,7 +178,7 @@ struct BuildArtifactsView: View {
                 }
             }
         }
-        .errorAlert("Cleanup Failed", message: $errorMessage)
+        .errorAlert("Cleanup Failed", message: $scanState.errorMessage)
     }
 
     private var noArtifactsView: some View {
@@ -211,7 +264,7 @@ struct BuildArtifactsView: View {
     }
 
     private var projectsView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             // Projects section
             if !filteredProjects.isEmpty {
                 Section("Projects (\(filteredProjects.count))") {
@@ -256,7 +309,7 @@ struct BuildArtifactsView: View {
     }
 
     private var byTypeView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             ForEach(ProjectType.allCases, id: \.self) { type in
                 let typeProjects = projects.filter { $0.type == type }
                 if !typeProjects.isEmpty {
@@ -286,7 +339,7 @@ struct BuildArtifactsView: View {
     }
 
     private var allItemsView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             if !allCleanupItems.isEmpty {
                 Section("Build Artifacts") {
                     ForEach(allCleanupItems) { item in
@@ -365,21 +418,42 @@ struct BuildArtifactsView: View {
             .disabled(selectedItems.isEmpty && selectedGitItems.isEmpty)
         }
         .padding()
-        .deleteConfirmation(
-            "Clean \(selectedCount) items?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            confirmTitle: "Clean Selected",
-            message: cleanConfirmationMessage
-        ) {
-            Task { await cleanSelected() }
-        }
+            items: selectedCleanupItems,
+            disposition: .mixed,
+            note: cleanConfirmationMessage,
+            additionalCount: selectedGitCleanupItems.count,
+            additionalBytes: selectedGitCleanupItems.reduce(0) { $0 + $1.size },
+            additionalModules: Array(repeating: "Git", count: selectedGitCleanupItems.count),
+            additionalPaths: selectedGitCleanupItems.map { $0.displayPath ?? $0.repositoryPath },
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     private var cleanConfirmationMessage: String {
-        if recentlyModifiedCount > 0 {
-            return "Warning: \(recentlyModifiedCount) selected project(s) were modified recently and may be in active development.\n\nThis will move build artifacts to Trash and remove selected stale Git worktrees or branches."
+        var sections: [String] = []
+        if !selectedItems.isEmpty {
+            sections.append("Build artifacts are moved to Trash and can be regenerated by their developer tools.")
         }
-        return "This will move build artifacts to Trash and remove selected stale Git worktrees or branches."
+        if !selectedGitItems.isEmpty {
+            let commands = gitArtifacts
+                .filter { selectedGitItems.contains($0.id) }
+                .map { "• \($0.commandPreview)" }
+                .joined(separator: "\n")
+            sections.append(
+                "Git cleanup runs these tool-native commands. " +
+                "Worktree removal deletes that worktree directory rather than moving it to Trash:\n\(commands)"
+            )
+        }
+        if recentlyModifiedCount > 0 {
+            sections.insert(
+                "Warning: \(recentlyModifiedCount) selected project(s) were modified recently " +
+                "and may be in active development.",
+                at: 0
+            )
+        }
+        return sections.joined(separator: "\n\n")
     }
 
     // MARK: - Actions
@@ -455,37 +529,53 @@ struct BuildArtifactsView: View {
         selectedGitItems = Set(gitArtifacts.map(\.id))
     }
 
-    private func cleanSelected() async {
-        let itemsToClean = allCleanupItems.filter { selectedItems.contains($0.id) }
-        let gitItemsToClean = gitArtifacts.filter { selectedGitItems.contains($0.id) }
+    private func cleanSelected() async -> CleanupResult? {
+        let itemsToClean = selectedCleanupItems
+        let gitItemsToClean = selectedGitCleanupItems
 
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
         var failures: [String] = []
+        var processed = 0
+        var bytesFreed: Int64 = 0
+        var cleanupErrors: [CleanupError] = []
         if !itemsToClean.isEmpty {
             let engine = ScanEngine()
             do {
                 let result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
+                processed += result.itemsProcessed
+                bytesFreed += result.bytesFreed
+                cleanupErrors.append(contentsOf: result.errors)
                 if let summary = result.failureSummaryMessage {
                     failures.append(summary)
                 }
             } catch {
-                failures.append("Cleanup failed: \(error.localizedDescription)")
+                let message = "Cleanup failed: \(error.localizedDescription)"
+                failures.append(message)
+                cleanupErrors.append(CleanupError(
+                    path: itemsToClean.first?.path ?? URL(string: "macsweep-action://dev-tools/cleanup")!,
+                    message: message,
+                    underlyingError: error
+                ))
             }
         }
 
         if !gitItemsToClean.isEmpty {
             let result = await GitArtifactCleaner().clean(items: gitItemsToClean, dryRun: false)
+            processed += result.itemsProcessed
+            bytesFreed += result.bytesFreed
+            cleanupErrors.append(contentsOf: result.errors)
             if let summary = result.errors.failureSummaryMessage {
                 failures.append("Git artifacts: \(summary)")
             }
         }
 
-        errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
+        scanState.errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
 
         // Refresh
         await scan()
+        return CleanupResult(itemsProcessed: processed, bytesFreed: bytesFreed, errors: cleanupErrors)
     }
 
     // MARK: - Computed
@@ -516,6 +606,14 @@ struct BuildArtifactsView: View {
 
     private var selectedCount: Int {
         selectedItems.count + selectedGitItems.count
+    }
+
+    private var selectedCleanupItems: [CleanupItem] {
+        allCleanupItems.filter { selectedItems.contains($0.id) }
+    }
+
+    private var selectedGitCleanupItems: [GitCleanupItem] {
+        gitArtifacts.filter { selectedGitItems.contains($0.id) }
     }
 
     private var recentlyModifiedCount: Int {
@@ -637,6 +735,11 @@ struct ProjectRow: View {
                             .lineLimit(1)
                             .truncationMode(.head)
                     }
+
+                    Text("Rebuild: \(project.regenerateCommand)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -672,14 +775,7 @@ struct ProjectRow: View {
                                 .padding(.vertical, 4)
                                 .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
 
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(project.regenerateCommand, forType: .string)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.plain)
-                            .help("Copy to clipboard")
+                            CopyCommandButton(command: project.regenerateCommand)
                         }
                     }
                     .padding()
@@ -745,10 +841,26 @@ struct ArtifactRow: View {
                         .lineLimit(1)
                         .truncationMode(.head)
                 }
+
+                Text("Recreated by the owning developer tool when needed")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         } trailing: {
-            Text(item.formattedSize)
-                .font(.headline)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(item.formattedSize)
+                    .font(.headline)
+
+                if let date = item.lastModified {
+                    Text(date, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Modified date unavailable")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
     }
 }
@@ -792,6 +904,14 @@ struct GitArtifactRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
+                    Text(
+                        item.kind == .worktree
+                            ? "Deletes the worktree directory"
+                            : "Deletes the local branch reference"
+                    )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+
                     Text((item.displayPath ?? item.repositoryPath).path)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -823,21 +943,31 @@ struct GitArtifactRow: View {
                             .padding(.vertical, 4)
                             .background(Color.gray.opacity(0.2), in: RoundedRectangle(cornerRadius: 4))
 
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(item.commandPreview, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.plain)
-                        .help("Copy to clipboard")
+                        CopyCommandButton(command: item.commandPreview)
                     }
                 }
                 .padding()
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { onToggle() }
+    }
+}
+
+// MARK: - Copy Command Button
+
+private struct CopyCommandButton: View {
+    let command: String
+
+    var body: some View {
+        Button {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(command, forType: .string)
+        } label: {
+            Image(systemName: "doc.on.doc")
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy command to clipboard")
+        .help("Copy to clipboard")
     }
 }
 

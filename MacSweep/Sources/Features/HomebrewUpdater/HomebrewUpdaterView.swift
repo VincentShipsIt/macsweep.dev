@@ -11,7 +11,8 @@ struct HomebrewUpdaterView: View {
             trailing: AnyView(
                 RescanButton(
                     title: "Check Updates",
-                    isScanning: service.isLoading || service.isUpgrading
+                    isScanning: service.isLoading || service.isUpgrading,
+                    usesNativeToolbarStyle: true
                 ) {
                     Task { await service.checkOutdated() }
                 }

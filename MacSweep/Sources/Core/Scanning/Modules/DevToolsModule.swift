@@ -2,6 +2,8 @@ import Foundation
 
 /// Module for cleaning up developer tool artifacts
 struct DevToolsModule: ScanModule {
+    static let defaultMaxDepth = 6
+
     let id = "dev-tools"
     let name = "Developer Tools"
     let description = "Clean node_modules, DerivedData, build artifacts"
@@ -13,7 +15,7 @@ struct DevToolsModule: ScanModule {
     ]
 
     /// Maximum depth to search for projects
-    var maxDepth: Int = 6
+    var maxDepth: Int = Self.defaultMaxDepth
 
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
@@ -56,7 +58,7 @@ struct DevToolsModule: ScanModule {
 
         guard let enumerator = FileManager.default.enumerator(
             at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
@@ -100,7 +102,10 @@ struct DevToolsModule: ScanModule {
                         size: size,
                         type: .directory,
                         module: id,
-                        moduleName: pattern.name
+                        moduleName: pattern.name,
+                        lastModified: try? url.resourceValues(
+                            forKeys: [.contentModificationDateKey]
+                        ).contentModificationDate
                     ))
 
                     // Don't descend into matched directories
@@ -643,6 +648,8 @@ enum ProjectType: String, CaseIterable {
 }
 
 actor ProjectScanner {
+    static let defaultMaxDepth = DevToolsModule.defaultMaxDepth
+
     /// Discover projects with cleanable artifacts.
     ///
     /// Root indicators and per-type artifact directories are derived from
@@ -651,7 +658,10 @@ actor ProjectScanner {
     /// carrying two indicator files of the same type (Podfile + *.xcodeproj) is
     /// one project; indicators of different types (package.json + Cargo.toml)
     /// keep one entry per type, as the old hand-written table did.
-    func discoverProjects(in baseURL: URL, maxDepth: Int = 5) async -> [ProjectInfo] {
+    func discoverProjects(
+        in baseURL: URL,
+        maxDepth: Int = ProjectScanner.defaultMaxDepth
+    ) async -> [ProjectInfo] {
         var projects: [ProjectInfo] = []
         var seenProjects = Set<String>()
         let checker = SafetyChecker()

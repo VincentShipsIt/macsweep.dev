@@ -11,7 +11,7 @@ struct SimilarPhotosView: View {
             title: "Similar Photos",
             subtitle: "Detect look-alike images and keep the best shot.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning) { Task { await scanPhotos() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanPhotos() } }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -93,14 +93,13 @@ struct SimilarPhotosView: View {
             actionDisabled: model.selectedItems.isEmpty,
             onAction: { model.showingConfirmation = true }
         )
-        .deleteConfirmation(
-            "Move \(model.selectedItems.count) similar photos to Trash?",
+        .cleanupReview(
             isPresented: $model.showingConfirmation,
-            confirmTitle: "Move to Trash",
-            message: "The selected similar photos will be moved to Trash so you can restore them if needed."
-        ) {
-            Task { await cleanSelected() }
-        }
+            items: selectedPhotos,
+            disposition: .trash,
+            note: "Similar-photo groups are review-only; only the photos selected here will move.",
+            onConfirm: { await cleanSelected() }
+        )
     }
 
     private func scanPhotos() async {
@@ -109,11 +108,10 @@ struct SimilarPhotosView: View {
         }
     }
 
-    private func cleanSelected() async {
+    private func cleanSelected() async -> CleanupResult? {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the photos that left disk.
-        let itemsToClean = sortedItems.filter { model.selectedItems.contains($0.id) }
-        await model.clean(itemsToClean) { "Couldn't move photos to Trash: \($0.localizedDescription)" }
+        await model.clean(selectedPhotos) { "Couldn't move photos to Trash: \($0.localizedDescription)" }
     }
 
     private var sortedItems: [CleanupItem] {
@@ -126,6 +124,10 @@ struct SimilarPhotosView: View {
 
     private var selectedSize: String {
         sortedItems.formattedTotalSize(selected: model.selectedItems)
+    }
+
+    private var selectedPhotos: [CleanupItem] {
+        sortedItems.filter { model.selectedItems.contains($0.id) }
     }
 }
 

@@ -27,6 +27,16 @@ protocol BrowserModule: ScanModule {
     var historyPaths: [URL] { get }
 }
 
+/// Browser module IDs share this namespace, so history classification cannot
+/// drift when another browser module is added.
+enum BrowserModuleID {
+    private static let prefix = "browser-"
+
+    static func matches(_ moduleID: String) -> Bool {
+        moduleID.hasPrefix(prefix)
+    }
+}
+
 extension BrowserModule {
     var isInstalled: Bool {
         FileManager.default.fileExists(atPath: basePath.path)

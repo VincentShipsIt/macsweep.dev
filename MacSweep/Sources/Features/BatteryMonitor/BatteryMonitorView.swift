@@ -12,13 +12,12 @@ struct BatteryMonitorView: View {
             trailing: AnyView(
                 Button {
                     Task {
-                        await monitor.refresh()
+                        await monitor.refresh(forceSlowMetrics: true)
                         await monitor.refreshConnectedDevices()
                     }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .glassButton()
             )
         ) {
             ScrollView {

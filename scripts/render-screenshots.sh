@@ -2,7 +2,7 @@
 # Headless visual-snapshot harness for the MacSweep GUI.
 #
 # Compiles the FULL app source module (every Sources/**/*.swift except the CLI
-# targets and MacSweepApp.swift, whose @main is replaced by the harness) together
+# targets plus app-lifecycle-only files) together
 # with scripts/RenderSnapshots.swift under -DSWIFT_PACKAGE (drops #Preview blocks
 # whose macro is unavailable under CommandLineTools), then runs it to render every
 # Feature screen to scripts/screenshots/.
@@ -19,11 +19,14 @@ OUTBIN="$(mktemp -d)/render-snapshots"
 SDK="$(xcrun --show-sdk-path)"
 TARGET="arm64-apple-macosx26.0"
 
-# App module file set: all GUI sources, minus CLI/CLIKit and the real @main owner.
+# App module file set: all GUI sources, minus CLI/CLIKit and lifecycle-only files.
+# The snapshot harness owns @main and does not resolve the Xcode-only Sparkle
+# package, so neither MacSweepApp nor AppUpdater belongs in this compilation.
 FILES=("${(@f)$(find "$SRC" -name '*.swift' \
   -not -path "$SRC/CLI/*" \
   -not -path "$SRC/CLIKit/*" \
-  -not -path "$SRC/App/MacSweepApp.swift" | sort)}")
+  -not -path "$SRC/App/MacSweepApp.swift" \
+  -not -path "$SRC/App/AppUpdater.swift" | sort)}")
 
 print "Compiling ${#FILES} app sources + harness -> $OUTBIN"
 
