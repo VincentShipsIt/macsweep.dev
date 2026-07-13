@@ -4,6 +4,7 @@ import AppKit
 /// Onboarding view shown on first launch
 struct OnboardingView: View {
     @Binding var isPresented: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage: Int
     @State private var hasFullDiskAccess: Bool
     @State private var fdaTimer: Timer?
@@ -49,7 +50,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             // Page content
             TabView(selection: $currentPage) {
-                ForEach(Array(welcomePages.enumerated()), id: \.offset) { index, page in
+                ForEach(welcomePages.enumerated(), id: \.element.id) { index, page in
                     OnboardingPageView(page: page)
                         .tag(index)
                 }
@@ -78,18 +79,14 @@ struct OnboardingView: View {
                 // Navigation buttons
                 if currentPage > 0 {
                     Button("Back") {
-                        withAnimation {
-                            currentPage -= 1
-                        }
+                        changePage(to: currentPage - 1)
                     }
                     .glassButton()
                 }
 
                 if currentPage < welcomePages.count {
                     Button("Next") {
-                        withAnimation {
-                            currentPage += 1
-                        }
+                        changePage(to: currentPage + 1)
                     }
                     .glassButton(prominent: true)
                 } else {
@@ -118,6 +115,16 @@ struct OnboardingView: View {
         .onDisappear {
             fdaTimer?.invalidate()
             fdaTimer = nil
+        }
+    }
+
+    private func changePage(to page: Int) {
+        if reduceMotion {
+            currentPage = page
+        } else {
+            withAnimation {
+                currentPage = page
+            }
         }
     }
 }
@@ -310,12 +317,14 @@ struct FDAStepRow: View {
 
 // MARK: - Onboarding Page Model
 
-struct OnboardingPage {
+struct OnboardingPage: Identifiable {
     let icon: String
     let iconColor: Color
     let title: String
     let description: String
     let features: [(icon: String, text: String)]
+
+    var id: String { title }
 }
 
 // MARK: - Onboarding Page View
