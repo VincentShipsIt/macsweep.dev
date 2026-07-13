@@ -39,7 +39,15 @@ struct SnapshotRenderer {
             let name = String(format: "%02d-%@", index, slug)
             let url = outDir.appendingPathComponent("\(name).png")
 
-            let appState = AppState()
+            // Keep missing-permission recovery deterministic on the three
+            // protected-data feature landings even when the host has granted
+            // Full Disk Access to the harness. Smart Care gets a dedicated
+            // direct-view variant below because its live monitors make the
+            // composed navigation snapshot timing-sensitive.
+            let needsMissingAccess = feature == .systemJunk
+                || feature == .mailAttachments
+                || feature == .privacy
+            let appState = AppState(initialFullDiskAccess: !needsMissingAccess)
             appState.selectedFeature = feature
             let root = ContentView()
                 .environmentObject(appState)
@@ -112,6 +120,10 @@ struct SnapshotRenderer {
         let orphans = sampleOrphans()
 
         return [
+            ("smart-care-missing-full-disk-access", wrap(
+                DashboardView(),
+                appState: AppState(initialFullDiskAccess: false)
+            )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),

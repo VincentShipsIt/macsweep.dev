@@ -14,13 +14,12 @@ struct DashboardView: View {
     @StateObject private var processMonitor = ProcessMonitor()
     @State private var expandedWidget: WidgetType? = nil
     @State private var isCleanupReviewExpanded = false
-    @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
     @State private var showingConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
-            if !hasFullDiskAccess && showFDABanner {
+            if !appState.hasFullDiskAccess && showFDABanner {
                 fdaBanner
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -98,9 +97,6 @@ struct DashboardView: View {
                 cleanRecommendedButton
             }
         }
-        .onAppear {
-            hasFullDiskAccess = FullDiskAccess.hasAccess
-        }
         .onChange(of: appState.isScanning) { _, isScanning in
             if !isScanning && !appState.scanResults.isEmpty {
                 isCleanupReviewExpanded = false
@@ -148,46 +144,10 @@ struct DashboardView: View {
     // MARK: - FDA Banner
 
     private var fdaBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title3)
-                .foregroundStyle(.orange)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Full Disk Access Required")
-                    .font(.headline)
-
-                Text("MacSweep needs permission to scan protected folders. Some features may be limited.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        FullDiskAccessWarningBanner(scope: .smartCare) {
+            withAnimation {
+                showFDABanner = false
             }
-
-            Spacer()
-
-            Button("Grant Access") {
-                FullDiskAccess.openSystemPreferences()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(.orange)
-
-            Button {
-                withAnimation {
-                    showFDABanner = false
-                }
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Dismiss")
-        }
-        .padding(12)
-        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
         }
     }
 

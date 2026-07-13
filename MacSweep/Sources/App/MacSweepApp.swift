@@ -70,7 +70,7 @@ struct MacSweepApp: App {
                 NotificationManager.shared.requestPermission()
                 #endif
             }
-            .onChange(of: showingOnboarding) { newValue in
+            .onChange(of: showingOnboarding) { _, newValue in
                 if !newValue {
                     hasCompletedOnboarding = true
                 }

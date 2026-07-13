@@ -1,6 +1,39 @@
 import Foundation
 import AppKit
 
+enum FullDiskAccessScope {
+    case smartCare
+    case systemData
+    case mail
+    case safari
+
+    var title: String {
+        switch self {
+        case .smartCare:
+            return "Full Disk Access improves Smart Care"
+        case .systemData:
+            return "Full Disk Access is required for system data"
+        case .mail:
+            return "Full Disk Access is required for Apple Mail"
+        case .safari:
+            return "Full Disk Access is required for Safari"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .smartCare:
+            return "Without access, Smart Care cannot fully inspect Apple Mail, Safari, or protected system data, so totals may be incomplete."
+        case .systemData:
+            return "Without access, protected system caches and logs are skipped, so an empty or smaller result may be incomplete."
+        case .mail:
+            return "Without access, Apple Mail attachments are skipped. Attachments from other supported mail apps may still appear."
+        case .safari:
+            return "Without access, Safari history and website data are skipped. Data from other supported browsers may still appear."
+        }
+    }
+}
+
 /// Handles Full Disk Access permission checking and requesting
 struct FullDiskAccess {
     /// Check if the app has Full Disk Access
