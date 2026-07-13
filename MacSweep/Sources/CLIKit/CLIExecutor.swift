@@ -1084,21 +1084,10 @@ public enum CLIExecutor {
     }
 
     private static func confirmCleanup(_ preview: HeadlessCleanupResult) throws {
-        guard isatty(STDIN_FILENO) != 0 else {
-            throw CLIExecutionError.confirmationRequired
-        }
-
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        print(
-            "Proceed to clean \(preview.itemsProcessed) items and reclaim \(formatter.string(fromByteCount: preview.bytesFreed))? [y/N]",
-            terminator: " "
-        )
-
-        guard let response = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              response == "y" || response == "yes" else {
-            throw CLIExecutionError.cleanupCancelled
-        }
+        let size = formatter.string(fromByteCount: preview.bytesFreed)
+        try confirm("Proceed to clean \(preview.itemsProcessed) items and reclaim \(size)?")
     }
 
     /// Generic interactive confirmation gate for destructive/external commands.
