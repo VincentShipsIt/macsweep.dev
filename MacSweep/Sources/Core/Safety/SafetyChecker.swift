@@ -806,6 +806,21 @@ struct ProtectedPaths {
 // MARK: - Deletion Guard
 
 struct DeletionGuard {
+    /// Defaults key backing Settings → Safety → "Max delete size" (stored in GB).
+    static let maxDeleteSizeGBKey = "maxDeleteSizeGB"
+    static let defaultMaxDeleteSizeGB = 10.0
+
+    /// Guard configured from user preferences (Settings → Safety). Falls back
+    /// to the built-in defaults when the user has never touched the setting.
+    static func fromPreferences(defaults: UserDefaults = .standard) -> DeletionGuard {
+        var configured = DeletionGuard()
+        let sizeGB = defaults.double(forKey: maxDeleteSizeGBKey)
+        if sizeGB >= 1 {
+            configured.maxTotalSize = Int64(sizeGB * 1_073_741_824)
+        }
+        return configured
+    }
+
     /// Maximum total size for single operation (default 10GB)
     var maxTotalSize: Int64 = 10_737_418_240
 

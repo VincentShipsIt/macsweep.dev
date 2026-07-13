@@ -422,6 +422,12 @@ enum Feature: String, CaseIterable, Identifiable {
     }
 }
 
+enum MenuBarPreferences {
+    /// Defaults key backing Settings → General → "Show menu bar icon";
+    /// consumed by the `MenuBarExtra(isInserted:)` binding in `MacSweepApp`.
+    static let iconVisibleKey = "showMenuBarIcon"
+}
+
 enum CompanionToolbarPreferences {
     static let storageCardVisible = "companion.toolbar.card.storage.visible"
     static let memoryCardVisible = "companion.toolbar.card.memory.visible"

@@ -81,7 +81,9 @@ actor ScanEngine {
 
     init(
         modules: [any ScanModule]? = nil,
-        deletionGuard: DeletionGuard = DeletionGuard()
+        // Default to the user-configured cap (Settings → Safety) so every
+        // feature that constructs a fresh engine picks the setting up.
+        deletionGuard: DeletionGuard = .fromPreferences()
     ) {
         self.modules = modules ?? Self.defaultModules()
         self.deletionGuard = deletionGuard
