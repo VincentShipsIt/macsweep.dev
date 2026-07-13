@@ -113,6 +113,30 @@ struct TrashBinsModule: ScanModule {
             throw TrashError.emptyFailed(error.description)
         }
     }
+
+    /// Build a conservative result for the scanned preview after Finder empties
+    /// Trash. Items added after the preview are intentionally not claimed here.
+    static func verifiedEmptyAllResult(
+        previewItems: [CleanupItem],
+        remainingItems: [CleanupItem]
+    ) -> CleanupResult {
+        let remainingPaths = Set(remainingItems.map(\.path))
+        let removedItems = previewItems.filter { !remainingPaths.contains($0.path) }
+        let errors = previewItems.compactMap { item -> CleanupError? in
+            guard remainingPaths.contains(item.path) else { return nil }
+            return CleanupError(path: item.path, message: "Finder left this item in Trash")
+        }
+        let bytesFreed = removedItems.reduce(Int64(0)) { total, item in
+            let (sum, overflow) = total.addingReportingOverflow(max(0, item.size))
+            return overflow ? Int64.max : sum
+        }
+
+        return CleanupResult(
+            itemsProcessed: removedItems.count,
+            bytesFreed: bytesFreed,
+            errors: errors
+        )
+    }
 }
 
 // MARK: - Trash Summary

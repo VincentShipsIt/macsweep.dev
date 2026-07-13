@@ -21,7 +21,11 @@ struct SelectionCheckmark: View {
         let image = Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
             .foregroundStyle(isSelected ? MacSweepTheme.selection : .secondary)
         if let onToggle {
-            image.onTapGesture { onToggle() }
+            Button(action: onToggle) {
+                image
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSelected ? "Deselect item" : "Select item")
         } else {
             image
         }
