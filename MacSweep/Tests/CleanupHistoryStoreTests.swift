@@ -24,7 +24,7 @@ final class CleanupHistoryStoreTests {
 
         func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
             if shouldThrow { throw InjectedFailure() }
-            CleanupResult(
+            return CleanupResult(
                 itemsProcessed: items.count,
                 bytesFreed: items.reduce(0) { $0 + $1.size }
             )
