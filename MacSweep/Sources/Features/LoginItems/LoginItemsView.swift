@@ -185,7 +185,7 @@ struct LoginItemRow: View {
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .disabled(item.type == .appService)
-                    .onChange(of: isEnabled) { newValue in
+                    .onChange(of: isEnabled) { _, newValue in
                         onToggle(newValue)
                     }
 

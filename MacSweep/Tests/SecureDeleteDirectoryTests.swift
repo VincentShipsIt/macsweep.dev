@@ -22,6 +22,20 @@ final class SecureDeleteDirectoryTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
+    @Test func freeSpaceWipeScratchDirectoryLivesOnRequestedVolume() throws {
+        let scratch = try SecureDelete.makeFreeSpaceWipeDirectory(on: root)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        let requestedVolume = try #require(
+            root.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier as? AnyHashable
+        )
+        let scratchValues = try scratch.resourceValues(forKeys: [.isDirectoryKey, .volumeIdentifierKey])
+        let scratchVolume = try #require(scratchValues.volumeIdentifier as? AnyHashable)
+
+        #expect(scratchValues.isDirectory == true)
+        #expect(scratchVolume == requestedVolume)
+    }
+
     @Test func failedFileRemainsWhileSuccessfulSiblingIsRemoved() async throws {
         let successful = root.appendingPathComponent("successful.txt")
         let failed = root.appendingPathComponent("failed.txt")
