@@ -2,16 +2,17 @@ import SwiftUI
 
 extension View {
     /// Presents the shared review → execute → result flow used by cleanup pages.
-    /// The async operation must return the factual `CleanupResult` produced by
-    /// the existing engine. Returning nil dismisses the sheet and leaves the
-    /// page's existing error surface responsible for the failure message.
+    /// The async operation must return a factual `CleanupResult` for the
+    /// completed operation. Pass nil for `additionalBytes` when no trustworthy
+    /// estimate exists. Returning nil dismisses the sheet and leaves the page's
+    /// existing error surface responsible for the failure message.
     func cleanupReview(
         isPresented: Binding<Bool>,
         items: [CleanupItem],
         disposition: CleanupDisposition,
         note: String? = nil,
         additionalCount: Int = 0,
-        additionalBytes: Int64 = 0,
+        additionalBytes: Int64? = 0,
         additionalModules: [String] = [],
         additionalPaths: [URL] = [],
         onConfirm: @escaping () async -> CleanupResult?
@@ -81,7 +82,7 @@ struct CleanupReviewModifier: ViewModifier {
     let disposition: CleanupDisposition
     let note: String?
     let additionalCount: Int
-    let additionalBytes: Int64
+    let additionalBytes: Int64?
     let additionalModules: [String]
     let additionalPaths: [URL]
     let onConfirm: () async -> CleanupResult?
@@ -99,6 +100,7 @@ struct CleanupReviewModifier: ViewModifier {
                 isRunning: isRunning,
                 result: result,
                 requestedCount: requestedCount,
+                showsSpaceMetric: !items.isEmpty || additionalBytes != nil,
                 onCancel: { isPresented = false },
                 onConfirm: runCleanup
             )
@@ -110,7 +112,7 @@ struct CleanupReviewModifier: ViewModifier {
         CleanupReviewSummary(
             items: items,
             additionalCount: additionalCount,
-            additionalBytes: additionalBytes,
+            additionalBytes: additionalBytes ?? 0,
             additionalModules: additionalModules,
             additionalPaths: additionalPaths
         )
@@ -145,6 +147,7 @@ private struct CleanupReviewSheet: View {
     let isRunning: Bool
     let result: CleanupResult?
     let requestedCount: Int
+    let showsSpaceMetric: Bool
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
@@ -169,7 +172,7 @@ private struct CleanupReviewSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Review Cleanup")
                         .font(.title2.weight(.semibold))
-                    Text("Nothing changes until you confirm this exact selection.")
+                    Text("Review the cleanup scope before confirming.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -183,7 +186,9 @@ private struct CleanupReviewSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(spacing: 12) {
                         reviewMetric("Items", value: "\(summary.itemCount)")
-                        reviewMetric("Space", value: summary.totalBytes.formattedFileSize)
+                        if showsSpaceMetric {
+                            reviewMetric("Space", value: summary.totalBytes.formattedFileSize)
+                        }
                         reviewMetric("Modules", value: "\(summary.moduleCounts.count)")
                     }
 

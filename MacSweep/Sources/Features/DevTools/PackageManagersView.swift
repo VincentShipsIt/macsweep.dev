@@ -44,7 +44,7 @@ struct PackageManagersView: View {
                 pendingDockerAction?.detail ?? "Docker performs this cleanup using its own prune command."
             ),
             additionalCount: pendingDockerAction == nil ? 0 : 1,
-            additionalBytes: pendingDockerAction?.estimatedBytes(from: dockerInfo) ?? 0,
+            additionalBytes: pendingDockerAction?.estimatedBytes(from: dockerInfo),
             additionalModules: pendingDockerAction == nil ? [] : ["Docker"],
             additionalPaths: pendingDockerAction.map { [$0.presentationURL] } ?? [],
             onConfirm: { await runPendingDockerAction() }
@@ -415,12 +415,14 @@ private enum DockerReviewAction: String, Identifiable {
         URL(string: "macsweep-action://docker/\(rawValue)")!
     }
 
-    func estimatedBytes(from info: DockerInfo?) -> Int64 {
+    func estimatedBytes(from info: DockerInfo?) -> Int64? {
+        let estimate: Int64
         switch self {
-        case .buildCache: return info?.buildCacheSize ?? 0
-        case .system: return info?.totalSize ?? 0
-        default: return 0
+        case .buildCache: estimate = info?.buildCacheSize ?? 0
+        case .system: estimate = info?.totalSize ?? 0
+        case .containers, .images, .volumes: return nil
         }
+        return estimate > 0 ? estimate : nil
     }
 
     func run() async throws -> CleanupResult {

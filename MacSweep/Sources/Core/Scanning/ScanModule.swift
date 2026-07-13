@@ -276,7 +276,7 @@ struct CleanupResult: Sendable {
 
 /// Stable, UI-independent facts shown before every destructive GUI cleanup.
 /// Keeping the aggregation in Core makes the review contract testable and keeps
-/// every feature page honest about the exact selection it will submit.
+/// every feature page honest about the cleanup scope it can preview.
 struct CleanupReviewSummary: Equatable, Sendable {
     let itemCount: Int
     let totalBytes: Int64

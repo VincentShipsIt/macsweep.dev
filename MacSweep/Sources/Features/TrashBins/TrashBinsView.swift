@@ -30,7 +30,8 @@ struct TrashBinsView: View {
                     isPresented: $showingEmptyAllConfirmation,
                     items: trashItems,
                     disposition: .permanent,
-                    note: "This empties every scanned Trash item. It cannot be undone.",
+                    note: "The scanned items are a preview. Finder empties all Trash bins, "
+                        + "including items added after this scan. It cannot be undone.",
                     onConfirm: { await emptyAllTrash() }
                 )
             ),
@@ -207,13 +208,18 @@ struct TrashBinsView: View {
             hasScanned = true
         }
 
-        let engine = ScanEngine()
+        let previewItems = trashItems
+        let module = TrashBinsModule()
         do {
-            let result = try await engine.clean(items: trashItems, dryRun: false, confirmedLargeDeletion: true)
-            trashItems = try await TrashBinsModule().scan()
+            try await module.emptyAllTrash()
+            trashItems = try await module.scan()
             trashSummary = await TrashSummary.current()
-            return result
+            return TrashBinsModule.verifiedEmptyAllResult(
+                previewItems: previewItems,
+                remainingItems: trashItems
+            )
         } catch {
+            trashItems = (try? await module.scan()) ?? trashItems
             trashSummary = await TrashSummary.current()
             errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"
             return nil
