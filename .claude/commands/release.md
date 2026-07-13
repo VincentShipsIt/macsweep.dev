@@ -47,7 +47,7 @@ gh variable list --repo VincentShipsIt/macsweep --env release
 2. **Verify version consistency, then read the version.**
    - `scripts/release.sh check` must pass (all version sources agree). If it fails, STOP
      and tell the user to run `scripts/release.sh bump X.Y.Z` in a PR first.
-   - `VERSION=$(grep -m1 'static let current' MacSweep/Sources/Core/MacSweepVersion.swift | sed -E 's/.*"([0-9.]+)".*/\1/')`
+   - `VERSION=$(grep -m1 'static let current' MacSweep/Sources/Core/MacSweepVersion.swift | sed 's/.*"\(.*\)".*/\1/')`
    - `TAG="v$VERSION"`
 
 3. **Guard against double-release.**

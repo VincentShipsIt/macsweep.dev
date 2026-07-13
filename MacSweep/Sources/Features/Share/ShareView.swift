@@ -109,15 +109,17 @@ struct ShareView: View {
     }
 
     private var tweetText: String {
+        let productName = MacSweepVersion.productName
         guard !summary.isEmpty else {
-            return "Run a MacSweep cleanup to generate a cleanup receipt."
+            return "Run a \(productName) cleanup to generate a cleanup receipt."
         }
 
         let cleaned = numberFormatter.string(from: NSNumber(value: summary.totalItemsProcessed)) ?? "\(summary.totalItemsProcessed)"
         let success = summary.successRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "--"
+        let receiptTitle = "\(productName) cleanup receipt"
 
         return """
-        MacSweep cleanup receipt: \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.
+        \(receiptTitle): \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.
         Cleanups: \(summary.cleanupCount). Items cleaned: \(cleaned). Success rate: \(success).
         Install: brew install --cask vincentshipsit/tap/macsweep
         """
