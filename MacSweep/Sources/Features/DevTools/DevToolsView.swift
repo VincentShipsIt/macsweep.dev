@@ -58,6 +58,7 @@ struct DevToolsView: View {
 /// recreate the child at that boundary and replace real findings with an empty
 /// result state.
 struct BuildArtifactScanState {
+    var isScanning = false
     var projects: [ProjectInfo] = []
     var projectCleanupItems: [CleanupItem] = []
     var systemArtifacts: [CleanupItem] = []
@@ -74,7 +75,6 @@ struct BuildArtifactsView: View {
     @Binding private var scanState: BuildArtifactScanState
     @Binding private var hasCompletedScan: Bool
     @Binding private var isScanRunning: Bool
-    @State private var isScanning = false
     @State private var showingConfirmation = false
     @State private var viewMode: ViewMode = .projects
     @State private var filterType: ProjectType? = nil
@@ -98,6 +98,11 @@ struct BuildArtifactsView: View {
     private var projects: [ProjectInfo] {
         get { scanState.projects }
         nonmutating set { scanState.projects = newValue }
+    }
+
+    private var isScanning: Bool {
+        get { scanState.isScanning }
+        nonmutating set { scanState.isScanning = newValue }
     }
 
     private var projectCleanupItems: [CleanupItem] {
