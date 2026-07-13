@@ -87,10 +87,12 @@ final class AppState: ObservableObject {
     func deleteSelected(dryRun: Bool = false, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
         if !dryRun { lastDeletionError = nil }
         let itemsToDelete = scanResults.filter { selectedItems.contains($0.id) }
+        // Re-read the current max-delete-size preference for every cleanup.
+        let engine = ScanEngine()
 
         let result: CleanupResult
         do {
-            result = try await scanEngine.clean(
+            result = try await engine.clean(
                 items: itemsToDelete,
                 dryRun: dryRun,
                 confirmedLargeDeletion: confirmedLargeDeletion
