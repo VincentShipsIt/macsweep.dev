@@ -8,6 +8,7 @@ import AppKit
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     static let mainWindowIdentifier = NSUserInterfaceItemIdentifier("dev.macsweep.main-window")
+    static let openMainWindowRequest = Notification.Name("dev.macsweep.open-main-window")
     private static let sharedAppState = AppState()
 
     private var windowObserver: Any?
@@ -100,6 +101,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
         return true
+    }
+
+    /// Focus the existing main window or ask the SwiftUI scene to create it.
+    /// AppKit-only callers (for example notification delivery) use the
+    /// notification bridge hosted by the always-present menu-bar label.
+    static func openMainWindowIfNeeded(openWindow: (() -> Void)? = nil) {
+        guard !focusMainWindow() else { return }
+
+        if let openWindow {
+            openWindow()
+        } else {
+            NotificationCenter.default.post(name: openMainWindowRequest, object: nil)
+        }
+
+        guard !focusMainWindow() else { return }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !focusMainWindow() else { return }
+
+            // SwiftUI may still be creating and tagging the window under load.
+            try? await Task.sleep(for: .milliseconds(170))
+            _ = focusMainWindow()
+        }
     }
 
     static func isMainWindow(_ window: NSWindow) -> Bool {
