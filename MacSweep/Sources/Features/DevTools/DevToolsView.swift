@@ -259,7 +259,7 @@ struct BuildArtifactsView: View {
     }
 
     private var projectsView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             // Projects section
             if !filteredProjects.isEmpty {
                 Section("Projects (\(filteredProjects.count))") {
@@ -304,7 +304,7 @@ struct BuildArtifactsView: View {
     }
 
     private var byTypeView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             ForEach(ProjectType.allCases, id: \.self) { type in
                 let typeProjects = projects.filter { $0.type == type }
                 if !typeProjects.isEmpty {
@@ -334,7 +334,7 @@ struct BuildArtifactsView: View {
     }
 
     private var allItemsView: some View {
-        List(selection: $selectedItems) {
+        List(selection: $scanState.selectedItems) {
             if !allCleanupItems.isEmpty {
                 Section("Build Artifacts") {
                     ForEach(allCleanupItems) { item in
