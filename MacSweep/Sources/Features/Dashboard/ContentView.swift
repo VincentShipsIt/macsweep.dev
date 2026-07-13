@@ -2,12 +2,24 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
+struct MacSweepSidebarFocus {
+    let isFocused: FocusState<Bool>.Binding
+    let columnVisibility: Binding<NavigationSplitViewVisibility>
+}
+
+extension FocusedValues {
+    @Entry var macSweepSidebarFocus: MacSweepSidebarFocus?
+}
+
 /// Main content view with native macOS sidebar navigation.
 struct ContentView: View {
+    var allowsInitialSidebarFocus = true
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
     @State private var usesSlideTransition = true
+    @FocusState private var isSidebarFocused: Bool
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -24,6 +36,10 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .focusedSceneValue(
+            \.macSweepSidebarFocus,
+            MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
+        )
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -52,6 +68,9 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        .focused($isSidebarFocused)
+        .defaultFocus($isSidebarFocused, allowsInitialSidebarFocus)
+        .accessibilityLabel("Feature navigation")
         // No background overrides: the native sidebar draws its own Liquid Glass
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking
@@ -74,7 +93,9 @@ struct ContentView: View {
             detailView(for: activeFeature)
                 .id(activeFeature)
                 .transition(
-                    usesSlideTransition
+                    reduceMotion
+                        ? .identity
+                        : usesSlideTransition
                         ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
                         : .opacity
                 )
@@ -85,6 +106,12 @@ struct ContentView: View {
     private func showFeature(_ newFeature: Feature) {
         let oldFeature = activeFeature
         guard oldFeature != newFeature else { return }
+
+        if reduceMotion {
+            usesSlideTransition = false
+            displayedFeature = newFeature
+            return
+        }
 
         let shouldSlide = usesCenteredLandingTransition(oldFeature)
             && usesCenteredLandingTransition(newFeature)
@@ -114,6 +141,8 @@ struct ContentView: View {
             staticDetail(AssistantView())
         case .share:
             staticDetail(ShareView())
+        case .cleanupHistory:
+            staticDetail(CleanupHistoryView())
 
         // Cleanup
         case .systemJunk:
@@ -152,10 +181,6 @@ struct ContentView: View {
             staticDetail(AppUninstallerView())
         case .homebrewUpdater:
             staticDetail(HomebrewUpdaterView())
-        case .updater:
-            staticDetail(PlaceholderFeatureView(feature: .updater))
-        case .extensions:
-            staticDetail(PlaceholderFeatureView(feature: .extensions))
 
         // Files
         case .spaceLens:
@@ -199,6 +224,7 @@ private extension Feature {
         case .smartScan,
              .assistant,
              .share,
+             .cleanupHistory,
              .networkCleanup,
              .loginItems,
              .optimization,
@@ -206,8 +232,6 @@ private extension Feature {
              .maintenance,
              .uninstaller,
              .homebrewUpdater,
-             .updater,
-             .extensions,
              .shredder:
             return false
         }
@@ -224,33 +248,6 @@ struct SidebarRow: View {
         // Liquid Glass selection highlight and tints the icon for us — no custom
         // pill, no manual foreground/weight overrides to fight it.
         Label(feature.rawValue, systemImage: feature.icon)
-    }
-}
-
-// MARK: - Placeholder Feature View
-
-struct PlaceholderFeatureView: View {
-    let feature: Feature
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: feature.icon)
-                .font(.system(size: 72))
-                .foregroundStyle(.secondary)
-
-            Text(feature.rawValue)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Text("Coming soon...")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-
-            Text("This feature is under development")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

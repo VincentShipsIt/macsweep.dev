@@ -70,6 +70,21 @@ struct DockerCleanupActionTests {
         )
     }
 
+    @Test func everyTypedActionDisclosesItsExactCommandAndImpact() {
+        #expect(Dictionary(uniqueKeysWithValues: DockerCleanupAction.allCases.map {
+            ($0, $0.commandPreview)
+        }) == [
+            .pruneBuildCache: "docker builder prune -f",
+            .pruneImages: "docker image prune -f",
+            .pruneContainers: "docker container prune -f",
+            .pruneVolumes: "docker volume prune -f"
+        ])
+        #expect(DockerCleanupAction.allCases.allSatisfy {
+            $0.impactDescription.contains("Docker's native prune command")
+        })
+        #expect(DockerCleanupAction.pruneVolumes.impactDescription.contains("permanently removed"))
+    }
+
     @Test func scanSurfacesTypedActionsWithCanonicalLabelsAndReclaimableBytes() async throws {
         let output = [
             #"{"Reclaimable":"256MB (100%)","Type":"Build Cache"}"#,

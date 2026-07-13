@@ -361,7 +361,7 @@ struct SafetyChecker: Sendable {
         }
 
         // 6c. Privacy artifacts — recent-file lists and Safari download history.
-        if context.moduleID == Self.privacyModuleID, isPrivacyArtifact(path) {
+        if context.moduleID == Self.privacyModuleID, isPrivacyArtifact(normalizedPath) {
             return .safe
         }
 
@@ -474,11 +474,12 @@ struct SafetyChecker: Sendable {
         "~/Library/Application Support/com.apple.sharedfilelist".expandingTilde
     private static let safariDownloadsPlist = "~/Library/Safari/Downloads.plist".expandingTilde
 
-    private func isPrivacyArtifact(_ path: String) -> Bool {
-        if path == Self.sharedFileListRoot || path.hasPrefix(Self.sharedFileListRoot + "/") {
+    private func isPrivacyArtifact(_ normalizedPath: String) -> Bool {
+        let sharedFileListRoot = Self.caseNormalized(Self.sharedFileListRoot)
+        if normalizedPath == sharedFileListRoot || normalizedPath.hasPrefix(sharedFileListRoot + "/") {
             return true
         }
-        return path == Self.safariDownloadsPlist
+        return normalizedPath == Self.caseNormalized(Self.safariDownloadsPlist)
     }
 
     private func matchesPattern(_ filename: String, pattern: String) -> Bool {

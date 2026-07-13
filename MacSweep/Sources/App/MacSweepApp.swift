@@ -21,6 +21,7 @@ struct MacSweepApp: App {
         .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            MacSweepCommands(appState: appDelegate.appState)
         }
 
         // Menu bar widget
@@ -40,7 +41,7 @@ struct MacSweepApp: App {
     }
 
     private var mainWindowContent: some View {
-        ContentView()
+        ContentView(allowsInitialSidebarFocus: hasCompletedOnboarding && !showingOnboarding)
             .environmentObject(appDelegate.appState)
             .background(MainWindowIdentifierAccessor())
             // Open compact and centered every launch (CleanMyMac-style), instead of
@@ -79,9 +80,63 @@ struct MacSweepApp: App {
     }
 }
 
+private struct MacSweepCommands: Commands {
+    @ObservedObject var appState: AppState
+    @FocusedValue(\.macSweepSidebarFocus) private var sidebarFocus
+
+    var body: some Commands {
+        CommandMenu("Scan") {
+            Button("Start Smart Care Scan") {
+                Task { await appState.quickScan() }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(appState.isScanning)
+
+            Button("Stop Scan") {
+                appState.cancelScan()
+            }
+            .keyboardShortcut(".", modifiers: .command)
+            .disabled(!appState.isScanning)
+        }
+
+        CommandMenu("Navigate") {
+            Button("Focus Sidebar") {
+                guard let sidebarFocus else { return }
+
+                sidebarFocus.columnVisibility.wrappedValue = .all
+                // Let the split view restore the sidebar before assigning focus.
+                DispatchQueue.main.async {
+                    sidebarFocus.isFocused.wrappedValue = true
+                }
+            }
+            .keyboardShortcut("l", modifiers: [.command, .option])
+            .disabled(sidebarFocus == nil)
+
+            Divider()
+
+            Button("Smart Care") {
+                appState.selectedFeature = .smartScan
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            Button("Assistant") {
+                appState.selectedFeature = .assistant
+            }
+            .keyboardShortcut("2", modifiers: .command)
+        }
+    }
+}
+
 private struct MacSweepMenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Label("MacSweep", image: "MenuBarIcon")
+            .onReceive(NotificationCenter.default.publisher(for: AppDelegate.openMainWindowRequest)) { _ in
+                AppDelegate.openMainWindowIfNeeded {
+                    openWindow(id: "main")
+                }
+            }
     }
 }
 
