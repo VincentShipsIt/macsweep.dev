@@ -181,9 +181,6 @@ struct BrowserCleanupView: View {
         browserResults = []
         selectedItems = []
         errorMessage = nil
-        // Clear the previous scan's service-worker items first; otherwise each
-        // rescan appends a fresh set and the list (and reported size) doubles.
-        appState.scanResults.removeAll { $0.module == "service-workers" }
 
         defer { isScanning = false }
 
@@ -214,9 +211,18 @@ struct BrowserCleanupView: View {
 
         // Scan service workers
         let swModule = ServiceWorkerModule()
-        if let swItems = try? await swModule.scan(), !swItems.isEmpty {
-            // Service worker items are handled separately
+        do {
+            let swItems = try await swModule.scan()
+            // Commit replacement results atomically after a successful scan.
+            // An empty successful result clears the old entries; a failure
+            // preserves the last known-good service-worker findings.
+            appState.scanResults.removeAll { $0.module == "service-workers" }
             appState.scanResults.append(contentsOf: swItems)
+        } catch {
+            let serviceWorkerError = "Couldn't scan service workers. Previous results were kept."
+            errorMessage = [errorMessage, serviceWorkerError]
+                .compactMap { $0 }
+                .joined(separator: " ")
         }
     }
 
@@ -480,7 +486,7 @@ struct SafariFDAWarningBanner: View {
                 Text("Full Disk Access Required for Safari")
                     .font(.headline)
 
-                Text("macsweep.dev needs Full Disk Access to clean Safari data. Open System Settings > Privacy & Security > Full Disk Access and enable macsweep.dev.")
+                Text("MacSweep needs Full Disk Access to clean Safari data. Open System Settings > Privacy & Security > Full Disk Access and enable MacSweep.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

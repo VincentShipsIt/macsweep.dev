@@ -39,7 +39,15 @@ struct SnapshotRenderer {
             let name = String(format: "%02d-%@", index, slug)
             let url = outDir.appendingPathComponent("\(name).png")
 
-            let appState = AppState()
+            // Keep missing-permission recovery deterministic on the three
+            // protected-data feature landings even when the host has granted
+            // Full Disk Access to the harness. Smart Care gets a dedicated
+            // direct-view variant below because its live monitors make the
+            // composed navigation snapshot timing-sensitive.
+            let needsMissingAccess = feature == .systemJunk
+                || feature == .mailAttachments
+                || feature == .privacy
+            let appState = AppState(initialFullDiskAccess: !needsMissingAccess)
             appState.selectedFeature = feature
             let root = ContentView()
                 .environmentObject(appState)
@@ -122,6 +130,8 @@ struct SnapshotRenderer {
             ),
         ]
 
+        let smartCareState = sampleSmartCareState()
+
         let largeItems = sampleLargeItems()
         let largeSelection = Set(largeItems.prefix(2).map(\.id))
 
@@ -130,6 +140,11 @@ struct SnapshotRenderer {
 
         return [
             ("smart-care-partial-results", wrap(DashboardView(), appState: partialState)),
+            ("smart-care-results", wrap(DashboardView(), appState: smartCareState)),
+            ("smart-care-missing-full-disk-access", wrap(
+                DashboardView(),
+                appState: AppState(initialFullDiskAccess: false)
+            )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
@@ -183,6 +198,39 @@ struct SnapshotRenderer {
 
     private static func daysAgo(_ days: Double) -> Date {
         sampleBaseDate.addingTimeInterval(-days * 86_400)
+    }
+
+    @MainActor
+    private static func sampleSmartCareState() -> AppState {
+        let state = AppState()
+        let items = sampleSmartCareItems()
+        state.scanResults = items
+        state.smartCareSummary = SmartCareAnalyzer().summarize(items: items, diskUsage: nil)
+        state.selectRecommended()
+        return state
+    }
+
+    @MainActor
+    static func sampleSmartCareItems() -> [CleanupItem] {
+        func item(_ name: String, _ size: Int64, _ module: String, _ moduleName: String) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/\(name)"),
+                size: size,
+                type: .file,
+                module: module,
+                moduleName: moduleName,
+                lastModified: daysAgo(8)
+            )
+        }
+
+        return [
+            item("Library/Caches/Xcode", 2_600_000_000, "dev-tools", "Developer Tools"),
+            item("Library/Caches/Safari", 840_000_000, "system-cache", "System Junk"),
+            item("Movies/archive.mov", 6_400_000_000, "large-files", "Large Files"),
+            item("Pictures/duplicate.jpg", 18_000_000, "duplicates", "Duplicate Files"),
+            item("Pictures/similar.jpg", 16_000_000, "similar-photos", "Similar Photos"),
+        ]
     }
 
     /// System-junk rows for the SystemCleanup results layout: a realistic spread
@@ -254,9 +302,9 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(1),
             leftovers: [
-                leftover("~/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
-                leftover("~/Library/Caches/Google/Chrome", 540_000_000, .caches),
-                leftover("~/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
+                leftover("/Users/you/Library/Application Support/Google/Chrome", 2_300_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Caches/Google/Chrome", 540_000_000, .caches),
+                leftover("/Users/you/Library/Preferences/com.google.Chrome.plist", 84_000, .preferences),
             ]
         )
         let figma = InstalledApp(
@@ -268,8 +316,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(6),
             leftovers: [
-                leftover("~/Library/Application Support/Figma", 410_000_000, .applicationSupport),
-                leftover("~/Library/Logs/Figma", 26_000_000, .logs),
+                leftover("/Users/you/Library/Application Support/Figma", 410_000_000, .applicationSupport),
+                leftover("/Users/you/Library/Logs/Figma", 26_000_000, .logs),
             ]
         )
         let slack = InstalledApp(
@@ -281,8 +329,8 @@ struct SnapshotRenderer {
             icon: nil,
             lastUsed: daysAgo(30),
             leftovers: [
-                leftover("~/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
-                leftover("~/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
+                leftover("/Users/you/Library/Containers/com.tinyspeck.slackmacgap", 880_000_000, .containers),
+                leftover("/Users/you/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState", 12_000_000, .savedState),
             ]
         )
         return [chrome, figma, slack]
@@ -293,9 +341,9 @@ struct SnapshotRenderer {
     @MainActor
     static func sampleOrphans() -> [AppLeftover] {
         [
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "~/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
+            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
         ]
     }
 

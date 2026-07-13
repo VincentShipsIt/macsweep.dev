@@ -15,13 +15,13 @@ struct DashboardView: View {
     @StateObject private var processMonitor = ProcessMonitor()
     @State private var expandedWidget: WidgetType? = nil
     @State private var isCleanupReviewExpanded = false
-    @State private var hasFullDiskAccess = FullDiskAccess.hasAccess
     @State private var showFDABanner = true
     @State private var showingConfirmation = false
+    @State private var recommendedItemsToClean: Set<CleanupItem.ID> = []
 
     var body: some View {
         VStack(spacing: 0) {
-            if !hasFullDiskAccess && showFDABanner {
+            if !appState.hasFullDiskAccess && showFDABanner {
                 fdaBanner
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -70,17 +70,50 @@ struct DashboardView: View {
                         )
                     }
 
-                    if let summary = appState.smartCareSummary, !summary.findings.isEmpty {
-                        ForEach(summary.findings.prefix(5)) { finding in
-                            SmartCareFindingRow(finding: finding) {
-                                if let feature = appState.feature(for: finding.moduleID) {
-                                    appState.selectedFeature = feature
-                                }
-                            }
-                        }
+                    if let summary = appState.smartCareSummary,
+                       summary.findings.isEmpty,
+                       !appState.isScanning,
+                       appState.lastError == nil {
+                        StatusMessageRow(
+                            icon: "checkmark.circle",
+                            tint: .green,
+                            title: "No cleanup needed",
+                            detail: "Smart Care found no items to recommend or review."
+                        )
                     }
 
                     cleanupReviewRows
+                }
+
+                if let summary = appState.smartCareSummary, !summary.recommendedFindings.isEmpty {
+                    Section("Recommended") {
+                        SmartCareGroupSummaryRow(
+                            icon: "checkmark.shield",
+                            tint: .green,
+                            title: "Safe cleanup",
+                            detail: "Generated files and caches that Smart Care can clean safely are preselected."
+                        )
+
+                        ForEach(summary.recommendedFindings) { finding in
+                            smartCareFindingRow(finding)
+                        }
+                    }
+                }
+
+                if let summary = appState.smartCareSummary, !summary.reviewRequiredFindings.isEmpty {
+                    Section("Needs Review") {
+                        SmartCareGroupSummaryRow(
+                            icon: "doc.text.magnifyingglass",
+                            tint: .orange,
+                            title: "Your decision",
+                            detail: "Smart Care never includes personal files or look-alike matches in recommended cleanup. "
+                                + "Open a category to review them."
+                        )
+
+                        ForEach(summary.reviewRequiredFindings) { finding in
+                            smartCareFindingRow(finding)
+                        }
+                    }
                 }
 
                 Section("Recommendations") {
@@ -110,28 +143,28 @@ struct DashboardView: View {
                 cleanRecommendedButton
             }
         }
-        .onAppear {
-            hasFullDiskAccess = FullDiskAccess.hasAccess
-        }
         .onChange(of: appState.isScanning) { _, isScanning in
             if !isScanning && !appState.scanResults.isEmpty {
                 isCleanupReviewExpanded = false
             }
         }
-        .confirmationDialog(
-            "Clean \(appState.selectedItems.count) selected item\(appState.selectedItems.count == 1 ? "" : "s")?",
+        .cleanupReview(
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clean", role: .destructive) {
-                Task {
-                    // Behind this dialog → confirm the large-deletion gate.
-                    _ = try? await appState.deleteSelected(confirmedLargeDeletion: true)
-                }
+            items: recommendedCleanupItems,
+            disposition: .mixed,
+            note: "Recommended items remain separated from review-only personal files. "
+                + "Every path is checked again immediately before its module runs.",
+            onConfirm: {
+                // Apply the reviewed recommended set to the shared selection only
+                // on confirm — Cancel must never clobber a curated selection.
+                appState.selectedItems = recommendedItemsToClean
+                return try? await appState.deleteSelected(confirmedLargeDeletion: true)
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will free \(ByteCountFormatter.string(fromByteCount: appState.selectedSize, countStyle: .file)). Some items are deleted permanently and can't be recovered.")
+        )
+        .onChange(of: showingConfirmation) { _, isPresented in
+            if !isPresented {
+                recommendedItemsToClean = []
+            }
         }
     }
 
@@ -149,57 +182,21 @@ struct DashboardView: View {
 
     private var cleanRecommendedButton: some View {
         Button {
-            showingConfirmation = true
+            confirmRecommendedCleanup()
         } label: {
             Image(systemName: "trash")
         }
-        .disabled(appState.selectedItems.isEmpty || appState.isScanning)
-        .help("Clean Selected")
+        .disabled(!hasRecommendedCleanup || appState.isScanning)
+        .help("Clean Recommended")
     }
 
     // MARK: - FDA Banner
 
     private var fdaBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.title3)
-                .foregroundStyle(.orange)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Full Disk Access Required")
-                    .font(.headline)
-
-                Text("macsweep.dev needs permission to scan protected folders. Some features may be limited.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        FullDiskAccessWarningBanner(scope: .smartCare) {
+            withAnimation {
+                showFDABanner = false
             }
-
-            Spacer()
-
-            Button("Grant Access") {
-                FullDiskAccess.openSystemPreferences()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(.orange)
-
-            Button {
-                withAnimation {
-                    showFDABanner = false
-                }
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Dismiss")
-        }
-        .padding(12)
-        .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
         }
     }
 
@@ -231,13 +228,13 @@ struct DashboardView: View {
                     .disabled(appState.isScanning)
 
                     Button {
-                        showingConfirmation = true
+                        confirmRecommendedCleanup()
                     } label: {
-                        Label("Clean Selected", systemImage: "trash")
+                        Label("Clean Recommended", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(appState.selectedItems.isEmpty || appState.isScanning)
+                    .disabled(!hasRecommendedCleanup || appState.isScanning)
                 }
                 .padding(.top, 4)
             }
@@ -294,7 +291,7 @@ struct DashboardView: View {
 
     private var smartCareDescription: String {
         if appState.isScanning {
-            return appState.currentScanModule ?? "macsweep.dev is scanning in the background."
+            return appState.currentScanModule ?? "MacSweep is scanning in the background."
         }
         if let summary = appState.smartCareSummary {
             let prefix = appState.scanFailures.isEmpty ? "" : "Partial results: "
@@ -311,6 +308,23 @@ struct DashboardView: View {
         let report = (["macsweep.dev partial scan report"] + lines).joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report, forType: .string)
+    }
+
+    private var hasRecommendedCleanup: Bool {
+        !(appState.smartCareSummary?.recommendedCleanupItemIDs.isEmpty ?? true)
+    }
+
+    private func confirmRecommendedCleanup() {
+        recommendedItemsToClean = appState.smartCareSummary?.recommendedCleanupItemIDs ?? []
+        showingConfirmation = true
+    }
+
+    private func smartCareFindingRow(_ finding: SmartCareFinding) -> some View {
+        SmartCareFindingRow(finding: finding) {
+            if let feature = appState.feature(for: finding.moduleID) {
+                appState.selectedFeature = feature
+            }
+        }
     }
 
     @ViewBuilder
@@ -365,6 +379,10 @@ struct DashboardView: View {
 
     private var selectedCleanupItems: [CleanupItem] {
         appState.scanResults.filter { appState.selectedItems.contains($0.id) }
+    }
+
+    private var recommendedCleanupItems: [CleanupItem] {
+        appState.scanResults.filter { recommendedItemsToClean.contains($0.id) }
     }
 
     private var selectedCleanupSizeText: String {
@@ -943,16 +961,39 @@ struct SmartCareFindingRow: View {
                         .foregroundStyle(.primary)
                         .monospacedDigit()
 
-                    if finding.autoCleanRecommended {
-                        Text("Recommended")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    }
+                    Text(finding.autoCleanRecommended ? "Recommended" : "Review Required")
+                        .font(.caption2)
+                        .foregroundStyle(finding.autoCleanRecommended ? .green : .orange)
                 }
             }
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct SmartCareGroupSummaryRow: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            DashboardRowIcon(systemName: icon, tint: tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 

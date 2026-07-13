@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to macsweep.dev are documented in this file.
+All notable changes to MacSweep are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The product is renamed **macsweep.dev** to match its domain. The GUI now
-  ships as `macsweep.dev.app`, and every bundle identifier moved from
+- The user-facing product name and installed app bundle are consistently
+  **MacSweep** and `MacSweep.app`. The production bundle identifiers remain
+  unchanged so macOS privacy permissions and defaults identity stay stable:
+  `dev.macsweep.app` (app), `dev.macsweep.core` (framework), `dev.macsweep.cli`
+  (CLI), and `dev.macsweep.weeklyscan` (background task).
+- The earlier identifier migration moved every bundle identifier from
   `com.vincentshipsit.macsweep` to the reverse-DNS of the domain:
   `dev.macsweep.app` (app), `dev.macsweep.core` (framework), `dev.macsweep.cli`
   (CLI), and `dev.macsweep.weeklyscan` (background task). The shared scheduler
