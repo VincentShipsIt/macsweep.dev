@@ -30,15 +30,7 @@ struct MailAttachmentsView: View {
                     }
                 }
 
-                content
-            }
-        }
-        .onDisappear { model.cancelScan() }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        Group {
+                Group {
             if model.items.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -82,7 +74,9 @@ struct MailAttachmentsView: View {
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
             .animated(.scanCrossfade, value: model.items.isEmpty)
+            }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     // MARK: - Filter Bar

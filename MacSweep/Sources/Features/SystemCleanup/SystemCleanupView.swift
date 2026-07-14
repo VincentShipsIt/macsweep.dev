@@ -27,14 +27,7 @@ struct SystemCleanupView: View {
                     }
                 }
 
-                content
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        Group {
+                Group {
             if appState.scanResults.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -76,6 +69,7 @@ struct SystemCleanupView: View {
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
             .animated(.scanCrossfade, value: appState.scanResults.isEmpty)
+            }
         }
     }
 
