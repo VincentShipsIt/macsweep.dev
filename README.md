@@ -229,6 +229,38 @@ MacSweep treats scan results as a proposal, not permission to delete:
   deterministic scans; the assistant cannot bypass confirmation or protected
   paths.
 
+### User ignore and protection rules
+
+The native app and `macsweep` CLI load the same optional files from your home
+directory:
+
+- `~/.macsweepignore` omits matching paths from scans and blocks cleanup.
+- `~/.macsweepprotect` keeps matching paths visible as review-only findings but
+  blocks cleanup.
+
+Each non-comment line is an absolute path, a `~/` path, or a path relative to
+your home directory. Plain paths match that path and everything below it. Globs
+support `*` within one path component, `**` across directories, and `?` for one
+character. A leading `!` makes an exception to an earlier rule in the same file;
+the last matching rule wins.
+
+For example, protect source workspaces while allowing known generated artifacts:
+
+```gitignore
+# ~/.macsweepprotect
+~/www
+!~/www/**/node_modules/**
+!~/www/**/.build/**
+!~/www/**/dist/**
+!~/www/**/coverage/**
+!~/www/**/.turbo/**
+```
+
+Exceptions only cancel user rules. They never override MacSweep's built-in
+system, credential, cloud, sensitive-file, symlink, or deletion-cap protections.
+If either rule file exists but cannot be read, scans remain available for review
+and cleanup fails closed until the file is fixed.
+
 ## Full Disk Access
 
 Full Disk Access is optional for launching MacSweep, but protected data sources

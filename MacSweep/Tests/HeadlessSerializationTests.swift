@@ -26,7 +26,8 @@ struct HeadlessSerializationTests {
                     size: 1024,
                     type: "file",
                     lastModified: nil,
-                    recommended: true
+                    recommended: false,
+                    reviewReason: "Protected by ~/.macsweepprotect rule: ~/www"
                 )
             ],
             summary: HeadlessSummary(
@@ -50,7 +51,28 @@ struct HeadlessSerializationTests {
         #expect(json.contains("\"permissions\""))
         #expect(json.contains("\"findings\""))
         #expect(json.contains("\"summary\""))
-        #expect(json.contains("\"recommended\":true"))
+        #expect(json.contains("\"recommended\":false"))
+        let decoded = try JSONDecoder().decode(HeadlessScanResult.self, from: data)
+        #expect(decoded.findings.first?.reviewReason == "Protected by ~/.macsweepprotect rule: ~/www")
+    }
+
+    @Test func findingDecodesLegacyJSONWithoutReviewReason() throws {
+        let legacy = """
+        {
+            "id": "finding-1",
+            "module": "system-cache",
+            "moduleName": "System Caches",
+            "path": "/tmp/cache",
+            "size": 1024,
+            "type": "file",
+            "recommended": true
+        }
+        """
+
+        let finding = try JSONDecoder().decode(HeadlessFinding.self, from: Data(legacy.utf8))
+
+        #expect(finding.reviewReason == nil)
+        #expect(finding.recommended)
     }
 
     // MARK: - HeadlessThreatFinding (#98)

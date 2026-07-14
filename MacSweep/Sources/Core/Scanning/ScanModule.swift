@@ -219,6 +219,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     let module: String
     let moduleName: String
     let lastModified: Date?
+    let cleanupReviewReason: String?
 
     enum Target: Hashable, Sendable {
         case fileSystem(path: URL, type: ItemType)
@@ -239,7 +240,8 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         type: ItemType,
         module: String,
         moduleName: String,
-        lastModified: Date? = nil
+        lastModified: Date? = nil,
+        cleanupReviewReason: String? = nil
     ) {
         self.id = id
         self.target = .fileSystem(path: path, type: type)
@@ -247,6 +249,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.module = module
         self.moduleName = moduleName
         self.lastModified = lastModified
+        self.cleanupReviewReason = cleanupReviewReason
     }
 
     /// Builds a non-filesystem cleanup finding with canonical ownership and
@@ -263,6 +266,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.module = action.moduleID
         self.moduleName = action.displayName
         self.lastModified = lastModified
+        self.cleanupReviewReason = nil
     }
 
     /// Compatibility projection for UI/error surfaces. Action URLs use the
@@ -298,6 +302,25 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         case .directory: return "folder"
         case .symbolicLink: return "link"
         case .action: return "shippingbox"
+        }
+    }
+
+    func markingCleanupReview(reason: String?) -> CleanupItem {
+        guard let reason else { return self }
+        switch target {
+        case .fileSystem(let path, let type):
+            return CleanupItem(
+                id: id,
+                path: path,
+                size: size,
+                type: type,
+                module: module,
+                moduleName: moduleName,
+                lastModified: lastModified,
+                cleanupReviewReason: reason
+            )
+        case .action:
+            return self
         }
     }
 

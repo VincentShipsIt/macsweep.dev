@@ -137,7 +137,8 @@ public actor MacSweepHeadlessService {
                 size: item.size,
                 type: item.type.rawValue,
                 lastModified: item.lastModified,
-                recommended: recommendedIDs.contains(item.id)
+                recommended: recommendedIDs.contains(item.id),
+                reviewReason: item.cleanupReviewReason
             )
         }
 
