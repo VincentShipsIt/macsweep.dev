@@ -1,0 +1,75 @@
+name: Bug report
+description: Report reproducible incorrect or unsafe behavior
+title: ""
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use a concise title without version, type, area, priority, or audit prefixes.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the failure and its user impact in a few sentences.
+      placeholder: What is broken, and why does it matter?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide deterministic steps or the smallest known failing scenario.
+      placeholder: |
+        1. Start from...
+        2. Run or open...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the safe or correct result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: State what happens instead, including exact errors when available.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that must be true before this issue can close.
+      placeholder: |
+        - [ ] The failing scenario produces the expected result.
+        - [ ] A regression check covers the failure mode.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Explain how a reviewer or CI can prove the fix works.
+      placeholder: Commands, fixtures, manual checks, or workflow names.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add relevant versions, logs, screenshots, links, or implementation notes.
+    validations:
+      required: false

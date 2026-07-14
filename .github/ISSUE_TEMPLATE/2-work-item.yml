@@ -1,0 +1,72 @@
+name: Work item
+description: Propose product, engineering, documentation, or release work
+title: ""
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use a concise title without version, type, area, priority, or audit prefixes.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the intended outcome in a few sentences.
+      placeholder: What should change, and what outcome should it produce?
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the current limitation and why it is worth solving.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Define the concrete work included in this issue.
+      placeholder: Use a short list for independently verifiable changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that must be true before this issue can close.
+      placeholder: |
+        - [ ] The user-visible or technical outcome is complete.
+        - [ ] Failure and edge cases are covered.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Explain how a reviewer or CI can prove the work is complete.
+      placeholder: Commands, fixtures, manual checks, or workflow names.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Identify adjacent work this issue intentionally does not include.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add relevant links, constraints, prior decisions, or implementation notes.
+    validations:
+      required: false
