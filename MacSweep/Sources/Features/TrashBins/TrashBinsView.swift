@@ -96,7 +96,6 @@ struct TrashBinsView: View {
                 } else {
                     Group {
                     trashList
-                    Divider()
                     footer
                     }
                     .transition(.scanCrossfade)

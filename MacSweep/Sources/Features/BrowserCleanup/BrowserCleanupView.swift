@@ -53,7 +53,6 @@ struct BrowserCleanupView: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: contentPhase)
 
             if !browserResults.isEmpty && !isScanning {
-                Divider()
                 footer
             }
         }

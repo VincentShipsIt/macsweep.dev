@@ -57,7 +57,6 @@ struct MailAttachmentsView: View {
                 attachmentsList
 
                 if !filteredAttachments.isEmpty {
-                    Divider()
                     footer
                 }
                 }

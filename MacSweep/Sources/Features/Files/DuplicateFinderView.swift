@@ -72,7 +72,6 @@ struct DuplicateFinderView: View {
                 filterBar
                 Divider()
                 groupsList
-                Divider()
                 footer
                 }
                 .transition(.scanCrossfade)

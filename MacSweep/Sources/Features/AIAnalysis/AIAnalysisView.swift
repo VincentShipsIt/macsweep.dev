@@ -13,12 +13,6 @@ struct AIAnalysisView: View {
         service.findings.filter { $0.isSelected }
     }
 
-    private var totalSelectedSize: String {
-        // Best effort: sum sizes where unit is clear
-        let count = selectedFindings.count
-        return "\(count) item\(count == 1 ? "" : "s") selected"
-    }
-
     var body: some View {
         FeaturePageShell(
             title: "AI Analysis",
@@ -60,8 +54,6 @@ struct AIAnalysisView: View {
             } else {
                 Group {
                 resultsList
-
-                Divider()
 
                 bottomBar
                 }
@@ -193,38 +185,18 @@ struct AIAnalysisView: View {
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack(spacing: 16) {
-            // Select All / None
-            Button(action: toggleSelectAll) {
-                let allSelected = service.findings.allSatisfy { $0.isSelected }
-                Text(allSelected ? "Deselect All" : "Select All")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+        CleanupFooter(
+            selectedCount: selectedFindings.count,
+            selectAllTitle: allFindingsSelected ? "Deselect All" : "Select All",
+            onSelectAll: toggleSelectAll,
+            actionTitle: "Clean Selected",
+            actionDisabled: selectedFindings.isEmpty || service.isScanning || isCleaning,
+            onAction: cleanSelected
+        )
+    }
 
-            Divider().frame(height: 16)
-
-            Text(totalSelectedSize)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            if !service.findings.isEmpty {
-                Button {
-                    cleanSelected()
-                } label: {
-                    Label("Clean Selected", systemImage: "trash")
-                }
-                .glassButton(prominent: true)
-                .tint(.red)
-                .disabled(selectedFindings.isEmpty || service.isScanning || isCleaning)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(MacSweepTheme.panelStrong)
+    private var allFindingsSelected: Bool {
+        !service.findings.isEmpty && service.findings.allSatisfy { $0.isSelected }
     }
 
     // MARK: - Actions

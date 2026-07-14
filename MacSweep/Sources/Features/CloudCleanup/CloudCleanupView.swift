@@ -51,7 +51,6 @@ struct CloudCleanupView: View {
                     itemsList
 
                     if !filteredItems.isEmpty {
-                        Divider()
                         footer
                     }
                     }
