@@ -66,6 +66,7 @@ struct SmartCareAnalyzer {
                 itemCount: moduleItems.count,
                 reclaimableBytes: moduleItems.reduce(0) { $0 + $1.size },
                 autoCleanRecommended: SmartCareDefaults.autoCleanModules.contains(moduleID)
+                    && moduleItems.contains { $0.cleanupReviewReason == nil }
             )
         }
         .sorted { lhs, rhs in
@@ -79,6 +80,7 @@ struct SmartCareAnalyzer {
         let issueCount = findings.reduce(0) { $0 + $1.itemCount }
         let recommendedIDs = Set(items.filter {
             SmartCareDefaults.autoCleanModules.contains($0.module)
+                && $0.cleanupReviewReason == nil
         }.map(\.id))
 
         return SmartCareSummary(

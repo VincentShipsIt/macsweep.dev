@@ -1,31 +1,29 @@
 import Foundation
 
+private let launchServicesExecutablePath =
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
 /// System maintenance actions
 actor MaintenanceActions {
 
     // MARK: - Free Up RAM
 
-    /// Purge inactive memory (requires admin for full effect)
+    /// Purge inactive memory with an explicit administrator prompt.
     static func freeUpRAM() async throws -> MaintenanceResult {
         let startMemory = await getAvailableMemory()
 
         // Use purge command (located at /usr/sbin/purge on macOS)
-        let process = Process()
         let purgePath = "/usr/sbin/purge"
 
         guard FileManager.default.fileExists(atPath: purgePath) else {
             throw MaintenanceError.commandFailed("purge", "The purge command is not available on this system")
         }
 
-        process.executableURL = URL(fileURLWithPath: purgePath)
-
         do {
-            try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus != 0 {
-                throw MaintenanceError.commandFailed("purge", "Exit code: \(process.terminationStatus)")
-            }
+            // Trusted constant only. `purge` requires elevation on current macOS;
+            // the shared runner supplies the visible system authorization prompt
+            // and a bounded watchdog instead of failing silently.
+            try await PrivilegedRunner.runShellScriptAsAdmin(purgePath)
 
             // Wait a moment for memory to settle
             try await Task.sleep(nanoseconds: 500_000_000)
@@ -93,41 +91,14 @@ actor MaintenanceActions {
 
     /// Flush the DNS resolver cache
     static func flushDNSCache() async throws -> MaintenanceResult {
-        // macOS uses different commands depending on version
-        let commands = [
-            ("/usr/bin/dscacheutil", ["-flushcache"]),
-            ("/usr/bin/killall", ["-HUP", "mDNSResponder"])
-        ]
-
-        var success = true
-        var messages: [String] = []
-
-        for (executable, args) in commands {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = args
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                if process.terminationStatus == 0 {
-                    messages.append("\(URL(fileURLWithPath: executable).lastPathComponent) succeeded")
-                } else {
-                    messages.append("\(URL(fileURLWithPath: executable).lastPathComponent) failed")
-                    success = false
-                }
-            } catch {
-                messages.append("\(URL(fileURLWithPath: executable).lastPathComponent): \(error.localizedDescription)")
-                success = false
-            }
-        }
+        // Reuse the tested unprivileged DNS path. The previous duplicate also ran
+        // `killall mDNSResponder` without elevation, so an otherwise-successful
+        // flush was routinely reported as failed.
+        try await DNSCacheManager.flush()
 
         return MaintenanceResult(
-            success: success,
-            message: success ? "DNS cache flushed successfully" : messages.joined(separator: ", ")
+            success: true,
+            message: "DNS cache flushed successfully"
         )
     }
 
@@ -135,28 +106,12 @@ actor MaintenanceActions {
 
     /// Rebuild the Spotlight index (requires admin)
     static func rebuildSpotlight() async throws -> MaintenanceResult {
-        // First, turn off indexing
-        let turnOff = Process()
-        turnOff.executableURL = URL(fileURLWithPath: "/usr/bin/mdutil")
-        turnOff.arguments = ["-i", "off", "/"]
-        turnOff.standardOutput = FileHandle.nullDevice
-        turnOff.standardError = FileHandle.nullDevice
-
-        // Then turn it back on to trigger reindex
-        let turnOn = Process()
-        turnOn.executableURL = URL(fileURLWithPath: "/usr/bin/mdutil")
-        turnOn.arguments = ["-i", "on", "/"]
-        turnOn.standardOutput = FileHandle.nullDevice
-        turnOn.standardError = FileHandle.nullDevice
-
         do {
-            try turnOff.run()
-            turnOff.waitUntilExit()
-
-            try await Task.sleep(nanoseconds: 1_000_000_000)
-
-            try turnOn.run()
-            turnOn.waitUntilExit()
+            // Both commands and the volume are trusted constants. `-E` performs
+            // the actual rebuild; toggling indexing alone does not guarantee one.
+            try await PrivilegedRunner.runShellScriptAsAdmin(
+                "/usr/bin/mdutil -i on / >/dev/null && /usr/bin/mdutil -E / >/dev/null"
+            )
 
             return MaintenanceResult(
                 success: true,
@@ -203,6 +158,11 @@ actor MaintenanceActions {
 
     /// Trigger APFS purgeable space reclamation
     static func freePurgeableSpace() async throws -> MaintenanceResult {
+        let mkfilePath = "/usr/bin/mkfile"
+        guard FileManager.default.isExecutableFile(atPath: mkfilePath) else {
+            throw MaintenanceError.commandFailed("mkfile", "This macOS version does not provide mkfile")
+        }
+
         // Get current purgeable space
         let beforePurgeable = await getPurgeableSpace()
 
@@ -213,7 +173,7 @@ actor MaintenanceActions {
         // previous "-n" flag created a sparse file that reserves no blocks, so
         // it never forced APFS to reclaim purgeable space — the whole point.
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mkfile")
+        process.executableURL = URL(fileURLWithPath: mkfilePath)
         process.arguments = ["1g", tempFile.path]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -230,23 +190,13 @@ actor MaintenanceActions {
             // Delete the file
             try? FileManager.default.removeItem(at: tempFile)
 
-            // Run periodic scripts regardless — a useful side-effect either way.
-            let periodic = Process()
-            periodic.executableURL = URL(fileURLWithPath: "/usr/sbin/periodic")
-            periodic.arguments = ["daily", "weekly", "monthly"]
-            periodic.standardOutput = FileHandle.nullDevice
-            periodic.standardError = FileHandle.nullDevice
-
-            try? periodic.run()
-            // Don't wait - periodic can take a long time
-
             let afterPurgeable = await getPurgeableSpace()
             let freed = max(0, beforePurgeable - afterPurgeable)
 
             guard mkfileSucceeded else {
                 return MaintenanceResult(
                     success: false,
-                    message: "Could not allocate the 1 GB pressure file (disk may already be full); ran periodic scripts only",
+                    message: "Could not allocate the 1 GB pressure file; no user data was changed",
                     bytesFreed: freed
                 )
             }
@@ -275,28 +225,19 @@ actor MaintenanceActions {
 
     /// Run macOS periodic maintenance scripts
     static func runMaintenanceScripts() async throws -> MaintenanceResult {
-        let scripts = ["daily", "weekly", "monthly"]
-        var results: [String] = []
-
-        for script in scripts {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/sbin/periodic")
-            process.arguments = [script]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-
-            do {
-                try process.run()
-                // Don't wait - these can take a long time
-                results.append("\(script): started")
-            } catch {
-                results.append("\(script): failed")
-            }
+        let periodicPath = "/usr/sbin/periodic"
+        guard FileManager.default.isExecutableFile(atPath: periodicPath) else {
+            throw MaintenanceError.commandFailed("periodic", "This macOS version does not provide periodic")
         }
+
+        try await PrivilegedRunner.runShellScriptAsAdmin(
+            "\(periodicPath) daily weekly monthly",
+            timeout: 600
+        )
 
         return MaintenanceResult(
             success: true,
-            message: "Maintenance scripts running in background"
+            message: "Daily, weekly, and monthly maintenance scripts completed"
         )
     }
 
@@ -327,14 +268,12 @@ actor MaintenanceActions {
 
     /// Rebuild the Launch Services database
     static func rebuildLaunchServices() async throws -> MaintenanceResult {
-        let lsregisterPath = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-
-        guard FileManager.default.fileExists(atPath: lsregisterPath) else {
+        guard FileManager.default.fileExists(atPath: launchServicesExecutablePath) else {
             throw MaintenanceError.commandFailed("lsregister", "Launch Services tool not found at expected location")
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: lsregisterPath)
+        process.executableURL = URL(fileURLWithPath: launchServicesExecutablePath)
         // Use only user domain for sandboxed apps (system/local require elevated privileges)
         process.arguments = ["-kill", "-r", "-domain", "user"]
         process.standardOutput = FileHandle.nullDevice
@@ -389,6 +328,36 @@ struct MaintenanceTask: Identifiable {
     let description: String
     let action: () async throws -> MaintenanceResult
     let requiresAdmin: Bool
+    let requiredExecutables: [String]
+
+    enum Availability: Equatable {
+        case available
+        case requiresAdministrator
+        case unavailable(missingExecutables: [String])
+    }
+
+    var availability: Availability {
+        availability { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    func availability(isExecutable: (String) -> Bool) -> Availability {
+        let missing = requiredExecutables.filter { !isExecutable($0) }
+        if !missing.isEmpty {
+            return .unavailable(missingExecutables: missing)
+        }
+        return requiresAdmin ? .requiresAdministrator : .available
+    }
+
+    static var visibleTasks: [MaintenanceTask] {
+        visibleTasks { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    static func visibleTasks(isExecutable: (String) -> Bool) -> [MaintenanceTask] {
+        allTasks.filter { task in
+            if case .unavailable = task.availability(isExecutable: isExecutable) { return false }
+            return true
+        }
+    }
 
     static let allTasks: [MaintenanceTask] = [
         MaintenanceTask(
@@ -397,7 +366,8 @@ struct MaintenanceTask: Identifiable {
             icon: "memorychip",
             description: "Clear inactive memory to free up RAM",
             action: { try await MaintenanceActions.freeUpRAM() },
-            requiresAdmin: false
+            requiresAdmin: true,
+            requiredExecutables: ["/usr/sbin/purge"]
         ),
         MaintenanceTask(
             id: "flush-dns",
@@ -405,7 +375,8 @@ struct MaintenanceTask: Identifiable {
             icon: "network",
             description: "Reset the DNS resolver cache",
             action: { try await MaintenanceActions.flushDNSCache() },
-            requiresAdmin: false
+            requiresAdmin: false,
+            requiredExecutables: ["/usr/bin/dscacheutil"]
         ),
         MaintenanceTask(
             id: "rebuild-spotlight",
@@ -413,7 +384,8 @@ struct MaintenanceTask: Identifiable {
             icon: "magnifyingglass",
             description: "Reindex the Spotlight database",
             action: { try await MaintenanceActions.rebuildSpotlight() },
-            requiresAdmin: true
+            requiresAdmin: true,
+            requiredExecutables: ["/usr/bin/mdutil"]
         ),
         MaintenanceTask(
             id: "verify-disk",
@@ -421,7 +393,8 @@ struct MaintenanceTask: Identifiable {
             icon: "externaldrive",
             description: "Check the boot volume for errors",
             action: { try await MaintenanceActions.repairDiskPermissions() },
-            requiresAdmin: false
+            requiresAdmin: false,
+            requiredExecutables: ["/usr/sbin/diskutil"]
         ),
         MaintenanceTask(
             id: "free-purgeable",
@@ -429,7 +402,8 @@ struct MaintenanceTask: Identifiable {
             icon: "arrow.3.trianglepath",
             description: "Reclaim purgeable disk space",
             action: { try await MaintenanceActions.freePurgeableSpace() },
-            requiresAdmin: false
+            requiresAdmin: false,
+            requiredExecutables: ["/usr/bin/mkfile"]
         ),
         MaintenanceTask(
             id: "maintenance-scripts",
@@ -437,7 +411,8 @@ struct MaintenanceTask: Identifiable {
             icon: "terminal",
             description: "Run daily, weekly, and monthly scripts",
             action: { try await MaintenanceActions.runMaintenanceScripts() },
-            requiresAdmin: true
+            requiresAdmin: true,
+            requiredExecutables: ["/usr/sbin/periodic"]
         ),
         MaintenanceTask(
             id: "clear-font-cache",
@@ -445,7 +420,8 @@ struct MaintenanceTask: Identifiable {
             icon: "textformat",
             description: "Clear font caches to fix font issues",
             action: { try await MaintenanceActions.clearFontCaches() },
-            requiresAdmin: false
+            requiresAdmin: false,
+            requiredExecutables: ["/usr/bin/atsutil"]
         ),
         MaintenanceTask(
             id: "rebuild-launchservices",
@@ -453,7 +429,8 @@ struct MaintenanceTask: Identifiable {
             icon: "app.badge",
             description: "Fix app associations and duplicates",
             action: { try await MaintenanceActions.rebuildLaunchServices() },
-            requiresAdmin: false
-        ),
+            requiresAdmin: false,
+            requiredExecutables: [launchServicesExecutablePath]
+        )
     ]
 }

@@ -216,8 +216,12 @@ actor ScanEngine {
         let module = AssistantWatchlistModule(targets: targets)
         let items = try await module.scan()
 
-        return items.filter { item in
-            safetyChecker.validateForScan(item, moduleID: module.id).isSafe
+        return items.compactMap { item in
+            guard safetyChecker.validateForScan(item, moduleID: module.id).isSafe else {
+                return nil
+            }
+            let cleanup = safetyChecker.validateForCleanup(item, moduleID: module.id)
+            return item.markingCleanupReview(reason: cleanup.reason)
         }
     }
 
@@ -273,8 +277,12 @@ actor ScanEngine {
                     do {
                         let items = try await module.scan()
                         // Filter through safety checker
-                        let safe = items.filter { item in
-                            self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe
+                        let safe: [CleanupItem] = items.compactMap { item in
+                            guard self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe else {
+                                return nil
+                            }
+                            let cleanup = self.safetyChecker.validateForCleanup(item, moduleID: module.id)
+                            return item.markingCleanupReview(reason: cleanup.reason)
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
                     } catch is CancellationError {

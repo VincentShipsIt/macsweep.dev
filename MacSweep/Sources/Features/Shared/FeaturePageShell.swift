@@ -82,8 +82,12 @@ struct FeaturePageShell<Content: View>: View {
             .ignoresSafeArea(.container, edges: .top)
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         } else {
+            // Populated pages (lists, master–detail, results grids) get a
+            // consistent gutter so content never sits flush against the window
+            // chrome. The full-bleed hero/empty states above opt out on purpose.
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(20)
         }
     }
 }

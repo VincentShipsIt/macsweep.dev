@@ -65,4 +65,21 @@ struct SmartCareAnalyzerTests {
         #expect(Set(summary.reviewRequiredFindings.map(\.moduleID)) == Set(modules))
         #expect(summary.recommendedCleanupItemIDs.isEmpty)
     }
+
+    @Test func protectedItemsAreExcludedFromRecommendedCleanup() {
+        let item = CleanupItem(
+            id: UUID(),
+            path: FileManager.default.temporaryDirectory.appending(path: "protected-cache"),
+            size: 2_048,
+            type: .directory,
+            module: "system-cache",
+            moduleName: "System Cache",
+            cleanupReviewReason: "Protected by user rule"
+        )
+
+        let summary = SmartCareAnalyzer().summarize(items: [item], diskUsage: nil)
+
+        #expect(summary.recommendedFindings.isEmpty)
+        #expect(summary.recommendedCleanupItemIDs.isEmpty)
+    }
 }

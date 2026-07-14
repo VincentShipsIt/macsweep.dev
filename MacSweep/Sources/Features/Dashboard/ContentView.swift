@@ -89,18 +89,26 @@ struct ContentView: View {
     // of hand-scheduled offsets. Landing pages slide vertically; everything else
     // cross-fades briefly so no navigation is a hard cut.
     private var detailDeck: some View {
-        ZStack {
-            detailView(for: activeFeature)
-                .id(activeFeature)
-                .transition(
-                    reduceMotion
-                        ? .identity
-                        : usesSlideTransition
-                        ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
-                        : .opacity
-                )
+        // A GeometryReader has zero minimum size and simply reports the space the
+        // split view offers. Sizing the detail to that (rather than letting the
+        // content size the deck) stops a page whose content is a `List` — e.g.
+        // Smart Care — from reporting its full content height as the window's
+        // minimum, which previously pinned the whole window ~1500pt tall. The List
+        // now scrolls inside the available height like every ScrollView page does.
+        GeometryReader { proxy in
+            ZStack {
+                detailView(for: activeFeature)
+                    .id(activeFeature)
+                    .transition(
+                        reduceMotion
+                            ? .identity
+                            : usesSlideTransition
+                            ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
+                            : .opacity
+                    )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func showFeature(_ newFeature: Feature) {
@@ -251,139 +259,6 @@ struct SidebarRow: View {
     }
 }
 
-// MARK: - Maintenance View
-
-struct MaintenanceView: View {
-    @State private var runningTaskId: String?
-    @State private var lastResult: MaintenanceResult?
-    @State private var showingResult = false
-    @State private var autoHideTask: Task<Void, Never>?
-
-    var body: some View {
-        FeaturePageShell(
-            title: "Maintenance",
-            subtitle: "Run upkeep tasks to keep your Mac healthy."
-        ) {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Result banner
-                    if showingResult, let result = lastResult {
-                        HStack {
-                            Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(result.success ? .green : .red)
-
-                            Text(result.message)
-                                .font(.caption)
-
-                            Spacer()
-
-                            Button {
-                                showingResult = false
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding()
-                        .background(result.success ? Color.green.opacity(0.1) : Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.horizontal, 40)
-                    }
-
-                    // Task list
-                    VStack(spacing: 12) {
-                        ForEach(MaintenanceTask.allTasks) { task in
-                            MaintenanceTaskRow(
-                                task: task,
-                                isRunning: runningTaskId == task.id
-                            ) {
-                                await runTask(task)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 40)
-
-                    Spacer(minLength: 40)
-                }
-                .padding(.top, 24)
-            }
-        }
-    }
-
-    private func runTask(_ task: MaintenanceTask) async {
-        runningTaskId = task.id
-        showingResult = false
-
-        do {
-            lastResult = try await task.action()
-        } catch {
-            lastResult = MaintenanceResult(success: false, message: error.localizedDescription)
-        }
-
-        runningTaskId = nil
-        showingResult = true
-
-        // Auto-hide after 5 seconds. Cancel any prior auto-hide first so an
-        // earlier task can't fire and clear a later run's freshly shown result.
-        autoHideTask?.cancel()
-        autoHideTask = Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                showingResult = false
-            }
-        }
-    }
-}
-
-struct MaintenanceTaskRow: View {
-    let task: MaintenanceTask
-    let isRunning: Bool
-    let action: () async -> Void
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: task.icon)
-                .font(.title2)
-                .frame(width: 40)
-                .foregroundStyle(.orange)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(task.name)
-                        .font(.headline)
-
-                    if task.requiresAdmin {
-                        Image(systemName: "lock.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Text(task.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if isRunning {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Button("Run") {
-                    Task {
-                        await action()
-                    }
-                }
-                .glassButton()
-            }
-        }
-        .padding()
-        .macSweepCard(radius: 12)
-    }
-}
-
 // MARK: - Settings View
 
 struct SettingsView: View {
@@ -424,6 +299,7 @@ struct GeneralSettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
     @AppStorage(ScanScheduler.enabledDefaultsKey) private var backgroundScanEnabled = true
+    @AppStorage(UpdateChannel.defaultsKey) private var updateChannelRaw = UpdateChannel.resolved().rawValue
 
     var body: some View {
         Form {
@@ -462,6 +338,18 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+
+            Section {
+                Picker("Update channel", selection: $updateChannelRaw) {
+                    ForEach(UpdateChannel.allCases) { channel in
+                        Text(channel.title).tag(channel.rawValue)
+                    }
+                }
+            } footer: {
+                Text("Nightly builds are signed and notarized from the latest master commit, but less tested than stable releases. The choice applies on the next update check (MacSweep ▸ Check for Updates…). Switching back to Stable keeps the installed build until the next stable release ships.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

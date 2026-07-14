@@ -714,7 +714,16 @@ public enum CLIExecutor {
                 lines.append("")
                 lines.append("Largest findings (review-only items may appear here):")
                 lines.append(contentsOf: output.findings.prefix(10).map {
-                    "  - [\($0.module)] \($0.path) (\(ByteCountFormatter.string(fromByteCount: $0.size, countStyle: .file)))\($0.recommended ? " recommended" : "")"
+                    let status: String
+                    if $0.recommended {
+                        status = " recommended"
+                    } else if let reason = $0.reviewReason {
+                        status = " review-only: \(reason)"
+                    } else {
+                        status = " review-only"
+                    }
+                    let size = ByteCountFormatter.string(fromByteCount: $0.size, countStyle: .file)
+                    return "  - [\($0.module)] \($0.path) (\(size))\(status)"
                 })
             }
 

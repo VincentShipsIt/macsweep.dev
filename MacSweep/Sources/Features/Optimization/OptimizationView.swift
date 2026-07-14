@@ -3,7 +3,7 @@ import AppKit
 
 /// Optimization view with process list and memory management
 struct OptimizationView: View {
-    @EnvironmentObject var appState: AppState
+    @EnvironmentObject private var appState: AppState
     @StateObject private var processMonitor = ProcessMonitor()
     @StateObject private var systemMonitor = SystemMonitor()
     @State private var selectedProcesses: Set<pid_t> = []
@@ -51,102 +51,20 @@ struct OptimizationView: View {
         .task {
             await processMonitor.startMonitoring()
         }
+        .onDisappear {
+            processMonitor.stopMonitoring()
+        }
     }
 
     // MARK: - System Stats Row
 
     private var systemStatsRow: some View {
-        HStack(spacing: 20) {
-            // Memory pressure
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 8)
-                        .frame(width: 80, height: 80)
-
-                    Circle()
-                        .trim(from: 0, to: systemMonitor.memoryUsage.usedPercentage)
-                        .stroke(memoryColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .frame(width: 80, height: 80)
-                        .rotationEffect(.degrees(-90))
-
-                    Text("\(Int(systemMonitor.memoryUsage.usedPercentage * 100))%")
-                        .font(.headline)
-                }
-
-                Text("Memory")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Memory details
-            VStack(alignment: .leading, spacing: 4) {
-                MemoryStatRow(label: "Used", value: systemMonitor.memoryUsage.formattedUsed, color: .blue)
-                MemoryStatRow(label: "Wired", value: systemMonitor.memoryUsage.formattedWired, color: .red)
-                MemoryStatRow(label: "Compressed", value: systemMonitor.memoryUsage.formattedCompressed, color: .orange)
-                MemoryStatRow(label: "Free", value: systemMonitor.memoryUsage.formattedFree, color: .green)
-            }
-
-            Divider()
-                .frame(height: 80)
-
-            // CPU
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 8)
-                        .frame(width: 80, height: 80)
-
-                    Circle()
-                        .trim(from: 0, to: min(1.0, systemMonitor.cpuUsage.total / 100))
-                        .stroke(cpuColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .frame(width: 80, height: 80)
-                        .rotationEffect(.degrees(-90))
-
-                    Text("\(Int(systemMonitor.cpuUsage.total))%")
-                        .font(.headline)
-                }
-
-                Text("CPU")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // CPU details
-            VStack(alignment: .leading, spacing: 4) {
-                CPUStatRow(label: "User", value: systemMonitor.cpuUsage.user, color: .blue)
-                CPUStatRow(label: "System", value: systemMonitor.cpuUsage.system, color: .red)
-                CPUStatRow(label: "Idle", value: systemMonitor.cpuUsage.idle, color: .green)
-            }
-
-            Spacer()
-
-            // Process count and primary memory action
-            VStack(spacing: 8) {
-                Text("\(processMonitor.processes.count)")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-
-                Text("Processes")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    Task { await freeUpRAM() }
-                } label: {
-                    Label(isFreezingRAM ? "Freeing RAM" : "Free Up RAM", systemImage: "memorychip")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(MacSweepTheme.accent)
-                }
-                .labelStyle(.titleAndIcon)
-                .fixedSize()
-                .glassButton()
-                .controlSize(.small)
-                .disabled(isFreezingRAM)
-                .help("Free inactive memory with the macOS purge tool.")
-            }
-            .frame(minWidth: 132, alignment: .trailing)
-        }
+        OptimizationSystemStats(
+            systemMonitor: systemMonitor,
+            processCount: processMonitor.processes.count,
+            isFreeingRAM: isFreezingRAM,
+            onFreeUpRAM: { Task { await freeUpRAM() } }
+        )
     }
 
     // MARK: - Process List
@@ -277,12 +195,14 @@ struct OptimizationView: View {
     }
 
     private func quitSelectedProcesses() {
+        let ownPID = getpid()
         for pid in selectedProcesses {
-            if processMonitor.processes.contains(where: { $0.pid == pid }) {
-                if let app = NSRunningApplication(processIdentifier: pid) {
-                    app.terminate()
-                }
+            guard ProcessMonitor.isSafeTerminationTarget(pid, currentPID: ownPID),
+                  processMonitor.processes.contains(where: { $0.pid == pid }),
+                  let app = NSRunningApplication(processIdentifier: pid) else {
+                continue
             }
+            app.terminate()
         }
         selectedProcesses.removeAll()
 
@@ -298,7 +218,7 @@ struct OptimizationView: View {
             // Never SIGKILL pid<=1 (launchd / kernel), ourselves, or a pid no
             // longer in the monitored list — selection can outlive a process and
             // pids are recycled, so a stale kill could land on an unrelated one.
-            guard pid > 1, pid != ownPID,
+            guard ProcessMonitor.isSafeTerminationTarget(pid, currentPID: ownPID),
                   processMonitor.processes.contains(where: { $0.pid == pid }) else { continue }
             kill(pid, SIGKILL)
         }
@@ -323,19 +243,6 @@ struct OptimizationView: View {
         }
     }
 
-    private var memoryColor: Color {
-        let usage = systemMonitor.memoryUsage.usedPercentage
-        if usage > 0.9 { return .red }
-        if usage > 0.7 { return .orange }
-        return .green
-    }
-
-    private var cpuColor: Color {
-        let usage = systemMonitor.cpuUsage.total
-        if usage > 80 { return .red }
-        if usage > 50 { return .orange }
-        return .green
-    }
 }
 
 // ProcessMonitor and RunningProcess are defined in Core/Monitoring/ProcessMonitor.swift

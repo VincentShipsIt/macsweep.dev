@@ -68,6 +68,9 @@ final class ProcessMonitor: ObservableObject {
         var newProcesses: [RunningProcess] = []
 
         for app in runningApps {
+            guard Self.isSafeTerminationTarget(app.processIdentifier, currentPID: getpid()) else {
+                continue
+            }
             guard let name = app.localizedName ?? app.bundleIdentifier else { continue }
 
             let sample = stats[app.processIdentifier]
@@ -84,6 +87,13 @@ final class ProcessMonitor: ObservableObject {
         }
 
         processes = newProcesses
+    }
+
+    /// Optimization only lists processes that it can safely offer to quit.
+    /// Excluding launchd/kernel pids and MacSweep itself avoids a self-terminate
+    /// action and gives every selectable row the same honest behavior.
+    nonisolated static func isSafeTerminationTarget(_ pid: pid_t, currentPID: pid_t) -> Bool {
+        pid > 1 && pid != currentPID
     }
 
     /// Get top processes sorted by CPU usage
