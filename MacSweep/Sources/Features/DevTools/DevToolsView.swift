@@ -214,14 +214,19 @@ struct BuildArtifactsView: View {
             // Project type filter
             if viewMode == .projects && !projects.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        FilterChip(label: "All", isSelected: filterType == nil) {
-                            filterType = nil
-                        }
+                    // Adjacent glass pills share one container so they sample the
+                    // same region and read as a cohesive cluster; the container
+                    // spacing matches the HStack spacing.
+                    GlassEffectContainer(spacing: 8) {
+                        HStack(spacing: 8) {
+                            FilterChip(label: "All", isSelected: filterType == nil) {
+                                filterType = nil
+                            }
 
-                        ForEach(availableTypes, id: \.self) { type in
-                            FilterChip(label: type.rawValue, isSelected: filterType == type) {
-                                filterType = type
+                            ForEach(availableTypes, id: \.self) { type in
+                                FilterChip(label: type.rawValue, isSelected: filterType == type) {
+                                    filterType = type
+                                }
                             }
                         }
                     }
@@ -979,13 +984,22 @@ struct FilterChip: View {
     let action: () -> Void
 
     var body: some View {
+        // A genuinely custom control (a tappable filter pill), so it takes the
+        // raw `.glassEffect` via `glassControl` — mirroring the icon-cluster
+        // pattern in `MenuBarView`. The selection state is a tint accent, not a
+        // solid fill; unselected pills stay on neutral regular glass.
         Button(action: action) {
             Text(label)
                 .font(.caption)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.accentColor : Color.gray.opacity(0.2), in: Capsule())
                 .foregroundStyle(isSelected ? .white : .primary)
+                .contentShape(Capsule())
+                .glassControl(
+                    in: Capsule(),
+                    tint: isSelected ? MacSweepTheme.selection : nil,
+                    interactive: true
+                )
         }
         .buttonStyle(.plain)
     }
