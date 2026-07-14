@@ -58,13 +58,7 @@ struct HomebrewUpdaterView: View {
     private var packageList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("\(service.packages.count) outdated")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.orange.opacity(0.85), in: Capsule())
-                    .foregroundStyle(.white)
+                TagBadge("\(service.packages.count) outdated", role: .warning, prominence: .strong)
 
                 Spacer()
 
@@ -253,23 +247,14 @@ struct PackageRow: View {
                 if let insight = package.aiInsight {
                     HStack(spacing: 6) {
                         if insight.hasBreakingChanges {
-                            Label("Breaking", systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.red.opacity(0.85), in: Capsule())
+                            TagBadge("Breaking", icon: "exclamationmark.triangle.fill",
+                                     role: .danger, prominence: .strong)
                         }
 
-                        Text(insight.upgradeRecommendation)
-                            .font(.caption2)
-                            .foregroundStyle(insight.upgradeRecommendation == "Safe" ? .green : .orange)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                (insight.upgradeRecommendation == "Safe" ? Color.green : Color.orange).opacity(0.15),
-                                in: Capsule()
-                            )
+                        TagBadge(
+                            insight.upgradeRecommendation,
+                            role: insight.upgradeRecommendation == "Safe" ? .success : .warning
+                        )
                     }
                 }
             }

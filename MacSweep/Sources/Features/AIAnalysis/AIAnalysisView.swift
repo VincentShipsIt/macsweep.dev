@@ -373,34 +373,19 @@ struct CacheFindingRow: View {
                 // Badges
                 HStack(spacing: 6) {
                     // Size
-                    Text(finding.size)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundStyle(.blue)
-                        .clipShape(.rect(cornerRadius: 4))
+                    TagBadge(finding.size, role: .info)
 
                     // Auto-regenerates
                     if finding.regeneratesAutomatically {
-                        Text("Auto-regenerates")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.15))
-                            .foregroundStyle(.green)
-                            .clipShape(.rect(cornerRadius: 4))
+                        TagBadge("Auto-regenerates", role: .success)
                     }
 
-                    // Source
-                    Text(finding.source.rawValue)
-                        .font(.caption2)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(finding.source == .ai ? Color.purple.opacity(0.15) : Color.gray.opacity(0.15))
-                        .foregroundStyle(finding.source == .ai ? .purple : .secondary)
-                        .clipShape(.rect(cornerRadius: 4))
+                    // Source — AI findings keep their distinct purple tint;
+                    // heuristic findings use the neutral token.
+                    TagBadge(
+                        finding.source.rawValue,
+                        tint: finding.source == .ai ? .purple : MacSweepTheme.neutralTint
+                    )
                 }
             }
             .padding(.horizontal, 20)

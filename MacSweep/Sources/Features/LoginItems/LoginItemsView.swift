@@ -229,20 +229,15 @@ struct LoginItemRow: View {
 
     @ViewBuilder
     private func riskBadge(_ risk: RiskLevel) -> some View {
-        let (label, color): (String, Color) = switch risk {
-        case .safe:        ("Safe", .green)
-        case .suspicious:  ("Suspicious", .red)
-        case .unknown:     ("Unknown", .yellow)
+        // `unknown` snaps yellow → the `warning` (orange) token; there is no
+        // separate yellow semantic tint in the palette.
+        let (label, role): (String, TagRole) = switch risk {
+        case .safe:        ("Safe", .success)
+        case .suspicious:  ("Suspicious", .danger)
+        case .unknown:     ("Unknown", .warning)
         }
 
-        Text(label)
-            .font(.caption2)
-            .fontWeight(.semibold)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.2))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
+        TagBadge(label, role: role)
     }
 }
 
