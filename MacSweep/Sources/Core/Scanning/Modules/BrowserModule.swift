@@ -54,26 +54,14 @@ extension BrowserModule {
     /// Build a `CleanupItem` for a browser data directory if it exists and is
     /// larger than 1KB. Shared by every browser module's `scan()` — the previous
     /// per-browser copies had drifted so only Chrome computed `lastModified`,
-    /// leaving the stale-data hint rendered for exactly one browser.
+    /// leaving the stale-data hint rendered for exactly one browser. Now a thin
+    /// wrapper over the shared `scanCacheDirectory` idiom.
     func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-
-        do {
-            let size = try await DiskAnalyzer.directorySize(at: url)
-            guard size > 1024 else { return nil }  // Skip tiny items
-
-            return CleanupItem(
-                id: UUID(),
-                path: url,
-                size: size,
-                type: .directory,
-                module: id,
-                moduleName: "\(browserName) \(category)",
-                lastModified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-            )
-        } catch {
-            return nil
-        }
+        await scanCacheDirectory(
+            at: url,
+            moduleName: "\(browserName) \(category)",
+            threshold: 1024  // Skip tiny items
+        )
     }
 
     /// Get risk level for a given path

@@ -133,19 +133,8 @@ struct DockerModule: ScanModule {
         let dockerVM = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Containers/com.docker.docker/Data/vms")
 
-        if FileManager.default.fileExists(atPath: dockerVM.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: dockerVM)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: dockerVM,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Docker VM Disk",
-                    lastModified: nil
-                ))
-            }
+        if let item = await scanCacheDirectory(at: dockerVM, moduleName: "Docker VM Disk") {
+            items.append(item)
         }
 
         return items.sorted { $0.size > $1.size }
