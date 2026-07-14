@@ -424,6 +424,7 @@ struct GeneralSettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
     @AppStorage(ScanScheduler.enabledDefaultsKey) private var backgroundScanEnabled = true
+    @AppStorage(UpdateChannel.defaultsKey) private var updateChannelRaw = UpdateChannel.resolved().rawValue
 
     var body: some View {
         Form {
@@ -462,6 +463,18 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+
+            Section {
+                Picker("Update channel", selection: $updateChannelRaw) {
+                    ForEach(UpdateChannel.allCases) { channel in
+                        Text(channel.title).tag(channel.rawValue)
+                    }
+                }
+            } footer: {
+                Text("Nightly builds are signed and notarized from the latest master commit, but less tested than stable releases. The choice applies on the next update check (MacSweep ▸ Check for Updates…). Switching back to Stable keeps the installed build until the next stable release ships.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
