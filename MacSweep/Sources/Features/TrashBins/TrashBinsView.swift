@@ -3,14 +3,44 @@ import SwiftUI
 /// View for managing and emptying trash bins
 struct TrashBinsView: View {
     @EnvironmentObject var appState: AppState
-    @State private var isScanning = false
-    @State private var trashItems: [CleanupItem] = []
-    @State private var selectedItems: Set<UUID> = []
-    @State private var showingConfirmation = false
+
+    /// Shared scan/selection/cleanup state machine — replaces the hand-rolled
+    /// `isScanning`/`trashItems`/`selectedItems`/`showingConfirmation`/`hasScanned`/
+    /// `errorMessage` cluster this view used to declare inline.
+    @StateObject private var model = ScanFeatureModel()
+
+    /// Trash-specific state that isn't part of the shared scan machine: the
+    /// live bin summary (refreshed alongside every scan) and the "empty all"
+    /// confirmation, distinct from the shared `model.showingConfirmation` that
+    /// gates the selected-item deletion.
     @State private var showingEmptyAllConfirmation = false
     @State private var trashSummary: TrashSummary?
-    @State private var hasScanned = false
-    @State private var errorMessage: String?
+
+    /// When true, the auto-scan `.task` is skipped so injected snapshot data isn't
+    /// immediately overwritten by a real Trash scan. Always false in production.
+    private let disableAutoLoad: Bool
+
+    /// Default production initializer — auto-scans on appear when Trash isn't empty.
+    init() {
+        disableAutoLoad = false
+    }
+
+    /// Seeds the shared model directly (and suppresses the auto-scan) so the
+    /// headless snapshot harness (and Xcode previews) can render the populated and
+    /// error layouts without touching the real filesystem. Not used by the app's
+    /// normal navigation, which constructs the view with the no-arg initializer.
+    init(
+        snapshotItems: [CleanupItem],
+        snapshotSelection: Set<UUID> = [],
+        snapshotError: String? = nil
+    ) {
+        _model = StateObject(wrappedValue: ScanFeatureModel(
+            items: snapshotItems,
+            selectedItems: snapshotSelection,
+            errorMessage: snapshotError
+        ))
+        disableAutoLoad = true
+    }
 
     var body: some View {
         FeaturePageShell(
@@ -22,28 +52,28 @@ struct TrashBinsView: View {
                 } label: {
                     Label("Empty All Trash", systemImage: "trash.slash")
                 }
-                .disabled(trashItems.isEmpty || isScanning)
+                .disabled(model.items.isEmpty || model.isScanning)
                 .cleanupReview(
                     isPresented: $showingEmptyAllConfirmation,
-                    items: trashItems,
+                    items: model.items,
                     disposition: .permanent,
                     note: "The scanned items are a preview. Finder empties all Trash bins, "
                         + "including items added after this scan. It cannot be undone.",
                     onConfirm: { await emptyAllTrash() }
                 )
             ),
-            hidesChrome: trashItems.isEmpty && !(hasScanned && !isScanning && errorMessage == nil),
-            scrolls: trashItems.isEmpty
+            hidesChrome: model.items.isEmpty && !(model.hasScanned && !model.isScanning && model.errorMessage == nil),
+            scrolls: model.items.isEmpty
         ) {
             VStack(spacing: 0) {
-                if let errorMessage {
+                if let errorMessage = model.errorMessage {
                     MacSweepErrorBanner(message: errorMessage) {
-                        self.errorMessage = nil
+                        model.errorMessage = nil
                     }
                 }
 
-                if trashItems.isEmpty {
-                    if hasScanned && !isScanning && errorMessage == nil {
+                if model.items.isEmpty {
+                    if model.hasScanned && !model.isScanning && model.errorMessage == nil {
                         emptyTrashState
                             .transition(.scanCrossfade)
                     } else {
@@ -57,7 +87,7 @@ struct TrashBinsView: View {
                                 ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
                             ],
                             illustration: "trash",
-                            isScanning: isScanning,
+                            isScanning: model.isScanning,
                             scanningMessage: "Scanning trash bins",
                             action: { Task { await scanTrash() } }
                         )
@@ -78,8 +108,9 @@ struct TrashBinsView: View {
             .animated(.scanCrossfade, value: scanPhase)
         }
         .task {
-            await loadTrashSummary()
+            if !disableAutoLoad { await loadTrashSummary() }
         }
+        .onDisappear { model.cancelScan() }
     }
 
     /// Which scan stage is on screen, so the crossfade fires on *every* arm
@@ -94,14 +125,14 @@ struct TrashBinsView: View {
     // MARK: - Trash List
 
     private var trashList: some View {
-        List(selection: $selectedItems) {
+        List(selection: $model.selectedItems) {
             // Group by trash bin
-            let groupedItems = Dictionary(grouping: trashItems, by: { $0.moduleName })
+            let groupedItems = Dictionary(grouping: model.items, by: { $0.moduleName })
 
             ForEach(Array(groupedItems.keys.sorted()), id: \.self) { binName in
                 Section {
                     ForEach(groupedItems[binName] ?? []) { item in
-                        TrashItemRow(item: item, isSelected: selectedItems.contains(item.id))
+                        TrashItemRow(item: item, isSelected: model.selectedItems.contains(item.id))
                             .tag(item.id)
                     }
                 } header: {
@@ -124,15 +155,15 @@ struct TrashBinsView: View {
 
     private var footer: some View {
         CleanupFooter(
-            selectedCount: selectedItems.count,
+            selectedCount: model.selectedItems.count,
             summary: "Will permanently delete \(selectedSize)",
-            onSelectAll: { selectedItems = Set(trashItems.map(\.id)) },
+            onSelectAll: { model.selectAll(model.items) },
             actionTitle: "Delete Selected",
-            actionDisabled: selectedItems.isEmpty,
-            onAction: { showingConfirmation = true }
+            actionDisabled: model.selectedItems.isEmpty,
+            onAction: { model.showingConfirmation = true }
         )
         .cleanupReview(
-            isPresented: $showingConfirmation,
+            isPresented: $model.showingConfirmation,
             items: selectedTrashItems,
             disposition: .permanent,
             onConfirm: { await deleteSelected() }
@@ -161,26 +192,21 @@ struct TrashBinsView: View {
     }
 
     private func scanTrash() async {
-        guard !isScanning else { return }
+        guard !model.isScanning else { return }
 
-        isScanning = true
-        trashItems = []
-        selectedItems = []
-        errorMessage = nil
-
-        defer {
-            isScanning = false
-            hasScanned = true
+        // Trash starts with nothing selected — the user opts into what to delete —
+        // so suppress the shared model's default select-all-on-completion. Scan
+        // failures surface in the banner via `onError`.
+        await model.scan(
+            selectAllOnCompletion: false,
+            onError: { "Couldn't scan Trash bins: \($0.localizedDescription)" }
+        ) {
+            try await TrashBinsModule().scan()
         }
 
-        let module = TrashBinsModule()
-        do {
-            trashItems = try await module.scan()
-            trashSummary = await TrashSummary.current()
-        } catch {
-            trashSummary = await TrashSummary.current()
-            errorMessage = "Couldn't scan Trash bins: \(error.localizedDescription)"
-        }
+        // Refresh the live bin summary after every scan, success or failure —
+        // mirroring the original which recomputed it in both branches.
+        trashSummary = await TrashSummary.current()
     }
 
     private func deleteSelected() async -> CleanupResult? {
@@ -191,6 +217,10 @@ struct TrashBinsView: View {
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete. A blocked delete throws and is caught here.
+        //
+        // Deliberately NOT `model.clean(_:)`: Trash re-scans after deletion to
+        // reflect Finder-side changes and put-backs and to refresh `trashSummary`,
+        // where the shared `clean(_:)` epilogue prunes the list in place instead.
         let engine = ScanEngine()
         do {
             let result = try await engine.clean(items: itemsToDelete, dryRun: false, confirmedLargeDeletion: true)
@@ -203,39 +233,43 @@ struct TrashBinsView: View {
             deletionError = "Couldn't delete selected Trash items: \(error.localizedDescription)"
         }
 
-        // Refresh
+        // Refresh (also clears the banner via the shared scan, so re-apply any
+        // deletion error afterwards).
         await scanTrash()
         if let deletionError {
-            errorMessage = deletionError
+            model.errorMessage = deletionError
         }
         return cleanupResult
     }
 
     private func emptyAllTrash() async -> CleanupResult? {
-        guard !isScanning else { return nil }
+        guard !model.isScanning else { return nil }
 
-        isScanning = true
-        errorMessage = nil
+        // Finder-driven bulk empty, not a scan: drive the shared flags directly.
+        // Safe because this is guarded against a concurrent scan and starts no
+        // scan task of its own, so it never races the generation machinery.
+        model.isScanning = true
+        model.errorMessage = nil
 
         defer {
-            isScanning = false
-            hasScanned = true
+            model.isScanning = false
+            model.hasScanned = true
         }
 
-        let previewItems = trashItems
+        let previewItems = model.items
         let module = TrashBinsModule()
         do {
             try await module.emptyAllTrash()
-            trashItems = try await module.scan()
+            model.items = try await module.scan()
             trashSummary = await TrashSummary.current()
             return TrashBinsModule.verifiedEmptyAllResult(
                 previewItems: previewItems,
-                remainingItems: trashItems
+                remainingItems: model.items
             )
         } catch {
-            trashItems = (try? await module.scan()) ?? trashItems
+            model.items = (try? await module.scan()) ?? model.items
             trashSummary = await TrashSummary.current()
-            errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"
+            model.errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"
             return nil
         }
     }
@@ -243,11 +277,11 @@ struct TrashBinsView: View {
     // MARK: - Helpers
 
     private var selectedSize: String {
-        trashItems.formattedTotalSize(selected: selectedItems)
+        model.items.formattedTotalSize(selected: model.selectedItems)
     }
 
     private var selectedTrashItems: [CleanupItem] {
-        trashItems.filter { selectedItems.contains($0.id) }
+        model.items.filter { model.selectedItems.contains($0.id) }
     }
 
     private func formattedSize(for items: [CleanupItem]) -> String {
