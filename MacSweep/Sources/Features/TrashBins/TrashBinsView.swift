@@ -17,14 +17,11 @@ struct TrashBinsView: View {
             title: "Trash Bins",
             subtitle: "Review and empty every trash bin on your Mac.",
             trailing: AnyView(
-                Button {
+                Button(role: .destructive) {
                     showingEmptyAllConfirmation = true
                 } label: {
                     Label("Empty All Trash", systemImage: "trash.slash")
                 }
-                .glassButton(prominent: true)
-                .tint(.red)
-                .controlSize(.small)
                 .disabled(trashItems.isEmpty || isScanning)
                 .cleanupReview(
                     isPresented: $showingEmptyAllConfirmation,
