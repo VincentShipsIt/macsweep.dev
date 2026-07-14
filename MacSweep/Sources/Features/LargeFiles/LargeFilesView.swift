@@ -1,18 +1,23 @@
 import SwiftUI
 import AppKit
+import QuickLook
 
 /// View for finding and managing large files
 struct LargeFilesView: View {
-    @EnvironmentObject var appState: AppState
     @StateObject private var model = ScanFeatureModel()
 
     // Filters
     @State private var sizeThreshold: Double = 100  // MB
     @State private var scanKind: LargeFilesModule.ScanKind = .both
-    @State private var selectedCategory: String? = nil
+    @State private var selectedCategory: String?
+    @State private var ageFilter: LargeFilesModule.ActivityAge = .any
     @State private var sortOrder: CleanupSortOrder = .sizeDesc
+    @State private var previewURL: URL?
 
-    private let categories = ["All", "Folder", "Video", "Image", "Audio", "Archive", "Disk Image", "Document", "Code", "Application", "Other"]
+    private let categories = [
+        "All", "Folder", "Video", "Image", "Audio", "Archive", "Disk Image",
+        "Document", "Code", "Application", "Other"
+    ]
 
     /// Default production initializer — empty on launch until the user scans.
     init() {}
@@ -38,7 +43,9 @@ struct LargeFilesView: View {
             title: "Large & Old Files",
             subtitle: "Find large files and folders by size and age.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanLargeFiles() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) {
+                    Task { await scanLargeFiles() }
+                }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -57,14 +64,26 @@ struct LargeFilesView: View {
                         description: "Scan to surface large files and folders ranked by size and recent activity.",
                         ctaTitle: "Scan for Large Files",
                         benefits: [
-                            ScanBenefit("arrow.up.arrow.down.circle", "Reclaim the most space fast", "Ranks files and folders by size so the biggest space hogs surface first, instead of hunting through Finder."),
-                            ScanBenefit("clock.badge.questionmark", "Surfaces forgotten files", "Flags large items you haven't touched in ages, like old videos, disk images, and archives you can safely let go."),
+                            ScanBenefit(
+                                "arrow.up.arrow.down.circle",
+                                "Reclaim the most space fast",
+                                "Ranks files and folders by size so the biggest space hogs surface first."
+                            ),
+                            ScanBenefit(
+                                "clock.badge.questionmark",
+                                "Surfaces forgotten files",
+                                "Flags old videos, disk images, and archives you may no longer need."
+                            )
                         ],
                         illustration: "internaldrive",
                         isScanning: model.isScanning,
                         action: { Task { await scanLargeFiles() } }
                     )
                 } else {
+                    ManualReviewNotice(
+                        message: "Review-only results — large files and folders are never "
+                            + "selected for automatic cleanup."
+                    )
                     filterBar
                     Divider()
 
@@ -77,6 +96,7 @@ struct LargeFilesView: View {
                 }
             }
         }
+        .quickLookPreview($previewURL)
         .onDisappear { model.cancelScan() }
     }
 
@@ -133,6 +153,20 @@ struct LargeFilesView: View {
 
             // Sort order
             HStack {
+                Text("Age:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $ageFilter) {
+                    ForEach(LargeFilesModule.ActivityAge.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 110)
+            }
+
+            HStack {
                 Text("Sort:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -164,13 +198,7 @@ struct LargeFilesView: View {
                 LargeFileRow(
                     item: item,
                     isSelected: model.selectedItems.contains(item.id),
-                    onOpen: {
-                        if item.type == .directory {
-                            NSWorkspace.shared.open(item.path)
-                        } else {
-                            NSWorkspace.shared.activateFileViewerSelecting([item.path])
-                        }
-                    }
+                    onPreview: { previewURL = item.path }
                 )
                 .tag(item.id)
             }
@@ -209,13 +237,14 @@ struct LargeFilesView: View {
         let kind = scanKind
         await model.scan(
             selectAllOnCompletion: false,
-            onError: { "Couldn't scan for large files: \($0.localizedDescription)" }
-        ) {
-            var module = LargeFilesModule()
-            module.threshold = thresholdBytes
-            module.scanKind = kind
-            return try await module.scan()
-        }
+            onError: { "Couldn't scan for large files: \($0.localizedDescription)" },
+            {
+                var module = LargeFilesModule()
+                module.threshold = thresholdBytes
+                module.scanKind = kind
+                return try await module.scan()
+            }
+        )
     }
 
     private func deleteSelected() async -> CleanupResult? {
@@ -246,6 +275,13 @@ struct LargeFilesView: View {
             items = items.filter { $0.moduleName == category }
         }
 
+        if let cutoff = ageFilter.cutoffDate() {
+            items = items.filter { item in
+                guard let activityDate = item.lastModified else { return false }
+                return activityDate < cutoff
+            }
+        }
+
         return items.sorted(using: sortOrder)
     }
 
@@ -267,7 +303,7 @@ struct LargeFilesView: View {
 struct LargeFileRow: View {
     let item: CleanupItem
     let isSelected: Bool
-    let onOpen: () -> Void
+    let onPreview: () -> Void
 
     var body: some View {
         SelectableItemRow(isSelected: isSelected) {
@@ -309,14 +345,13 @@ struct LargeFileRow: View {
                 }
             }
 
-            // Open button
-            Button {
-                onOpen()
-            } label: {
-                Image(systemName: item.type == .directory ? "arrow.up.forward.app" : "eye")
+            Button(action: onPreview) {
+                Image(systemName: "eye")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .help("Quick Look")
+            .accessibilityLabel("Preview \(item.displayName)")
 
             // Reveal in Finder
             Button {
@@ -326,6 +361,8 @@ struct LargeFileRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(item.displayName) in Finder")
         }
     }
 
@@ -342,18 +379,6 @@ struct LargeFileRow: View {
         case "Application": return .pink
         default: return .gray
         }
-    }
-}
-
-// MARK: - File Icon View
-
-struct FileIconView: View {
-    let url: URL
-
-    var body: some View {
-        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-            .resizable()
-            .aspectRatio(contentMode: .fit)
     }
 }
 

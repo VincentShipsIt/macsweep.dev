@@ -91,6 +91,23 @@ final class DuplicateFinderModuleTests {
         #expect(surfaced.isDisjoint(with: ["u1.bin", "u2.bin"]))
     }
 
+    @Test func reviewGroupsIncludeKeeperAndEveryConfirmedCopy() async throws {
+        try write(Data(count: 16_384), "Documents-original.bin")
+        try write(Data(count: 16_384), "Downloads-copy.bin")
+
+        var module = DuplicateFinderModule()
+        module.searchPaths = [tempDir]
+
+        let groups = try await module.scanReviewGroups()
+        let group = try #require(groups.first)
+
+        #expect(groups.count == 1)
+        #expect(group.items.count == 2)
+        #expect(group.items.contains { $0.id == group.suggestedKeeperID })
+        #expect(group.suggestedCleanupItems.count == 1)
+        #expect(group.cleanupIDs(keeping: group.suggestedKeeperID) == group.suggestedCleanupIDs)
+    }
+
     // MARK: - DuplicateSelector keep-priority
 
     private func file(_ path: String, created: Date = Date()) -> DuplicateFile {
@@ -126,5 +143,45 @@ final class DuplicateFinderModuleTests {
     @Test func autoSelectReturnsEmptyForSingleFile() {
         let only = file("/Users/x/Documents/solo.txt")
         #expect(DuplicateSelector().autoSelect(group([only])).isEmpty)
+    }
+
+    @Test func changingKeeperSelectsEveryOtherItemAndNeverTheKeeper() {
+        let first = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/tmp/first.bin"),
+            size: 100,
+            type: .file,
+            module: "duplicates",
+            moduleName: "Group"
+        )
+        let second = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/tmp/second.bin"),
+            size: 100,
+            type: .file,
+            module: "duplicates",
+            moduleName: "Group"
+        )
+        let third = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/tmp/third.bin"),
+            size: 100,
+            type: .file,
+            module: "duplicates",
+            moduleName: "Group"
+        )
+        let reviewGroup = FileReviewGroup(
+            id: UUID(),
+            title: "Group",
+            items: [first, second, third],
+            suggestedKeeperID: first.id,
+            suggestionReason: "Test"
+        )
+
+        #expect(reviewGroup.cleanupIDs(keeping: second.id) == [first.id, third.id])
+        #expect(!reviewGroup.cleanupIDs(keeping: second.id).contains(second.id))
+        #expect(reviewGroup.cleanupIDs(keeping: UUID()).isEmpty)
+        #expect(reviewGroup.retainingItems(withIDs: [first.id, second.id])?.items.count == 2)
+        #expect(reviewGroup.retainingItems(withIDs: [second.id]) == nil)
     }
 }

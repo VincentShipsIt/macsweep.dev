@@ -123,6 +123,16 @@ final class ScanFeatureModel: ObservableObject {
         await task.value
     }
 
+    /// Token identifying the active scan generation. A view that keeps derived
+    /// state (e.g. review groups) alongside `items` reads this at the start of
+    /// its scan body and commits that state only while `isCurrent(_:)` still
+    /// holds, so a late-finishing scan can't overwrite newer derived state —
+    /// mirroring the guard `scan(_:)` already applies to `items`.
+    var activeScanToken: Int { scanGeneration }
+
+    /// Whether `token` (from `activeScanToken`) still identifies the newest scan.
+    func isCurrent(_ token: Int) -> Bool { token == scanGeneration }
+
     /// Cancels the in-flight scan, if any. Safe to call when none is running.
     func cancelScan() {
         scanTask?.cancel()

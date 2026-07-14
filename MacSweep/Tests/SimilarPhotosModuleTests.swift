@@ -11,9 +11,9 @@ struct SimilarPhotosModuleTests {
     /// Writes an 8-bit grayscale PNG whose pixel at (x, y) is `pixel(x, y)`.
     private func writeGrayPNG(side: Int, to url: URL, pixel: (Int, Int) -> UInt8) throws {
         var bytes = [UInt8](repeating: 0, count: side * side)
-        for y in 0..<side {
-            for x in 0..<side {
-                bytes[y * side + x] = pixel(x, y)
+        for row in 0..<side {
+            for column in 0..<side {
+                bytes[row * side + column] = pixel(column, row)
             }
         }
         let colorSpace = CGColorSpaceCreateDeviceGray()
@@ -40,12 +40,12 @@ struct SimilarPhotosModuleTests {
         // A left-dark / right-bright split — a clear, downsample-robust pattern.
         let gradientA = temp.appendingPathComponent("a.png")
         let gradientCopy = temp.appendingPathComponent("a-copy.png")
-        try writeGrayPNG(side: 128, to: gradientA) { x, _ in x < 64 ? 10 : 240 }
-        try writeGrayPNG(side: 128, to: gradientCopy) { x, _ in x < 64 ? 10 : 240 }
+        try writeGrayPNG(side: 128, to: gradientA) { column, _ in column < 64 ? 10 : 240 }
+        try writeGrayPNG(side: 128, to: gradientCopy) { column, _ in column < 64 ? 10 : 240 }
 
         // A visually different image (top-dark / bottom-bright split).
         let flipped = temp.appendingPathComponent("b.png")
-        try writeGrayPNG(side: 128, to: flipped) { _, y in y < 64 ? 10 : 240 }
+        try writeGrayPNG(side: 128, to: flipped) { _, row in row < 64 ? 10 : 240 }
 
         let sigA = try #require(SimilarPhotoSignature.make(from: gradientA))
         let sigCopy = try #require(SimilarPhotoSignature.make(from: gradientCopy))
@@ -118,5 +118,26 @@ struct SimilarPhotosModuleTests {
         let selected = SimilarPhotoSelector().autoSelect(group)
 
         #expect(selected == [newer])
+    }
+
+    @Test func reviewGroupsExposeWholeClusterWithOneSuggestedKeeper() async throws {
+        let temp = try TempTestDirectory(prefix: "MacSweepSimilarPhotoReview")
+        let original = temp.appendingPathComponent("original.png")
+        let copy = temp.appendingPathComponent("copy.png")
+        try writeGrayPNG(side: 128, to: original) { column, _ in column < 64 ? 10 : 240 }
+        try writeGrayPNG(side: 128, to: copy) { column, _ in column < 64 ? 10 : 240 }
+
+        var module = SimilarPhotosModule()
+        module.searchPaths = [temp.url]
+        module.minimumFileSize = 0
+
+        let groups = try await module.scanReviewGroups()
+        let group = try #require(groups.first)
+
+        #expect(groups.count == 1)
+        #expect(group.items.count == 2)
+        #expect(group.items.contains { $0.id == group.suggestedKeeperID })
+        #expect(group.suggestedCleanupItems.count == 1)
+        #expect(!group.suggestedCleanupIDs.contains(group.suggestedKeeperID))
     }
 }

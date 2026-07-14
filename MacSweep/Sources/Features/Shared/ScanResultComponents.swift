@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // Shared building blocks for the scan-feature result pages. FeaturePageShell
 // already hosts the pre-scan landing and error chrome; these cover the
@@ -71,6 +72,115 @@ struct SelectableItemRow<Leading: View, Content: View, Trailing: View>: View {
             trailing()
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Review-only file groups
+
+struct FileIconView: View {
+    let url: URL
+
+    var body: some View {
+        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+    }
+}
+
+/// Header shared by duplicate and similar-photo clusters. It makes the
+/// non-automatic cleanup contract visible next to every group instead of only
+/// in the final confirmation sheet.
+struct FileReviewGroupHeader: View {
+    let title: String
+    let itemCount: Int
+    let recoverableBytes: Int64
+    let suggestionReason: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(1)
+
+                Text("\(itemCount) items • Suggested keeper: \(suggestionReason)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text("\(recoverableBytes.formattedFileSize) recoverable")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            Label("Review only", systemImage: "hand.raised.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.orange)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Selectable file row with a dedicated keeper state. A keeper renders a shield
+/// instead of a checkbox, so it cannot be mistaken for a cleanup candidate.
+struct FileReviewItemRow<Leading: View, Content: View, Trailing: View>: View {
+    let isSelected: Bool
+    let isKeeper: Bool
+    let onToggle: () -> Void
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var trailing: () -> Trailing
+
+    init(
+        isSelected: Bool,
+        isKeeper: Bool,
+        onToggle: @escaping () -> Void,
+        @ViewBuilder leading: @escaping () -> Leading,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.isSelected = isSelected
+        self.isKeeper = isKeeper
+        self.onToggle = onToggle
+        self.leading = leading
+        self.content = content
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if isKeeper {
+                Image(systemName: "checkmark.shield.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("Keeping this file")
+            } else {
+                SelectionCheckmark(isSelected: isSelected, onToggle: onToggle)
+            }
+
+            leading()
+            content()
+            Spacer()
+            trailing()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// Inline explanation for pages that never auto-select personal files.
+struct ManualReviewNotice: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "hand.raised.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(MacSweepTheme.warningPanel)
     }
 }
 
