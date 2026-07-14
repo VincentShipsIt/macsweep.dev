@@ -125,9 +125,10 @@ struct SnapshotRenderer {
 
     /// Builds populated / error layouts for cleanup-history and deletion flows.
     /// SystemCleanup reads its rows straight off `AppState`; the remaining views
-    /// hold local `@State`, so they take snapshot-injection
-    /// initializers added on each view. Every view still renders through the real
-    /// composed body — only the seed data is synthetic.
+    /// own their scan state (a shared `ScanFeatureModel` for the migrated flows, or
+    /// local `@State` otherwise), so they take snapshot-injection initializers added
+    /// on each view. Every view still renders through the real composed body — only
+    /// the seed data is synthetic.
     @MainActor
     static func dataStateVariants(size: CGSize) -> [(String, AnyView)] {
         func wrap<V: View>(_ view: V, appState: AppState) -> AnyView {
@@ -169,6 +170,9 @@ struct SnapshotRenderer {
         let apps = sampleApps()
         let orphans = sampleOrphans()
 
+        let trashItems = sampleTrashItems()
+        let trashSelection = Set(trashItems.prefix(2).map(\.id))
+
         return [
             ("cleanup-history-results", wrap(
                 CleanupHistoryView(snapshotRuns: sampleCleanupHistory()),
@@ -181,6 +185,10 @@ struct SnapshotRenderer {
                 appState: AppState(initialFullDiskAccess: false)
             )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
+            ("trash-bins-results", wrap(
+                TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
+                appState: AppState()
+            )),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
                 appState: AppState()
@@ -347,6 +355,31 @@ struct SnapshotRenderer {
             item("/Users/you/Projects/old-monorepo", 3_900_000_000, .directory, "Folder", 95),
             item("/Users/you/Documents/architecture-review.pdf", 142_000_000, .file, "Document", 310),
             item("/Users/you/Music/Logic/session-stems.logicx", 2_100_000_000, .directory, "Audio", 58),
+        ]
+    }
+
+    /// Trash rows for the TrashBins results layout. `moduleName` is the bin name
+    /// the view groups its sections by, so the sample spans two bins (the main
+    /// user Trash and an external-volume Trash) to exercise the grouped list.
+    @MainActor
+    static func sampleTrashItems() -> [CleanupItem] {
+        func item(_ path: String, _ size: Int64, _ bin: String, _ age: Double) -> CleanupItem {
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: path),
+                size: size,
+                type: .file,
+                module: "trash-bins",
+                moduleName: bin,
+                lastModified: daysAgo(age)
+            )
+        }
+        return [
+            item("/Users/you/.Trash/old-render.mov", 1_800_000_000, "Trash", 3),
+            item("/Users/you/.Trash/Installer.dmg", 640_000_000, "Trash", 8),
+            item("/Users/you/.Trash/screenshot-archive.zip", 210_000_000, "Trash", 12),
+            item("/Volumes/Backup/.Trashes/501/nightly.sparsebundle", 4_300_000_000, "Backup (External)", 26),
+            item("/Volumes/Backup/.Trashes/501/logs.tar", 96_000_000, "Backup (External)", 41),
         ]
     }
 
