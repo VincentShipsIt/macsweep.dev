@@ -139,4 +139,36 @@ final class LargeFilesModuleTests {
         let items = try await module(.both).scan()
         #expect(items.isEmpty)
     }
+
+    @Test func userProtectedFolderIsSurfacedAsReviewOnly() async throws {
+        try write(bigBytes, to: "protected/artifact.bin")
+        var module = module(.folders)
+        module.searchPaths = [root]
+
+        let rules = UserProtectionRules(
+            ignoreContents: "",
+            protectContents: root.appending(path: "protected").path,
+            homeURL: root
+        )
+        module.userRules = rules
+
+        let items = try await module.scan()
+        let protected = try #require(items.first { $0.path.lastPathComponent == "protected" })
+        #expect(protected.cleanupReviewReason?.contains(UserProtectionRules.protectFilename) == true)
+    }
+
+    @Test func ignoredDescendantsDoNotContributeToSurfacedFolderSize() async throws {
+        try write(tinyBytes, to: "container/keep.bin")
+        try write(bigBytes, to: "container/ignored/junk.bin")
+        var module = module(.folders)
+        module.userRules = UserProtectionRules(
+            ignoreContents: root.appending(path: "container/ignored").path,
+            protectContents: "",
+            homeURL: root
+        )
+
+        let items = try await module.scan()
+
+        #expect(items.isEmpty)
+    }
 }

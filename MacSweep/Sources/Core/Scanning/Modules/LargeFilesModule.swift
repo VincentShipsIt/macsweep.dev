@@ -8,6 +8,10 @@ struct LargeFilesModule: ScanModule {
     let description = "Find large files and folders over the size threshold"
     let icon = "doc.badge.ellipsis"
 
+    /// Injection seam for deterministic rule tests; production loads the same
+    /// home-directory files as every other SafetyChecker consumer.
+    var userRules: UserProtectionRules = .load()
+
     enum ScanKind: String, CaseIterable {
         case files = "Files"
         case folders = "Folders"
@@ -64,6 +68,7 @@ struct LargeFilesModule: ScanModule {
         ]
 
         for searchPath in searchPaths {
+            let checker = SafetyChecker(userRules: userRules)
             // Size every directory under `searchPath` in a SINGLE enumeration,
             // instead of re-walking each subtree via DiskAnalyzer.directorySize at
             // every ancestor level (the old O(files × depth) hot path: a file N
@@ -73,7 +78,7 @@ struct LargeFilesModule: ScanModule {
             // sizing — so folder surfacing decisions are byte-for-byte unchanged.
             // Skipped entirely when folders aren't being surfaced (nothing reads it).
             let subtreeSizes = scanKind.includesFolders
-                ? try Self.subtreeSizes(under: searchPath)
+                ? try Self.subtreeSizes(under: searchPath, checker: checker, moduleID: id)
                 : [:]
 
             guard let enumerator = FileManager.default.enumerator(
@@ -82,8 +87,8 @@ struct LargeFilesModule: ScanModule {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
             ) else { continue }
 
-            // Hoisted out of the hot per-file loop (SafetyChecker is stateless).
-            let checker = SafetyChecker()
+            // Hoisted out of the hot per-file loop so the two small user rule
+            // files are parsed once per search root, not once per finding.
             var iterations = 0
             while let url = enumerator.nextObject() as? URL {
                 // Whole-home enumeration can run for minutes; without this check
@@ -107,7 +112,12 @@ struct LargeFilesModule: ScanModule {
                     // Skip symlinks
                     guard values.isSymbolicLink == false else { continue }
 
-                    guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
+                    guard checker.validateForScan(url, moduleID: id).isSafe else {
+                        if values.isDirectory == true {
+                            enumerator.skipDescendants()
+                        }
+                        continue
+                    }
 
                     let activityDate = values.contentAccessDate ?? values.contentModificationDate
 
@@ -123,7 +133,7 @@ struct LargeFilesModule: ScanModule {
                         let size = subtreeSizes[url.path] ?? 0
                         guard size >= threshold else { continue }
 
-                        items.append(CleanupItem(
+                        let item = CleanupItem(
                             id: UUID(),
                             path: url,
                             size: size,
@@ -131,6 +141,9 @@ struct LargeFilesModule: ScanModule {
                             module: id,
                             moduleName: "Folder",
                             lastModified: activityDate
+                        )
+                        items.append(item.markingCleanupReview(
+                            reason: checker.validateForCleanup(item, moduleID: id).reason
                         ))
 
                         // Always skip into a surfaced directory: its contents are
@@ -154,7 +167,7 @@ struct LargeFilesModule: ScanModule {
                     let size = values.diskSize
                     guard size >= threshold else { continue }
 
-                    items.append(CleanupItem(
+                    let item = CleanupItem(
                         id: UUID(),
                         path: url,
                         size: size,
@@ -162,6 +175,9 @@ struct LargeFilesModule: ScanModule {
                         module: id,
                         moduleName: fileCategory(for: values.contentType),
                         lastModified: activityDate
+                    )
+                    items.append(item.markingCleanupReview(
+                        reason: checker.validateForCleanup(item, moduleID: id).reason
                     ))
 
                     // Limit results
@@ -188,7 +204,11 @@ struct LargeFilesModule: ScanModule {
     /// exactly — identical enumerator options (`.skipsHiddenFiles`, packages
     /// descended into), identical symlink skipping, identical `diskSize` sizing —
     /// so the scan surfaces the same folders with the same byte counts.
-    private static func subtreeSizes(under root: URL) throws -> [String: Int64] {
+    private static func subtreeSizes(
+        under root: URL,
+        checker: SafetyChecker,
+        moduleID: String
+    ) throws -> [String: Int64] {
         let resourceKeys: Set<URLResourceKey> = [
             .totalFileAllocatedSizeKey,
             .fileSizeKey,
@@ -215,6 +235,7 @@ struct LargeFilesModule: ScanModule {
             // Match directorySize: skip symlinks, count only files.
             if values.isSymbolicLink == true { continue }
             guard values.isDirectory == false else { continue }
+            guard checker.validateForScan(fileURL, moduleID: moduleID).isSafe else { continue }
 
             let bytes = values.diskSize
             guard bytes > 0 else { continue }
