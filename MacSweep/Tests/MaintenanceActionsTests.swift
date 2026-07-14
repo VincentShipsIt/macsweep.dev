@@ -34,6 +34,59 @@ struct MaintenanceActionsTests {
         #expect(MaintenanceActions.parseVMStatFreeBytes("Pages free: not-a-number.\n", pageSize: 4_096) == 0)
     }
 
+    // MARK: - Verify-volume result contract (diskutil verifyVolume)
+
+    /// A zero exit maps to the success message regardless of any diagnostic text
+    /// carried on the (now separately captured, then concatenated) streams.
+    @Test func verifyVolumeSuccessReportsVerified() {
+        let result = MaintenanceActions.verifyVolumeResult(status: 0, output: "Volume Macintosh HD appears to be OK")
+        #expect(result.success == true)
+        #expect(result.message == "Volume verified successfully")
+    }
+
+    @Test func verifyVolumeFailureIncludesDiagnosticOutput() {
+        let result = MaintenanceActions.verifyVolumeResult(status: 1, output: "Problems detected: node count wrong")
+        #expect(result.success == false)
+        #expect(result.message.contains("Problems detected: node count wrong"))
+    }
+
+    /// A damaged volume can emit thousands of lines; the failure message clamps
+    /// the diagnostic to 200 characters so a banner can't be flooded.
+    @Test func verifyVolumeFailureClampsDiagnosticToTwoHundredCharacters() {
+        let noise = String(repeating: "x", count: 500)
+        let result = MaintenanceActions.verifyVolumeResult(status: 1, output: noise)
+        let prefixLabel = "Volume verification found issues: "
+        #expect(result.message == prefixLabel + String(noise.prefix(200)))
+        #expect(result.message.count == prefixLabel.count + 200)
+    }
+
+    // MARK: - Purgeable-space result contract (mkfile pressure allocation)
+
+    /// mkfile failing (e.g. < 1 GB free) must not be reported as a success, and
+    /// the measured delta is still surfaced for diagnostics.
+    @Test func purgeableFailedAllocationReportsFailure() {
+        let result = MaintenanceActions.purgeableResult(mkfileSucceeded: false, freed: 4_096)
+        #expect(result.success == false)
+        #expect(result.message == "Could not allocate the 1 GB pressure file; no user data was changed")
+        #expect(result.bytesFreed == 4_096)
+    }
+
+    @Test func purgeableSuccessWithNoReclamationReportsTriggered() {
+        let result = MaintenanceActions.purgeableResult(mkfileSucceeded: true, freed: 0)
+        #expect(result.success == true)
+        #expect(result.message == "Purgeable space optimization triggered")
+        #expect(result.bytesFreed == 0)
+    }
+
+    @Test func purgeableSuccessWithReclamationReportsFreedBytes() {
+        let freed: Int64 = 2_000_000
+        let result = MaintenanceActions.purgeableResult(mkfileSucceeded: true, freed: freed)
+        let expectedSize = ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)
+        #expect(result.success == true)
+        #expect(result.message == "Freed \(expectedSize) of purgeable space")
+        #expect(result.bytesFreed == freed)
+    }
+
     // MARK: - Error/result contract (#88: freeUpRAM errors must surface)
 
     @Test func commandFailedDescribesCommandAndReason() {
