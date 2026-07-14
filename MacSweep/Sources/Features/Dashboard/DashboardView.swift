@@ -9,6 +9,7 @@ enum WidgetType: String, CaseIterable {
 /// Main dashboard view in the native, list-driven house style used by Inbox.
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var monitor = SystemMonitor()
     /// One shared process monitor for the CPU and Memory popovers so they don't
     /// each spin up an independent 5s `ps` sampling loop (issue #103).
@@ -39,6 +40,7 @@ struct DashboardView: View {
                             compact: true
                         )
                         .padding(.vertical, 4)
+                        .dashboardConditionalRow()
                     }
 
                     if let lastError = appState.lastError {
@@ -48,6 +50,7 @@ struct DashboardView: View {
                             title: "Scan Failed",
                             detail: lastError
                         )
+                        .dashboardConditionalRow()
                     }
 
                     if !appState.scanFailures.isEmpty {
@@ -59,6 +62,7 @@ struct DashboardView: View {
                             openFullDiskAccess: FullDiskAccess.openSystemPreferences,
                             copyDetails: copyPartialScanDetails
                         )
+                        .dashboardConditionalRow()
                     }
 
                     if let deletionError = appState.lastDeletionError {
@@ -68,6 +72,7 @@ struct DashboardView: View {
                             title: "Cleanup Failed",
                             detail: deletionError
                         )
+                        .dashboardConditionalRow()
                     }
 
                     if let summary = appState.smartCareSummary,
@@ -80,6 +85,7 @@ struct DashboardView: View {
                             title: "No cleanup needed",
                             detail: "Smart Care found no items to recommend or review."
                         )
+                        .dashboardConditionalRow()
                     }
 
                     cleanupReviewRows
@@ -132,6 +138,14 @@ struct DashboardView: View {
             }
             .listStyle(.inset)
             .macSweepListSurface()
+            // Drive appearance/disappearance of the conditional status rows and
+            // whole sections above through a single animation transaction. Custom
+            // `.transition`s on `List` children are otherwise overridden by the
+            // List's own default row animation and pop in unanimated; keying the
+            // transaction to a visibility snapshot animates rows and sections
+            // consistently while leaving continuous updates (scan progress, live
+            // metrics) unanimated.
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: sectionVisibility)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
@@ -145,7 +159,11 @@ struct DashboardView: View {
         }
         .onChange(of: appState.isScanning) { _, isScanning in
             if !isScanning && !appState.scanResults.isEmpty {
-                isCleanupReviewExpanded = false
+                // Match the user-driven collapse (see `cleanupReviewRows`) so the
+                // programmatic reset animates identically instead of snapping.
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
+                    isCleanupReviewExpanded = false
+                }
             }
         }
         .cleanupReview(
@@ -166,6 +184,26 @@ struct DashboardView: View {
                 recommendedItemsToClean = []
             }
         }
+    }
+
+    /// Snapshot of which conditional status rows/sections are currently visible.
+    /// Feeding it to `.animation(_:value:)` on the List opens an animation
+    /// transaction only when a row/section actually appears or disappears — never
+    /// for continuous updates like scan progress or live metric readouts.
+    private var sectionVisibility: DashboardSectionVisibility {
+        let summary = appState.smartCareSummary
+        return DashboardSectionVisibility(
+            isScanning: appState.isScanning,
+            hasError: appState.lastError != nil,
+            hasFailures: !appState.scanFailures.isEmpty,
+            hasDeletionError: appState.lastDeletionError != nil,
+            showsEmptySummary: summary?.findings.isEmpty == true
+                && !appState.isScanning
+                && appState.lastError == nil,
+            hasRecommended: !(summary?.recommendedFindings.isEmpty ?? true),
+            hasNeedsReview: !(summary?.reviewRequiredFindings.isEmpty ?? true),
+            hasRecentActivity: appState.lastCleanup != nil || !appState.scanResults.isEmpty
+        )
     }
 
     private var rescanButton: some View {
@@ -194,7 +232,7 @@ struct DashboardView: View {
 
     private var fdaBanner: some View {
         FullDiskAccessWarningBanner(scope: .smartCare) {
-            withAnimation {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                 showFDABanner = false
             }
         }
@@ -336,7 +374,7 @@ struct DashboardView: View {
                 totalCount: appState.scanResults.count,
                 selectedSizeText: selectedCleanupSizeText
             ) {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
                     isCleanupReviewExpanded.toggle()
                 }
             }
@@ -637,9 +675,10 @@ struct DashboardView: View {
     }
 
     private func toggleWidget(_ widget: WidgetType) {
-        withAnimation(.easeInOut(duration: 0.15)) {
-            expandedWidget = expandedWidget == widget ? nil : widget
-        }
+        // `expandedWidget` only feeds the `.popover(isPresented:)` bindings below,
+        // and NSPopover animates its own present/dismiss — the previous
+        // `withAnimation` wrapper animated nothing, so it's dropped.
+        expandedWidget = expandedWidget == widget ? nil : widget
     }
 
     private func binding(for widget: WidgetType) -> Binding<Bool> {
@@ -857,7 +896,30 @@ private enum DashboardPopoverLayout {
     static let maxScrollableHeight: CGFloat = 620
 }
 
+/// Equatable snapshot of the dashboard's conditional row/section visibility,
+/// keyed by `.animation(_:value:)` so appearances/disappearances animate as one
+/// transaction. Deliberately holds only booleans — no continuously-changing
+/// values — so live scan progress and metric updates don't trigger it.
+private struct DashboardSectionVisibility: Equatable {
+    let isScanning: Bool
+    let hasError: Bool
+    let hasFailures: Bool
+    let hasDeletionError: Bool
+    let showsEmptySummary: Bool
+    let hasRecommended: Bool
+    let hasNeedsReview: Bool
+    let hasRecentActivity: Bool
+}
+
 private extension View {
+    /// Shared appearance transition for the dashboard's conditional status rows so
+    /// they fade and slide in from the top consistently instead of popping. The
+    /// enclosing List-level `.animation(_:value:)` supplies the transaction that
+    /// drives it (and the reduce-motion guard).
+    func dashboardConditionalRow() -> some View {
+        transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
     func dashboardPopoverContent() -> some View {
         frame(width: DashboardPopoverLayout.width)
             .fixedSize(horizontal: false, vertical: true)

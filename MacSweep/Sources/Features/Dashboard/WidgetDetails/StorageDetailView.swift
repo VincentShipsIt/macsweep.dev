@@ -87,14 +87,8 @@ struct StorageDetailView: View {
                                 )
                             )
                             .frame(width: geometry.size.width * (1.0 - usage.freePercentage))
-                            .opacity(alertLevel == .critical ? (pulseAnimation ? 0.7 : 1.0) : 1.0)
-                            .onAppear {
-                                if alertLevel == .critical {
-                                    withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                                        pulseAnimation = true
-                                    }
-                                }
-                            }
+                            .criticalPulse(alertLevel, isPulsing: pulseAnimation)
+                            .startCriticalPulse(alertLevel, into: $pulseAnimation)
                     }
                 }
             }

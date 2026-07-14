@@ -291,12 +291,13 @@ struct BrowserResultCard: View {
     let result: BrowserScanResult
     @Binding var selectedItems: Set<UUID>
     @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             Button {
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -410,6 +411,7 @@ struct ServiceWorkerSection: View {
     let items: [CleanupItem]
     @Binding var selectedItems: Set<UUID>
     @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var totalSize: String {
         items.formattedTotalSize()
@@ -418,7 +420,7 @@ struct ServiceWorkerSection: View {
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
