@@ -45,6 +45,7 @@ struct TrashBinsView: View {
                 if trashItems.isEmpty {
                     if hasScanned && !isScanning && errorMessage == nil {
                         emptyTrashState
+                            .transition(.scanCrossfade)
                     } else {
                         ScanLandingView(
                             icon: "trash",
@@ -60,18 +61,34 @@ struct TrashBinsView: View {
                             scanningMessage: "Scanning trash bins",
                             action: { Task { await scanTrash() } }
                         )
+                        .transition(.scanCrossfade)
                     }
                 } else {
+                    Group {
                     trashList
                     Divider()
                     footer
+                    }
+                    .transition(.scanCrossfade)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
+            // no-ops under Reduce Motion.
+            .animated(.scanCrossfade, value: scanPhase)
         }
         .task {
             await loadTrashSummary()
         }
+    }
+
+    /// Which scan stage is on screen, so the crossfade fires on *every* arm
+    /// change — a bare `trashItems.isEmpty` boolean would miss landing → empty
+    /// when a scan finds nothing.
+    private var scanPhase: ScanPhase {
+        if !trashItems.isEmpty { return .results }
+        if hasScanned && !isScanning && errorMessage == nil { return .empty }
+        return .landing
     }
 
     // MARK: - Trash List

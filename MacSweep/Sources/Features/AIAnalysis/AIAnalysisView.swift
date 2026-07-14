@@ -38,6 +38,7 @@ struct AIAnalysisView: View {
             hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
+            Group {
             if service.findings.isEmpty && !service.isScanning {
                 ScanLandingView(
                     icon: "brain.head.profile",
@@ -55,13 +56,20 @@ struct AIAnalysisView: View {
                     hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
+                .transition(.scanCrossfade)
             } else {
+                Group {
                 resultsList
 
                 Divider()
 
                 bottomBar
+                }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: service.findings.isEmpty && !service.isScanning)
         }
         .onAppear {
             refreshProviderState()

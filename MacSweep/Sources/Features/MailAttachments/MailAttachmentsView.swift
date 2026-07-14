@@ -21,6 +21,7 @@ struct MailAttachmentsView: View {
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
         ) {
+            Group {
             if model.items.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -43,7 +44,9 @@ struct MailAttachmentsView: View {
                             .padding(20)
                     }
                 }
+                .transition(.scanCrossfade)
             } else {
+                Group {
                 if !appState.hasFullDiskAccess {
                     FullDiskAccessWarningBanner(scope: .mail)
                         .padding(.horizontal)
@@ -57,7 +60,12 @@ struct MailAttachmentsView: View {
                     Divider()
                     footer
                 }
+                }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: model.items.isEmpty)
         }
         .errorAlert("Couldn't delete attachments", message: $model.errorMessage)
         .onDisappear { model.cancelScan() }

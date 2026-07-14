@@ -151,6 +151,7 @@ struct BuildArtifactsView: View {
                     isScanning: true,
                     action: { Task { await scan() } }
                 )
+                .transition(.scanCrossfade)
             } else if !hasCompletedScan {
                 ScanLandingView(
                     icon: "hammer",
@@ -164,8 +165,10 @@ struct BuildArtifactsView: View {
                     illustration: "hammer",
                     action: { Task { await scan() } }
                 )
+                .transition(.scanCrossfade)
             } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
                 noArtifactsView
+                    .transition(.scanCrossfade)
             } else {
                 VStack(spacing: 0) {
                     toolbar
@@ -176,9 +179,24 @@ struct BuildArtifactsView: View {
                     Divider()
                     footer
                 }
+                .transition(.scanCrossfade)
             }
         }
+        // Crossfade every scan-stage swap (scanning ⇄ landing ⇄ empty ⇄ results);
+        // no-ops under Reduce Motion.
+        .animated(.scanCrossfade, value: scanPhase)
         .errorAlert("Cleanup Failed", message: $scanState.errorMessage)
+    }
+
+    /// Which scan stage is on screen, so the crossfade fires on *every* arm
+    /// change. DevTools models its in-progress state as a distinct arm (rather
+    /// than `ScanLandingView`'s internal `isScanning`), so `.scanning` is its own
+    /// phase here.
+    private var scanPhase: ScanPhase {
+        if isScanning { return .scanning }
+        if !hasCompletedScan { return .landing }
+        if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty { return .empty }
+        return .results
     }
 
     private var noArtifactsView: some View {

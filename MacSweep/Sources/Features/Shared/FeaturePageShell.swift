@@ -140,6 +140,7 @@ struct ScanLandingView: View {
                     .frame(maxWidth: 360)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(40)
+                    .transition(.scanCrossfade)
             } else {
                 // Centered focal block (vertically + horizontally), not stretched to the
                 // full detail area. The sidebar-preserving scroll backing lives in
@@ -186,8 +187,12 @@ struct ScanLandingView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
+                .transition(.scanCrossfade)
             }
         }
+        // Crossfade the hero ⇄ progress swap. Disabled under Reduce Motion by
+        // `animated`, which then leaves the branch change unanimated (a hard cut).
+        .animated(.scanCrossfade, value: isScanning)
         .preference(key: FeaturePageChromeHiddenPreferenceKey.self, value: hidesPageChrome)
     }
 }
