@@ -73,13 +73,55 @@ struct DiskVisualizationLayoutTests {
         #expect(sourceSegment.endAngle <= projectSegment.endAngle)
     }
 
-    @Test func foldersUseTheirDominantVisibleFileCategory() {
+    @Test func layoutSegmentsCacheTheirDominantVisibleFileCategory() throws {
         let project = directory("project", children: [
             file("demo.mov", size: 900),
             file("thumbnail.jpg", size: 100)
         ])
+        let root = directory("home", children: [project])
 
-        #expect(project.visualizationColor == "purple")
-        #expect(file("archive.zip", size: 10).visualizationColor == "yellow")
+        let treemap = DiskVisualizationLayout.treemap(
+            root: root,
+            bounds: CGRect(x: 0, y: 0, width: 600, height: 400)
+        )
+        let sunburst = DiskVisualizationLayout.sunburst(root: root)
+
+        let treemapProject = try #require(treemap.first { $0.node.name == "project" })
+        let sunburstProject = try #require(sunburst.first { $0.node.name == "project" })
+
+        #expect(treemapProject.colorCategory == "purple")
+        #expect(sunburstProject.colorCategory == "purple")
+    }
+
+    @Test func categoryAggregationStopsAtTheVisibleDepth() throws {
+        let hiddenVideo = file("hidden.mov", size: 900)
+        let hiddenFolder = directory("hidden", children: [hiddenVideo])
+        let visibleImage = file("visible.jpg", size: 100)
+        let project = directory("project", children: [hiddenFolder, visibleImage])
+        let root = directory("home", children: [project])
+
+        let segments = DiskVisualizationLayout.treemap(
+            root: root,
+            bounds: CGRect(x: 0, y: 0, width: 600, height: 400),
+            maxDepth: 2
+        )
+
+        let projectSegment = try #require(segments.first { $0.node.name == "project" })
+        let hiddenSegment = try #require(segments.first { $0.node.name == "hidden" })
+
+        #expect(projectSegment.colorCategory == "green")
+        #expect(hiddenSegment.colorCategory == "blue")
+    }
+
+    @Test func treemapFrameSizeNeverBecomesNegative() {
+        let tiny = DiskVisualizationLayout.treemapFrameSize(
+            for: CGRect(x: 0, y: 0, width: 1, height: 0.5)
+        )
+        let regular = DiskVisualizationLayout.treemapFrameSize(
+            for: CGRect(x: 0, y: 0, width: 80, height: 60)
+        )
+
+        #expect(tiny == .zero)
+        #expect(regular == CGSize(width: 78, height: 58))
     }
 }

@@ -507,7 +507,7 @@ struct TreemapView: View {
             TreemapTile(
                 node: segment.node,
                 rect: segment.rect,
-                color: Color(diskCategory: segment.node.visualizationColor),
+                color: Color(diskCategory: segment.colorCategory),
                 containsChildren: segment.containsChildren
             )
         }
@@ -524,6 +524,8 @@ struct TreemapCell: View {
     let onDoubleTap: () -> Void
 
     var body: some View {
+        let frameSize = DiskVisualizationLayout.treemapFrameSize(for: rect)
+
         RoundedRectangle(cornerRadius: 4)
             .fill(color.opacity(containsChildren ? 0.35 : 0.8))
             .overlay(
@@ -552,7 +554,7 @@ struct TreemapCell: View {
                 .padding(containsChildren ? 5 : 4)
                 .frame(maxHeight: .infinity, alignment: containsChildren ? .top : .center)
             )
-            .frame(width: rect.width - 2, height: rect.height - 2)
+            .frame(width: frameSize.width, height: frameSize.height)
             .position(x: rect.midX, y: rect.midY)
             .onTapGesture { onTap() }
             .onTapGesture(count: 2) { onDoubleTap() }
@@ -620,7 +622,7 @@ struct SunburstView: View {
                 endAngle: segment.endAngle,
                 innerRadius: segment.innerRadius,
                 outerRadius: segment.outerRadius,
-                color: Color(diskCategory: segment.node.visualizationColor)
+                color: Color(diskCategory: segment.colorCategory)
             )
         }
     }
