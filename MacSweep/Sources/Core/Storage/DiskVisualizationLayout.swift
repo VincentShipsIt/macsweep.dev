@@ -6,6 +6,7 @@ struct DiskTreemapSegment: Identifiable {
     let rect: CGRect
     let depth: Int
     let containsChildren: Bool
+    let colorCategory: String
 
     var id: DiskNode.ID { node.id }
 }
@@ -18,22 +19,107 @@ struct DiskSunburstSegment: Identifiable {
     let innerRadius: Double
     let outerRadius: Double
     let depth: Int
+    let colorCategory: String
 
     var id: DiskNode.ID { node.id }
 }
 
+/// Depth-limited post-order metrics for one visualization root. Keeping this
+/// separate from the geometry code makes the single traversal explicit and
+/// prevents segment rendering from recursively revisiting directory subtrees.
+private enum DiskVisualizationAnalysis {
+    struct Result {
+        let visibleDepth: Int
+        let colorCategories: [DiskNode.ID: String]
+    }
+
+    private struct NodeResult {
+        let visibleDepth: Int
+        let categoryWeights: [String: Int64]
+    }
+
+    static func analyze(root: DiskNode, maxDepth: Int) -> Result {
+        var colorCategories: [DiskNode.ID: String] = [:]
+        let rootResult = analyze(
+            node: root,
+            remainingDepth: maxDepth,
+            colorCategories: &colorCategories
+        )
+        return Result(
+            visibleDepth: rootResult.visibleDepth,
+            colorCategories: colorCategories
+        )
+    }
+
+    private static func analyze(
+        node: DiskNode,
+        remainingDepth: Int,
+        colorCategories: inout [DiskNode.ID: String]
+    ) -> NodeResult {
+        if !node.isDirectory {
+            colorCategories[node.id] = node.color
+            let size = max(0, node.size)
+            return NodeResult(
+                visibleDepth: 0,
+                categoryWeights: size > 0 ? [node.color: size] : [:]
+            )
+        }
+
+        guard remainingDepth > 0, !node.children.isEmpty else {
+            colorCategories[node.id] = node.color
+            return NodeResult(visibleDepth: 0, categoryWeights: [:])
+        }
+
+        var visibleDepth = 0
+        var categoryWeights: [String: Int64] = [:]
+        for child in node.children {
+            let childResult = analyze(
+                node: child,
+                remainingDepth: remainingDepth - 1,
+                colorCategories: &colorCategories
+            )
+            visibleDepth = max(visibleDepth, childResult.visibleDepth + 1)
+            for (category, size) in childResult.categoryWeights {
+                categoryWeights[category, default: 0] += size
+            }
+        }
+
+        colorCategories[node.id] = dominantCategory(in: categoryWeights) ?? node.color
+        return NodeResult(
+            visibleDepth: visibleDepth,
+            categoryWeights: categoryWeights
+        )
+    }
+
+    private static func dominantCategory(in weights: [String: Int64]) -> String? {
+        weights.max { lhs, rhs in
+            if lhs.value == rhs.value {
+                return lhs.key > rhs.key
+            }
+            return lhs.value < rhs.value
+        }?.key
+    }
+}
+
 /// Pure, testable layout logic shared by the Space Lens visualizations.
 enum DiskVisualizationLayout {
+    private struct TreemapContext {
+        let maxDepth: Int
+        let colorCategories: [DiskNode.ID: String]
+    }
+
     private struct SunburstContext {
         let maxDepth: Int
         let innerRadius: Double
         let ringWidth: Double
+        let colorCategories: [DiskNode.ID: String]
     }
 
     private static let folderInset: CGFloat = 4
     private static let folderHeaderHeight: CGFloat = 18
     private static let minimumNestedWidth: CGFloat = 72
     private static let minimumNestedHeight: CGFloat = 54
+    private static let tileSpacing: CGFloat = 2
 
     static func treemap(
         root: DiskNode,
@@ -42,12 +128,16 @@ enum DiskVisualizationLayout {
     ) -> [DiskTreemapSegment] {
         guard maxDepth > 0 else { return [] }
 
+        let analysis = DiskVisualizationAnalysis.analyze(root: root, maxDepth: maxDepth)
         var segments: [DiskTreemapSegment] = []
         appendTreemapChildren(
             root.children,
             bounds: bounds,
             depth: 0,
-            maxDepth: maxDepth,
+            context: TreemapContext(
+                maxDepth: maxDepth,
+                colorCategories: analysis.colorCategories
+            ),
             into: &segments
         )
         return segments
@@ -56,12 +146,12 @@ enum DiskVisualizationLayout {
     static func sunburst(root: DiskNode, maxDepth: Int = 2) -> [DiskSunburstSegment] {
         guard maxDepth > 0 else { return [] }
 
-        let visibleDepth = treeDepth(of: root, limit: maxDepth)
-        guard visibleDepth > 0 else { return [] }
+        let analysis = DiskVisualizationAnalysis.analyze(root: root, maxDepth: maxDepth)
+        guard analysis.visibleDepth > 0 else { return [] }
 
         let innerRadius = 0.25
         let outerRadius = 0.90
-        let ringWidth = (outerRadius - innerRadius) / Double(visibleDepth)
+        let ringWidth = (outerRadius - innerRadius) / Double(analysis.visibleDepth)
         var segments: [DiskSunburstSegment] = []
 
         appendSunburstChildren(
@@ -69,26 +159,37 @@ enum DiskVisualizationLayout {
             angles: -90...270,
             depth: 0,
             context: SunburstContext(
-                maxDepth: visibleDepth,
+                maxDepth: analysis.visibleDepth,
                 innerRadius: innerRadius,
-                ringWidth: ringWidth
+                ringWidth: ringWidth,
+                colorCategories: analysis.colorCategories
             ),
             into: &segments
         )
         return segments
     }
 
+    /// Returns the exact dimensions passed to a treemap tile's SwiftUI frame.
+    /// Size-weighted partitions can be smaller than the visual spacing, so clamp
+    /// after subtracting it rather than handing SwiftUI a negative dimension.
+    static func treemapFrameSize(for rect: CGRect) -> CGSize {
+        CGSize(
+            width: max(0, rect.width - tileSpacing),
+            height: max(0, rect.height - tileSpacing)
+        )
+    }
+
     private static func appendTreemapChildren(
         _ children: [DiskNode],
         bounds: CGRect,
         depth: Int,
-        maxDepth: Int,
+        context: TreemapContext,
         into segments: inout [DiskTreemapSegment]
     ) {
         let rects = partition(items: children, bounds: bounds)
 
         for (child, rect) in zip(children, rects) {
-            let canNest = depth + 1 < maxDepth
+            let canNest = depth + 1 < context.maxDepth
                 && !child.children.isEmpty
                 && rect.width >= minimumNestedWidth
                 && rect.height >= minimumNestedHeight
@@ -97,7 +198,8 @@ enum DiskVisualizationLayout {
                 node: child,
                 rect: rect,
                 depth: depth,
-                containsChildren: canNest
+                containsChildren: canNest,
+                colorCategory: context.colorCategories[child.id] ?? child.color
             ))
 
             guard canNest else { continue }
@@ -111,7 +213,7 @@ enum DiskVisualizationLayout {
                 child.children,
                 bounds: childBounds,
                 depth: depth + 1,
-                maxDepth: maxDepth,
+                context: context,
                 into: &segments
             )
         }
@@ -266,7 +368,8 @@ enum DiskVisualizationLayout {
                 endAngle: childEndAngle,
                 innerRadius: context.innerRadius + Double(depth) * context.ringWidth,
                 outerRadius: context.innerRadius + Double(depth + 1) * context.ringWidth,
-                depth: depth
+                depth: depth,
+                colorCategory: context.colorCategories[child.id] ?? child.color
             ))
 
             if depth + 1 < context.maxDepth, !child.children.isEmpty {
@@ -282,35 +385,4 @@ enum DiskVisualizationLayout {
         }
     }
 
-    private static func treeDepth(of node: DiskNode, limit: Int) -> Int {
-        guard limit > 0, !node.children.isEmpty else { return 0 }
-        return 1 + (node.children.map {
-            treeDepth(of: $0, limit: limit - 1)
-        }.max() ?? 0)
-    }
-}
-
-extension DiskNode {
-    /// Folders inherit the dominant visible file category so folder-heavy maps
-    /// communicate their contents instead of collapsing into one flat blue field.
-    var visualizationColor: String {
-        guard isDirectory else { return color }
-
-        var weights: [String: Int64] = [:]
-        accumulateFileTypeWeights(into: &weights)
-        return weights.max { lhs, rhs in
-            if lhs.value == rhs.value { return lhs.key > rhs.key }
-            return lhs.value < rhs.value
-        }?.key ?? color
-    }
-
-    private func accumulateFileTypeWeights(into weights: inout [String: Int64]) {
-        if isDirectory {
-            for child in children {
-                child.accumulateFileTypeWeights(into: &weights)
-            }
-        } else {
-            weights[color, default: 0] += max(0, size)
-        }
-    }
 }
