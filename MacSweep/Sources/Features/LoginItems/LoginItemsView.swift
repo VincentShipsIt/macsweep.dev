@@ -4,6 +4,10 @@ import SwiftUI
 struct LoginItemsView: View {
     @StateObject private var service = LoginItemsService.shared
     @State private var showDeleteConfirm: LoginItem? = nil
+    // Presentation is a dedicated Bool, not `$showDeleteConfirm.isPresent()`:
+    // confirmationDialog clears its isPresented binding *before* the confirm
+    // action runs, which would nil the target and silently skip the delete.
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         FeaturePageShell(
@@ -27,17 +31,27 @@ struct LoginItemsView: View {
                 .disabled(service.isAnalyzing || service.items.isEmpty)
             )
         ) {
-            ScrollView {
-                VStack(spacing: 24) {
-                    if service.isLoading {
-                        loadingView
-                    } else if service.items.isEmpty {
-                        emptyState
-                    } else {
-                        itemsList
+            VStack(spacing: 0) {
+                // Inline banner is the default non-blocking error surface; a failed
+                // toggle or delete leaves the page usable, so it stays inline.
+                if let errorMessage = service.errorMessage {
+                    MacSweepErrorBanner(message: errorMessage) {
+                        service.errorMessage = nil
                     }
                 }
-                .padding()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        if service.isLoading {
+                            loadingView
+                        } else if service.items.isEmpty {
+                            emptyState
+                        } else {
+                            itemsList
+                        }
+                    }
+                    .padding()
+                }
             }
         }
         .task {
@@ -45,23 +59,22 @@ struct LoginItemsView: View {
                 await service.scan()
             }
         }
-        .alert("Move login item to Trash?", isPresented: .init(
-            get: { showDeleteConfirm != nil },
-            set: { if !$0 { showDeleteConfirm = nil } }
-        )) {
-            Button("Move to Trash", role: .destructive) {
-                if let item = showDeleteConfirm {
-                    Task { await service.delete(item) }
-                }
-                showDeleteConfirm = nil
-            }
-            Button("Cancel", role: .cancel) { showDeleteConfirm = nil }
-        } message: {
+        // Routed through the shared destructive-confirmation modifier (was a
+        // bespoke `.alert`-on-Optional). The optional item drives presentation via
+        // `.isPresent()`; the delete still calls the same `service.delete(item)`.
+        .deleteConfirmation(
+            "Move login item to Trash?",
+            isPresented: $isConfirmingDelete,
+            confirmTitle: "Move to Trash",
+            message: showDeleteConfirm.map {
+                "This moves \"\($0.name)\" to the Trash so it can be restored if needed."
+            } ?? ""
+        ) {
             if let item = showDeleteConfirm {
-                Text("This moves \"\(item.name)\" to the Trash so it can be restored if needed.")
+                Task { await service.delete(item) }
             }
+            showDeleteConfirm = nil
         }
-        .errorAlert(message: $service.errorMessage)
     }
 
     // MARK: - Items List (grouped by type)
@@ -91,6 +104,7 @@ struct LoginItemsView: View {
                         await service.setEnabled(enabled, for: item)
                     }, onDelete: {
                         showDeleteConfirm = item
+                        isConfirmingDelete = true
                     })
                 }
             }

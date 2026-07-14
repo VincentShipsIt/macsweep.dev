@@ -339,11 +339,49 @@ struct NetworkRow: View {
 // MARK: - SSH Hosts View
 
 struct SSHHostsView: View {
+    /// One coherent confirmation flow for the two SSH destructive actions. Two
+    /// stacked `.deleteConfirmation` modifiers on the same view are fragile (SwiftUI
+    /// presents only one presentation modifier of a kind reliably); a single
+    /// optional-driven modifier makes the two actions mutually exclusive by
+    /// construction and routes both through the shared confirmation UI.
+    private enum PendingDeletion: Equatable {
+        case removeSelected(count: Int)
+        case clearAll
+
+        var title: String {
+            switch self {
+            case .removeSelected(let count): return "Remove \(count) SSH hosts?"
+            case .clearAll: return "Clear all SSH known hosts?"
+            }
+        }
+
+        var confirmTitle: String {
+            switch self {
+            case .removeSelected: return "Remove Hosts"
+            case .clearAll: return "Clear All (Backup Created)"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .removeSelected:
+                return "These hosts will be removed from your known_hosts file. "
+                    + "You will need to verify their fingerprints again when reconnecting."
+            case .clearAll:
+                return "This will remove ALL known SSH hosts. A backup will be created at "
+                    + "~/.ssh/known_hosts.backup. You will need to verify fingerprints for all hosts."
+            }
+        }
+    }
+
     @State private var hosts: [SSHKnownHost] = []
     @State private var selectedHosts: Set<UUID> = []
     @State private var isLoading = false
-    @State private var showingConfirmation = false
-    @State private var showingClearAllConfirmation = false
+    @State private var pendingDeletion: PendingDeletion?
+    // Dedicated presentation Bool: confirmationDialog clears its isPresented
+    // binding before the confirm action runs, so a `$pendingDeletion.isPresent()`
+    // binding would nil the intent and silently skip the deletion.
+    @State private var isConfirmingDeletion = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -478,12 +516,14 @@ struct SSHHostsView: View {
             .glassButton()
 
             Button("Clear All Hosts") {
-                showingClearAllConfirmation = true
+                pendingDeletion = .clearAll
+                isConfirmingDeletion = true
             }
             .glassButton()
 
             Button("Remove Selected") {
-                showingConfirmation = true
+                pendingDeletion = .removeSelected(count: selectedHosts.count)
+                isConfirmingDeletion = true
             }
             .glassButton(prominent: true)
             .tint(.red)
@@ -491,20 +531,21 @@ struct SSHHostsView: View {
         }
         .padding()
         .deleteConfirmation(
-            "Remove \(selectedHosts.count) SSH hosts?",
-            isPresented: $showingConfirmation,
-            confirmTitle: "Remove Hosts",
-            message: "These hosts will be removed from your known_hosts file. You will need to verify their fingerprints again when reconnecting."
+            pendingDeletion?.title ?? "",
+            isPresented: $isConfirmingDeletion,
+            confirmTitle: pendingDeletion?.confirmTitle ?? "",
+            message: pendingDeletion?.message ?? ""
         ) {
-            removeSelected()
-        }
-        .deleteConfirmation(
-            "Clear all SSH known hosts?",
-            isPresented: $showingClearAllConfirmation,
-            confirmTitle: "Clear All (Backup Created)",
-            message: "This will remove ALL known SSH hosts. A backup will be created at ~/.ssh/known_hosts.backup. You will need to verify fingerprints for all hosts."
-        ) {
-            clearAll()
+            // Each action still routes to its own handler; SafetyChecker-equivalent
+            // guards inside SSHKnownHostsManager (backup on clear-all) are untouched.
+            switch pendingDeletion {
+            case .removeSelected:
+                removeSelected()
+            case .clearAll:
+                clearAll()
+            case .none:
+                break
+            }
         }
     }
 
@@ -597,6 +638,14 @@ struct DNSCacheView: View {
 
             Divider()
 
+            // Inline banner is the default non-blocking error surface, matching the
+            // WiFi and SSH tabs; a failed DNS flush leaves the page usable.
+            if let flushErrorMessage {
+                MacSweepErrorBanner(message: flushErrorMessage) {
+                    self.flushErrorMessage = nil
+                }
+            }
+
             ScrollView {
                 VStack(spacing: 20) {
                     dnsFlushSection
@@ -608,7 +657,6 @@ struct DNSCacheView: View {
         .task {
             await scanCaches()
         }
-        .errorAlert("DNS Flush Failed", message: $flushErrorMessage)
     }
 
     // MARK: - Header

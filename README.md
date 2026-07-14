@@ -172,7 +172,10 @@ swift build -c release --product macsweep
 ```
 
 To build the SwiftUI app, open `MacSweep.xcodeproj` in Xcode 26 or later and build
-the app target.
+the app target. Local and CI builds use ad-hoc signing without hardened runtime
+so the embedded Sparkle framework can load without a Developer ID Team ID. The
+release and nightly workflows explicitly restore hardened runtime when signing
+with the Developer ID certificate.
 
 ### Testing & QA
 
