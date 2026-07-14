@@ -538,7 +538,7 @@ private let numberFormatter: NumberFormatter = {
 }()
 
 private func formattedBytes(_ bytes: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    bytes.formattedFileSize
 }
 
 private func compactNumber(_ value: Int) -> String {

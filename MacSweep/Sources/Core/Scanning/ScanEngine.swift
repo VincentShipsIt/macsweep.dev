@@ -16,7 +16,7 @@ enum ScanEngineError: Error, LocalizedError, Equatable {
         case .deletionBlocked(let reason):
             return reason
         case .confirmationRequired(let size):
-            let formatted = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+            let formatted = size.formattedFileSize
             return "This will delete \(formatted), which needs confirmation before proceeding."
         }
     }

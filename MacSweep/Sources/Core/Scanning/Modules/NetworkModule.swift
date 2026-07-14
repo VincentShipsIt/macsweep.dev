@@ -459,7 +459,7 @@ struct NetworkCleanupSummary {
     var canFlushDNS: Bool = true
 
     var formattedCacheSize: String {
-        ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file)
+        cacheSize.formattedFileSize
     }
 
     static func current() async -> NetworkCleanupSummary {

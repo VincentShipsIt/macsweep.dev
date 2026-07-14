@@ -171,7 +171,7 @@ struct ShredResult {
     let errors: [ShredError]
 
     var formattedBytes: String {
-        ByteCountFormatter.string(fromByteCount: bytesShredded, countStyle: .file)
+        bytesShredded.formattedFileSize
     }
 
     var success: Bool {

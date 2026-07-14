@@ -107,4 +107,53 @@ struct SizeFormattingTests {
         #expect(ScanNotificationContent.title == "MacSweep Weekly Scan")
         #expect(ScanNotificationContent.categoryIdentifier == "SCAN_COMPLETE")
     }
+
+    // MARK: - Int64.formattedFileSize
+
+    // The migration replaced ~29 inline `ByteCountFormatter.string(fromByteCount:
+    // countStyle: .file)` call sites with this single extension. It is now the
+    // one source of truth every model property and view label routes through, so
+    // pin its output to the `.file` count style across the byte-magnitude range.
+    @Test(arguments: [
+        Int64(0),                 // zero
+        Int64(1),                 // 1 byte
+        Int64(999),               // < 1 KB
+        Int64(1_024),             // KB boundary
+        Int64(500_000),           // < 1 MB
+        Int64(1_500_000),         // MB
+        Int64(999_999_999),       // just under 1 GB
+        Int64(1_000_000_000),     // exactly 1 GB
+        Int64(42_500_000_000),    // large GB
+        Int64.max,                // overflow-guard ceiling
+    ])
+    func formattedFileSizeMatchesFileCountStyle(bytes: Int64) {
+        #expect(bytes.formattedFileSize == fileStyle(bytes))
+    }
+
+    // MARK: - Model properties route through the extension
+
+    // Representative migrated sites (models highlighted in the migration scope):
+    // each formatted property must produce the exact `.file` text the extension
+    // does, proving the swap preserved output.
+
+    @Test func cleanupResultFormatsBytesFreedAsFileStyle() {
+        let result = CleanupResult(itemsProcessed: 3, bytesFreed: 1_500_000)
+
+        #expect(result.formattedBytesFreed == fileStyle(1_500_000))
+    }
+
+    @Test func diskUsageFormatsEachComponentAsFileStyle() {
+        let usage = DiskUsage(total: 500_000_000_000, used: 300_000_000_000, free: 200_000_000_000)
+
+        #expect(usage.formattedTotal == fileStyle(500_000_000_000))
+        #expect(usage.formattedUsed == fileStyle(300_000_000_000))
+        #expect(usage.formattedFree == fileStyle(200_000_000_000))
+    }
+
+    @Test func networkCleanupSummaryFormatsCacheSizeAsFileStyle() {
+        var summary = NetworkCleanupSummary()
+        summary.cacheSize = 12_345_678
+
+        #expect(summary.formattedCacheSize == fileStyle(12_345_678))
+    }
 }

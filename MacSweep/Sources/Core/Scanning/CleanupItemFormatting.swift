@@ -14,6 +14,6 @@ extension Sequence where Element == CleanupItem {
     /// Replaces the hand-rolled filter+reduce+ByteCountFormatter idiom the views
     /// used to copy.
     func formattedTotalSize(selected: Set<UUID>? = nil) -> String {
-        ByteCountFormatter.string(fromByteCount: totalSize(selected: selected), countStyle: .file)
+        totalSize(selected: selected).formattedFileSize
     }
 }

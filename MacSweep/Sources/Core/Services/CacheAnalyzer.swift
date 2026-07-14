@@ -146,7 +146,7 @@ struct CacheAnalyzer {
             return Finding(
                 path: path,
                 sizeBytes: bytes,
-                sizeText: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file),
+                sizeText: bytes.formattedFileSize,
                 category: categorize(path: path),
                 regeneratesAutomatically: true,
                 source: "Fast Scan",

@@ -271,15 +271,15 @@ struct DiskQuickStats {
     }
 
     var formattedTotal: String {
-        ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        total.formattedFileSize
     }
 
     var formattedAvailable: String {
-        ByteCountFormatter.string(fromByteCount: available, countStyle: .file)
+        available.formattedFileSize
     }
 
     var formattedUsed: String {
-        ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+        used.formattedFileSize
     }
 }
 

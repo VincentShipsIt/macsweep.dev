@@ -677,7 +677,7 @@ public enum CLIExecutor {
                 "Modules: \(output.metadata.executedModules.joined(separator: ", "))",
                 "Full Disk Access: \(output.permissions.fullDiskAccessGranted ? "granted" : "missing")",
                 "Findings: \(output.summary.totalFindings)",
-                "Reclaimable: \(ByteCountFormatter.string(fromByteCount: output.summary.reclaimableBytes, countStyle: .file))",
+                "Reclaimable: \(output.summary.reclaimableBytes.formattedFileSize)",
                 "Score: \(output.summary.score)"
             ]
 
@@ -692,7 +692,7 @@ public enum CLIExecutor {
 
             if let cleanup = output.cleanup {
                 lines.append(
-                    "\(cleanup.dryRun ? "Preview" : "Cleanup"): \(cleanup.itemsProcessed) items, \(ByteCountFormatter.string(fromByteCount: cleanup.bytesFreed, countStyle: .file))"
+                    "\(cleanup.dryRun ? "Preview" : "Cleanup"): \(cleanup.itemsProcessed) items, \(cleanup.bytesFreed.formattedFileSize)"
                 )
                 if !cleanup.errors.isEmpty {
                     lines.append("Errors: \(cleanup.errors.count)")
@@ -706,7 +706,7 @@ public enum CLIExecutor {
                 lines.append("")
                 lines.append("Recommended cleanup items:")
                 lines.append(contentsOf: recommendedFindings.prefix(10).map {
-                    "  - [\($0.module)] \($0.path) (\(ByteCountFormatter.string(fromByteCount: $0.size, countStyle: .file)))"
+                    "  - [\($0.module)] \($0.path) (\($0.size.formattedFileSize))"
                 })
             }
 
@@ -722,7 +722,7 @@ public enum CLIExecutor {
                     } else {
                         status = " review-only"
                     }
-                    let size = ByteCountFormatter.string(fromByteCount: $0.size, countStyle: .file)
+                    let size = $0.size.formattedFileSize
                     return "  - [\($0.module)] \($0.path) (\(size))\(status)"
                 })
             }
@@ -755,7 +755,7 @@ public enum CLIExecutor {
                 "Success: \(output.result.success ? "yes" : "no")"
             ]
             if output.result.bytesFreed > 0 {
-                lines.append("Freed: \(ByteCountFormatter.string(fromByteCount: output.result.bytesFreed, countStyle: .file))")
+                lines.append("Freed: \(output.result.bytesFreed.formattedFileSize)")
             }
             return lines.joined(separator: "\n")
 

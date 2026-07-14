@@ -399,7 +399,7 @@ struct CleanupResult: Sendable {
     let timestamp: Date
 
     var formattedBytesFreed: String {
-        ByteCountFormatter.string(fromByteCount: bytesFreed, countStyle: .file)
+        bytesFreed.formattedFileSize
     }
 
     var isSuccess: Bool {
@@ -524,15 +524,15 @@ struct DiskUsage: Sendable, Equatable {
     }
 
     var formattedUsed: String {
-        ByteCountFormatter.string(fromByteCount: used, countStyle: .file)
+        used.formattedFileSize
     }
 
     var formattedFree: String {
-        ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+        free.formattedFileSize
     }
 
     var formattedTotal: String {
-        ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+        total.formattedFileSize
     }
 
     static func current() async -> DiskUsage? {

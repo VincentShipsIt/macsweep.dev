@@ -1052,7 +1052,7 @@ private struct CleanupReviewGroup: Identifiable {
     }
 
     var formattedSelectedBytes: String {
-        ByteCountFormatter.string(fromByteCount: selectedBytes, countStyle: .file)
+        selectedBytes.formattedFileSize
     }
 }
 
