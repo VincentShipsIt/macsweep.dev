@@ -8,6 +8,9 @@ struct BrowserCleanupView: View {
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
     @State private var errorMessage: String?
+    // Follow-up: adopt the shared `animated(_:value:)` reduce-motion helper from
+    // App/Motion.swift once the "Animate scan lifecycle" work merges it in.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let browsers: [any BrowserModule] = [
         ChromeModule(),
@@ -31,13 +34,23 @@ struct BrowserCleanupView: View {
 
             Divider()
 
-            if isScanning {
-                scanningView
-            } else if browserResults.isEmpty {
-                emptyState
-            } else {
-                resultsList
+            // This view predates the shared ScanLandingView, so crossfade the
+            // three-way content swap by hand. `contentPhase` collapses the two
+            // booleans into one Equatable so the animation fires on every branch.
+            ZStack {
+                if isScanning {
+                    scanningView
+                        .transition(.opacity)
+                } else if browserResults.isEmpty {
+                    emptyState
+                        .transition(.opacity)
+                } else {
+                    resultsList
+                        .transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: contentPhase)
 
             if !browserResults.isEmpty && !isScanning {
                 Divider()
@@ -253,6 +266,19 @@ struct BrowserCleanupView: View {
     }
 
     // MARK: - Computed
+
+    /// The three mutually exclusive content states, so the crossfade animation
+    /// has a single Equatable value to watch across both driving booleans.
+    private enum ContentPhase: Equatable {
+        case scanning
+        case empty
+        case results
+    }
+
+    private var contentPhase: ContentPhase {
+        if isScanning { return .scanning }
+        return browserResults.isEmpty ? .empty : .results
+    }
 
     private var allItems: [CleanupItem] {
         browserResults.flatMap(\.items)
