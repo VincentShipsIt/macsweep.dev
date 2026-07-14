@@ -63,9 +63,9 @@ struct GitArtifactScannerTests {
     /// `CacheAnalyzer.runProcess` carries the byte-identical fix; this covers the
     /// shared idiom via the one runner with `internal` visibility.
     @Test(.timeLimit(.minutes(1)))
-    func drainsLargeStdoutAndStderrWithoutDeadlock() {
+    func drainsLargeStdoutAndStderrWithoutDeadlock() async {
         // 200 KB to stdout, then 200 KB to stderr — each ~3x the pipe buffer.
-        let result = GitArtifactScanner.run([
+        let result = await GitArtifactScanner.run([
             "sh", "-c",
             "yes 0123456789 | head -c 200000; yes 9876543210 | head -c 200000 1>&2"
         ])
@@ -73,5 +73,15 @@ struct GitArtifactScannerTests {
         #expect(result.status == 0)
         #expect(result.output.count >= 190_000)
         #expect(result.error.count >= 190_000)
+    }
+
+    @Test func subprocessTimeoutFailsWithBoundedStatus() async {
+        let result = await GitArtifactScanner.run(
+            ["sh", "-c", "sleep 5"],
+            timeout: 0.2
+        )
+
+        #expect(result.status == 124)
+        #expect(result.error.contains("timed out"))
     }
 }
