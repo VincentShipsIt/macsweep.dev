@@ -139,4 +139,27 @@ final class LargeFilesModuleTests {
         let items = try await module(.both).scan()
         #expect(items.isEmpty)
     }
+
+    @Test func activityAgeCutoffsAreDeterministic() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let reference = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 14
+        )))
+
+        #expect(LargeFilesModule.ActivityAge.any.cutoffDate(relativeTo: reference, calendar: calendar) == nil)
+        #expect(
+            LargeFilesModule.ActivityAge.thirtyDays.cutoffDate(
+                relativeTo: reference,
+                calendar: calendar
+            ) == calendar.date(byAdding: .day, value: -30, to: reference)
+        )
+        #expect(
+            LargeFilesModule.ActivityAge.oneYear.cutoffDate(
+                relativeTo: reference,
+                calendar: calendar
+            ) == calendar.date(byAdding: .day, value: -365, to: reference)
+        )
+    }
 }

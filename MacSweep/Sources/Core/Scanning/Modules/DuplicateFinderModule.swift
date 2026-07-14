@@ -9,13 +9,46 @@ struct DuplicateFinderModule: ScanModule {
     let icon = "doc.on.doc"
 
     var searchPaths: [URL] = [
-        FileManager.default.homeDirectoryForCurrentUser,
+        FileManager.default.homeDirectoryForCurrentUser
     ]
 
     var minSize: Int64 = 1024  // Skip files < 1KB
     var maxSize: Int64 = 5_368_709_120  // Skip files > 5GB
 
     func scan() async throws -> [CleanupItem] {
+        (try await scanReviewGroups()).flatMap(\.suggestedCleanupItems)
+    }
+
+    /// Returns every confirmed duplicate, including the copy recommended to
+    /// keep. The regular scan intentionally returns only deletion candidates;
+    /// the GUI uses this richer result to render complete, review-only groups.
+    func scanReviewGroups() async throws -> [FileReviewGroup] {
+        let selector = DuplicateSelector()
+        return (try await duplicateGroups()).compactMap { group in
+            guard let keeper = selector.recommendedKeeper(in: group) else { return nil }
+            let referenceName = keeper.path.lastPathComponent
+            let items = group.files.map { file in
+                CleanupItem(
+                    id: file.id,
+                    path: file.path,
+                    size: file.size,
+                    type: .file,
+                    module: id,
+                    moduleName: "Duplicate of \(referenceName)",
+                    lastModified: file.modifiedDate
+                )
+            }
+            return FileReviewGroup(
+                id: group.id,
+                title: referenceName,
+                items: items,
+                suggestedKeeperID: keeper.id,
+                suggestionReason: "Preferred location, then oldest copy"
+            )
+        }
+    }
+
+    private func duplicateGroups() async throws -> [DuplicateGroup] {
         var sizeGroups: [Int64: [URL]] = [:]
 
         // Phase 1: Group by size
@@ -37,7 +70,7 @@ struct DuplicateFinderModule: ScanModule {
         }
         let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
 
-        var duplicateGroups: [DuplicateGroup] = []
+        var groups: [DuplicateGroup] = []
         await withTaskGroup(of: [DuplicateGroup].self) { group in
             var next = 0
             func enqueueNext() {
@@ -50,7 +83,7 @@ struct DuplicateFinderModule: ScanModule {
             // Keep at most `width` hashings in flight; refill as each completes.
             for _ in 0..<min(width, candidates.count) { enqueueNext() }
             while let found = await group.next() {
-                duplicateGroups.append(contentsOf: found)
+                groups.append(contentsOf: found)
                 if Task.isCancelled {
                     group.cancelAll()
                     break
@@ -59,21 +92,7 @@ struct DuplicateFinderModule: ScanModule {
             }
         }
 
-        // Phase 3: Convert to CleanupItems
-        let selector = DuplicateSelector()
-        return duplicateGroups.flatMap { group in
-            selector.autoSelect(group).map { file in
-                CleanupItem(
-                    id: file.id,
-                    path: file.path,
-                    size: file.size,
-                    type: .file,
-                    module: id,
-                    moduleName: "Duplicate of \(group.original?.path.lastPathComponent ?? "file")",
-                    lastModified: file.modifiedDate
-                )
-            }
-        }
+        return groups
     }
 
     private func scanDirectory(_ root: URL, into sizeGroups: inout [Int64: [URL]]) async throws {
@@ -248,10 +267,11 @@ struct DuplicateFinderModule: ScanModule {
         await cleanItems(
             items,
             dryRun: dryRun,
-            errorMessage: { _ in "Failed to remove duplicate" }
-        ) { item, _ in
-            try CleanupFileRemover.recoverable(item.path, module: item.module)
-        }
+            errorMessage: { _ in "Failed to remove duplicate" },
+            remove: { item, _ in
+                try CleanupFileRemover.recoverable(item.path, module: item.module)
+            }
+        )
     }
 }
 
@@ -311,11 +331,19 @@ struct DuplicateFile: Identifiable, Hashable {
 // MARK: - Smart Selection
 
 struct DuplicateSelector {
+    func recommendedKeeper(in group: DuplicateGroup) -> DuplicateFile? {
+        sortedByKeepPriority(group.files).first
+    }
+
     /// Auto-select duplicates to delete, keeping the best one
     func autoSelect(_ group: DuplicateGroup) -> [DuplicateFile] {
         guard group.files.count > 1 else { return [] }
 
-        let sorted = group.files.sorted { file1, file2 in
+        return Array(sortedByKeepPriority(group.files).dropFirst())
+    }
+
+    private func sortedByKeepPriority(_ files: [DuplicateFile]) -> [DuplicateFile] {
+        files.sorted { file1, file2 in
             // Priority order (higher is better to keep):
             // 1. Not in trash
             // 2. In important location (Documents > Desktop > Pictures)
@@ -333,9 +361,6 @@ struct DuplicateSelector {
 
             return file1.createdDate < file2.createdDate  // Older is better
         }
-
-        // Keep the first (best), return rest for deletion
-        return Array(sorted.dropFirst())
     }
 
     private func locationPriority(_ url: URL) -> Int {

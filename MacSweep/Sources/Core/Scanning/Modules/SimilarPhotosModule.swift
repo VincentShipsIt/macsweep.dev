@@ -14,7 +14,7 @@ struct SimilarPhotosModule: ScanModule {
     var searchPaths: [URL] = [
         FileManager.default.homeDirectoryForCurrentUser.appending(path: "Pictures"),
         FileManager.default.homeDirectoryForCurrentUser.appending(path: "Desktop"),
-        FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads"),
+        FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads")
     ]
 
     var minimumFileSize: Int64 = 204_800
@@ -22,12 +22,21 @@ struct SimilarPhotosModule: ScanModule {
     var maxImages: Int = 250
 
     func scan() async throws -> [CleanupItem] {
-        let candidates = try await imageCandidates()
-        let groups = SimilarPhotoGrouper(threshold: similarityThreshold).group(candidates)
+        (try await scanReviewGroups())
+            .flatMap(\.suggestedCleanupItems)
+            .sorted { $0.size > $1.size }
+    }
+
+    /// Returns complete clusters for manual inspection, including the photo
+    /// suggested as the keeper. The regular scan remains limited to the
+    /// review-only cleanup candidates consumed by Smart Care and the CLI.
+    func scanReviewGroups() async throws -> [FileReviewGroup] {
+        let groups = try await similarPhotoGroups()
         let selector = SimilarPhotoSelector()
 
-        return groups.flatMap { group in
-            selector.autoSelect(group).map { photo in
+        return groups.compactMap { group in
+            guard let keeper = selector.recommendedKeeper(in: group) else { return nil }
+            let items = group.photos.map { photo in
                 CleanupItem(
                     id: photo.id,
                     path: photo.path,
@@ -38,8 +47,19 @@ struct SimilarPhotosModule: ScanModule {
                     lastModified: photo.modifiedDate
                 )
             }
+            return FileReviewGroup(
+                id: group.id,
+                title: group.reference.displayName,
+                items: items,
+                suggestedKeeperID: keeper.id,
+                suggestionReason: "Oldest photo, then largest file"
+            )
         }
-        .sorted { $0.size > $1.size }
+    }
+
+    private func similarPhotoGroups() async throws -> [SimilarPhotoGroup] {
+        let candidates = try await imageCandidates()
+        return SimilarPhotoGrouper(threshold: similarityThreshold).group(candidates)
     }
 
     private func imageCandidates() async throws -> [SimilarPhotoCandidate] {
@@ -51,7 +71,7 @@ struct SimilarPhotosModule: ScanModule {
             .fileSizeKey,
             .totalFileAllocatedSizeKey,
             .contentModificationDateKey,
-            .creationDateKey,
+            .creationDateKey
         ]
 
         var candidates: [SimilarPhotoCandidate] = []
@@ -121,7 +141,7 @@ struct SimilarPhotoSignature: Hashable, Sendable {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceThumbnailMaxPixelSize: 32,
+            kCGImageSourceThumbnailMaxPixelSize: 32
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
 
@@ -208,8 +228,16 @@ struct SimilarPhotoGrouper {
 }
 
 struct SimilarPhotoSelector {
+    func recommendedKeeper(in group: SimilarPhotoGroup) -> SimilarPhotoCandidate? {
+        sortedByKeepPriority(group.photos).first
+    }
+
     func autoSelect(_ group: SimilarPhotoGroup) -> [SimilarPhotoCandidate] {
-        let sorted = group.photos.sorted { lhs, rhs in
+        Array(sortedByKeepPriority(group.photos).dropFirst())
+    }
+
+    private func sortedByKeepPriority(_ photos: [SimilarPhotoCandidate]) -> [SimilarPhotoCandidate] {
+        photos.sorted { lhs, rhs in
             if lhs.createdDate != rhs.createdDate {
                 return lhs.createdDate < rhs.createdDate
             }
@@ -218,7 +246,5 @@ struct SimilarPhotoSelector {
             }
             return lhs.path.path < rhs.path.path
         }
-
-        return Array(sorted.dropFirst())
     }
 }

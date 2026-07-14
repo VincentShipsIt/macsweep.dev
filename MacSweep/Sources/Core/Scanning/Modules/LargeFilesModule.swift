@@ -22,6 +22,26 @@ struct LargeFilesModule: ScanModule {
         }
     }
 
+    enum ActivityAge: String, CaseIterable, Identifiable {
+        case any = "Any age"
+        case thirtyDays = "30+ days"
+        case ninetyDays = "90+ days"
+        case oneYear = "1+ year"
+
+        var id: Self { self }
+
+        func cutoffDate(relativeTo date: Date = Date(), calendar: Calendar = .current) -> Date? {
+            let days: Int
+            switch self {
+            case .any: return nil
+            case .thirtyDays: days = 30
+            case .ninetyDays: days = 90
+            case .oneYear: days = 365
+            }
+            return calendar.date(byAdding: .day, value: -days, to: date)
+        }
+    }
+
     /// Minimum file size to report (default 100MB)
     var threshold: Int64 = 104_857_600
 
@@ -47,7 +67,7 @@ struct LargeFilesModule: ScanModule {
         "Library/Contacts",
         ".Trash",
         "Library/Mobile Documents",
-        "Library/CloudStorage",
+        "Library/CloudStorage"
     ]
 
     func scan() async throws -> [CleanupItem] {
@@ -268,10 +288,10 @@ struct LargeFilesModule: ScanModule {
 
 struct LargeFilesFilter {
     var minSize: Int64 = 104_857_600  // 100MB
-    var maxSize: Int64? = nil
-    var types: Set<String>? = nil      // Filter by category
-    var olderThan: Date? = nil         // Last modified before
-    var searchPath: URL? = nil         // Specific folder
+    var maxSize: Int64?
+    var types: Set<String>?      // Filter by category
+    var olderThan: Date?         // Last modified before
+    var searchPath: URL?         // Specific folder
 
     func apply(to items: [CleanupItem]) -> [CleanupItem] {
         items.filter { item in

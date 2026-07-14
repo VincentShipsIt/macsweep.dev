@@ -310,6 +310,46 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     }
 }
 
+/// A review-only cluster of related personal files with exactly one protected
+/// keeper. Feature pages may change the keeper, but cleanup selection must
+/// always exclude it so a group can never be emptied accidentally.
+struct FileReviewGroup: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let title: String
+    let items: [CleanupItem]
+    let suggestedKeeperID: CleanupItem.ID
+    let suggestionReason: String
+
+    var suggestedCleanupItems: [CleanupItem] {
+        items.filter { $0.id != suggestedKeeperID }
+    }
+
+    var suggestedCleanupIDs: Set<CleanupItem.ID> {
+        Set(suggestedCleanupItems.map(\.id))
+    }
+
+    func cleanupIDs(keeping keeperID: CleanupItem.ID) -> Set<CleanupItem.ID> {
+        guard items.contains(where: { $0.id == keeperID }) else { return [] }
+        return Set(items.lazy.map(\.id).filter { $0 != keeperID })
+    }
+
+    func retainingItems(withIDs liveIDs: Set<CleanupItem.ID>) -> FileReviewGroup? {
+        let remainingItems = items.filter { liveIDs.contains($0.id) }
+        guard remainingItems.count > 1 else { return nil }
+
+        let remainingKeeperID = remainingItems.contains(where: { $0.id == suggestedKeeperID })
+            ? suggestedKeeperID
+            : remainingItems[0].id
+        return FileReviewGroup(
+            id: id,
+            title: title,
+            items: remainingItems,
+            suggestedKeeperID: remainingKeeperID,
+            suggestionReason: suggestionReason
+        )
+    }
+}
+
 // MARK: - Cleanup Result
 
 struct CleanupResult: Sendable {
