@@ -63,7 +63,6 @@ struct TrashBinsView: View {
                     }
                 } else {
                     trashList
-                    Divider()
                     footer
                 }
             }

@@ -40,7 +40,6 @@ struct BrowserCleanupView: View {
             }
 
             if !browserResults.isEmpty && !isScanning {
-                Divider()
                 footer
             }
         }

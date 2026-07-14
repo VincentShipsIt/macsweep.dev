@@ -90,7 +90,6 @@ struct LargeFilesView: View {
                     itemsList
 
                     if !filteredItems.isEmpty {
-                        Divider()
                         footer
                     }
                 }

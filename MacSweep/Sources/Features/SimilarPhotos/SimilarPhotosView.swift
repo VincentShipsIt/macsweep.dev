@@ -68,7 +68,6 @@ struct SimilarPhotosView: View {
                 filterBar
                 Divider()
                 groupsList
-                Divider()
                 footer
             }
         }

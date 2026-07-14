@@ -36,7 +36,6 @@ struct HomebrewUpdaterView: View {
                 }
 
                 if !service.packages.isEmpty && !service.isLoading {
-                    Divider()
                     bottomBar
                 }
 
@@ -142,35 +141,27 @@ struct HomebrewUpdaterView: View {
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack {
-            let selectedCount = service.packages.filter(\.isSelected).count
-            Text("\(selectedCount) of \(service.packages.count) selected")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button("Select All") {
+        let selectedCount = service.packages.filter(\.isSelected).count
+        return CleanupFooter(
+            selectedCount: selectedCount,
+            totalCount: service.packages.count,
+            onSelectAll: {
                 for i in service.packages.indices { service.packages[i].isSelected = true }
-            }
-            .buttonStyle(.plain)
-            .font(.caption)
-
-            Button("Upgrade Selected") {
+            },
+            actionTitle: "Upgrade All",
+            actionTint: nil,
+            actionDisabled: service.isUpgrading,
+            onAction: {
+                showLog = true
+                Task { await service.upgradeAll() }
+            },
+            secondaryActionTitle: "Upgrade Selected",
+            secondaryActionDisabled: service.isUpgrading || selectedCount == 0,
+            onSecondaryAction: {
                 showLog = true
                 Task { await service.upgradeSelected() }
             }
-            .glassButton()
-            .disabled(service.isUpgrading || service.packages.filter(\.isSelected).isEmpty)
-
-            Button("Upgrade All") {
-                showLog = true
-                Task { await service.upgradeAll() }
-            }
-            .glassButton(prominent: true)
-            .disabled(service.isUpgrading)
-        }
-        .padding()
+        )
     }
 
     // MARK: - Upgrade Log
