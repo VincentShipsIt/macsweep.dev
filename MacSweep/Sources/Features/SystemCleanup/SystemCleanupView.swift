@@ -18,6 +18,7 @@ struct SystemCleanupView: View {
             hidesChrome: appState.scanResults.isEmpty,
             scrolls: appState.scanResults.isEmpty
         ) {
+            Group {
             if appState.scanResults.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -41,6 +42,7 @@ struct SystemCleanupView: View {
                             .padding(20)
                     }
                 }
+                .transition(.scanCrossfade)
             } else {
                 VStack(spacing: 0) {
                     if !appState.hasFullDiskAccess {
@@ -55,7 +57,11 @@ struct SystemCleanupView: View {
 
                     footer
                 }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: appState.scanResults.isEmpty)
         }
         .errorAlert("Cleanup Failed", message: $appState.lastDeletionError)
     }

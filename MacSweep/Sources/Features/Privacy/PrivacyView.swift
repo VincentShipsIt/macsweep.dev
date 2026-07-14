@@ -49,6 +49,7 @@ struct PrivacyView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.scanCrossfade)
                 } else {
                     ScrollView {
                         VStack(spacing: 24) {
@@ -74,8 +75,11 @@ struct PrivacyView: View {
                         }
                         .padding()
                     }
+                    .transition(.scanCrossfade)
                 }
             }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: isScanning || !hasScanned)
         }
     }
 
