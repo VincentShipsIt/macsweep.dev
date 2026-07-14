@@ -10,6 +10,10 @@ struct SpaceLensView: View {
     @State private var diskStats: DiskQuickStats?
     @State private var viewMode: ViewMode = .treemap
     @State private var nodeToTrash: DiskNode?
+    // Dedicated presentation Bool: confirmationDialog clears its isPresented
+    // binding before the confirm action runs, so a `$nodeToTrash.isPresent()`
+    // binding would nil the target and silently skip the trash.
+    @State private var isConfirmingTrash = false
     @State private var errorMessage: String?
 
     enum ViewMode: String, CaseIterable {
@@ -212,7 +216,7 @@ struct SpaceLensView: View {
         // gate for the arbitrary user-chosen path before trashing.
         .deleteConfirmation(
             "Move to Trash?",
-            isPresented: $nodeToTrash.isPresent(),
+            isPresented: $isConfirmingTrash,
             confirmTitle: "Move to Trash",
             message: nodeToTrash.map {
                 "\"\($0.name)\" (\($0.formattedSize)) will be moved to the Trash. "
@@ -274,6 +278,7 @@ struct SpaceLensView: View {
 
                     Button {
                         nodeToTrash = node
+                        isConfirmingTrash = true
                     } label: {
                         Label("Move to Trash", systemImage: "trash")
                             .frame(maxWidth: .infinity)

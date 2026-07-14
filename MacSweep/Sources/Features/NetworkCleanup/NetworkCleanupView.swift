@@ -378,6 +378,10 @@ struct SSHHostsView: View {
     @State private var selectedHosts: Set<UUID> = []
     @State private var isLoading = false
     @State private var pendingDeletion: PendingDeletion?
+    // Dedicated presentation Bool: confirmationDialog clears its isPresented
+    // binding before the confirm action runs, so a `$pendingDeletion.isPresent()`
+    // binding would nil the intent and silently skip the deletion.
+    @State private var isConfirmingDeletion = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -513,11 +517,13 @@ struct SSHHostsView: View {
 
             Button("Clear All Hosts") {
                 pendingDeletion = .clearAll
+                isConfirmingDeletion = true
             }
             .glassButton()
 
             Button("Remove Selected") {
                 pendingDeletion = .removeSelected(count: selectedHosts.count)
+                isConfirmingDeletion = true
             }
             .glassButton(prominent: true)
             .tint(.red)
@@ -526,7 +532,7 @@ struct SSHHostsView: View {
         .padding()
         .deleteConfirmation(
             pendingDeletion?.title ?? "",
-            isPresented: $pendingDeletion.isPresent(),
+            isPresented: $isConfirmingDeletion,
             confirmTitle: pendingDeletion?.confirmTitle ?? "",
             message: pendingDeletion?.message ?? ""
         ) {

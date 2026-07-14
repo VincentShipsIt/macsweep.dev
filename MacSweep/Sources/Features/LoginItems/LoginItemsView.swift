@@ -4,6 +4,10 @@ import SwiftUI
 struct LoginItemsView: View {
     @StateObject private var service = LoginItemsService.shared
     @State private var showDeleteConfirm: LoginItem? = nil
+    // Presentation is a dedicated Bool, not `$showDeleteConfirm.isPresent()`:
+    // confirmationDialog clears its isPresented binding *before* the confirm
+    // action runs, which would nil the target and silently skip the delete.
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         FeaturePageShell(
@@ -60,7 +64,7 @@ struct LoginItemsView: View {
         // `.isPresent()`; the delete still calls the same `service.delete(item)`.
         .deleteConfirmation(
             "Move login item to Trash?",
-            isPresented: $showDeleteConfirm.isPresent(),
+            isPresented: $isConfirmingDelete,
             confirmTitle: "Move to Trash",
             message: showDeleteConfirm.map {
                 "This moves \"\($0.name)\" to the Trash so it can be restored if needed."
@@ -100,6 +104,7 @@ struct LoginItemsView: View {
                         await service.setEnabled(enabled, for: item)
                     }, onDelete: {
                         showDeleteConfirm = item
+                        isConfirmingDelete = true
                     })
                 }
             }
