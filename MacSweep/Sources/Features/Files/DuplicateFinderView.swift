@@ -157,8 +157,13 @@ struct DuplicateFinderView: View {
             selectAllOnCompletion: false,
             onError: { "Couldn't scan for duplicates: \($0.localizedDescription)" },
             {
+                let token = model.activeScanToken
                 let groups = try await DuplicateFinderModule().scanReviewGroups()
+                try Task.checkCancellation()
                 await MainActor.run {
+                    // A rescan started while scanning supersedes this result;
+                    // defer to it instead of clobbering the newer review state.
+                    guard model.isCurrent(token) else { return }
                     reviewGroups = groups
                     keeperIDs = Dictionary(
                         uniqueKeysWithValues: groups.map { ($0.id, $0.suggestedKeeperID) }
@@ -174,6 +179,10 @@ struct DuplicateFinderView: View {
             "Couldn't move duplicates to Trash: \($0.localizedDescription)"
         }
         if result != nil {
+            // Drop a stale Quick Look preview if its file just moved to Trash.
+            if let url = previewURL, !model.items.contains(where: { $0.path == url }) {
+                previewURL = nil
+            }
             pruneResolvedGroups()
         }
         return result
