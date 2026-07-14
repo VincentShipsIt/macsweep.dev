@@ -8,6 +8,11 @@ struct OnboardingView: View {
     @State private var currentPage: Int
     @State private var hasFullDiskAccess: Bool
     @State private var fdaTimer: Timer?
+    /// Shared identity for the trailing primary button so its glass capsule
+    /// morphs (rather than hard-cuts) as the label/role changes across pages
+    /// ("Next" → "Get Started" / "Continue Anyway"). WWDC25 guidance for a
+    /// same-slot control with changing content.
+    @Namespace private var primaryNavGlass
 
     init(
         isPresented: Binding<Bool>,
@@ -84,18 +89,26 @@ struct OnboardingView: View {
                     .glassButton()
                 }
 
-                if currentPage < welcomePages.count {
-                    Button("Next") {
-                        changePage(to: currentPage + 1)
+                // Both branches occupy the same slot and share one glassEffectID,
+                // so the glass capsule morphs between them instead of hard-cutting.
+                // The animation is gated on reduce-motion; when motion is reduced
+                // the state swap is instant.
+                GlassEffectContainer {
+                    if currentPage < welcomePages.count {
+                        primaryNavButton("Next", tint: .accentColor) {
+                            changePage(to: currentPage + 1)
+                        }
+                    } else {
+                        primaryNavButton(
+                            hasFullDiskAccess ? "Get Started" : "Continue Anyway",
+                            tint: hasFullDiskAccess ? .accentColor : .orange
+                        ) {
+                            isPresented = false
+                        }
                     }
-                    .glassButton(prominent: true)
-                } else {
-                    Button(hasFullDiskAccess ? "Get Started" : "Continue Anyway") {
-                        isPresented = false
-                    }
-                    .glassButton(prominent: true)
-                    .tint(hasFullDiskAccess ? .accentColor : .orange)
                 }
+                .animation(reduceMotion ? nil : .smooth, value: currentPage)
+                .animation(reduceMotion ? nil : .smooth, value: hasFullDiskAccess)
             }
             .padding()
         }
@@ -126,6 +139,29 @@ struct OnboardingView: View {
                 currentPage = page
             }
         }
+    }
+
+    /// The trailing primary CTA rendered as a custom glass capsule (rather than the
+    /// native `.glassProminent` button style) so it can carry a `glassEffectID` and
+    /// morph across page states. The glass value is still built through the
+    /// centralized `LiquidGlass` factory.
+    private func primaryNavButton(
+        _ title: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .frame(minWidth: 96)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(LiquidGlass.make(tint: tint, interactive: true), in: Capsule())
+        .glassEffectID("onboarding.primaryNav", in: primaryNavGlass)
     }
 }
 
