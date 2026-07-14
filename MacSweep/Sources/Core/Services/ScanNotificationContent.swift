@@ -11,7 +11,7 @@ enum ScanNotificationContent {
     static let categoryIdentifier = "SCAN_COMPLETE"
 
     static func formattedBody(for bytesFound: Int64) -> String {
-        let size = ByteCountFormatter.string(fromByteCount: bytesFound, countStyle: .file)
+        let size = bytesFound.formattedFileSize
         return "Found \(size) of dev junk ready to clean. Tap to review."
     }
 }

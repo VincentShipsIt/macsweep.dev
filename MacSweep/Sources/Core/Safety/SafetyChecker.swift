@@ -961,7 +961,7 @@ struct DeletionGuard {
     }
 
     private var maximumExceededReason: String {
-        "Total size exceeds maximum (\(ByteCountFormatter.string(fromByteCount: maxTotalSize, countStyle: .file)))"
+        "Total size exceeds maximum (\(maxTotalSize.formattedFileSize))"
     }
 }
 

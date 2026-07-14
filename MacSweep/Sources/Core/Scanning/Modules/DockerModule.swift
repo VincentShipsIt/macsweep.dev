@@ -397,7 +397,7 @@ struct DockerInfo {
     var totalSize: Int64 = 0
 
     var formattedTotalSize: String {
-        ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
+        totalSize.formattedFileSize
     }
 
     static func current() async -> DockerInfo {

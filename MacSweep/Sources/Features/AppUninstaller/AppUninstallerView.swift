@@ -196,7 +196,7 @@ struct AppUninstallerView: View {
 
             // Size summary
             let totalSize = orphanedLeftovers.reduce(0) { $0 + $1.size }
-            Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+            Text(totalSize.formattedFileSize)
                 .font(.title3)
                 .fontWeight(.semibold)
                 .padding(.horizontal)
@@ -511,7 +511,7 @@ struct SizeRow: View {
 
             Spacer()
 
-            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+            Text(size.formattedFileSize)
                 .font(isTotal ? .headline : .body)
                 .foregroundStyle(color)
         }

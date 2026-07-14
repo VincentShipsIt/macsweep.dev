@@ -379,7 +379,7 @@ struct PrivacyCategoryCard: View {
 
                 Spacer()
 
-                Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+                Text(totalSize.formattedFileSize)
                     .font(.headline)
                     .foregroundStyle(.secondary)
             }

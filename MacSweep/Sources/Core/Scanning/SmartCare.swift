@@ -10,7 +10,7 @@ struct SmartCareFinding: Identifiable, Hashable, Sendable {
     var id: String { moduleID }
 
     var formattedBytes: String {
-        ByteCountFormatter.string(fromByteCount: reclaimableBytes, countStyle: .file)
+        reclaimableBytes.formattedFileSize
     }
 }
 
@@ -22,7 +22,7 @@ struct SmartCareSummary: Sendable {
     let recommendedCleanupItemIDs: Set<CleanupItem.ID>
 
     var formattedBytes: String {
-        ByteCountFormatter.string(fromByteCount: reclaimableBytes, countStyle: .file)
+        reclaimableBytes.formattedFileSize
     }
 
     var recommendedFindings: [SmartCareFinding] {

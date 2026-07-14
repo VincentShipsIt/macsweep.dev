@@ -292,7 +292,7 @@ struct DuplicateGroup: Identifiable {
     }
 
     var formattedWastedSpace: String {
-        ByteCountFormatter.string(fromByteCount: wastedSpace, countStyle: .file)
+        wastedSpace.formattedFileSize
     }
 }
 

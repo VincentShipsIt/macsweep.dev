@@ -203,7 +203,7 @@ actor MaintenanceActions {
 
             return MaintenanceResult(
                 success: true,
-                message: freed > 0 ? "Freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)) of purgeable space" : "Purgeable space optimization triggered",
+                message: freed > 0 ? "Freed \(freed.formattedFileSize) of purgeable space" : "Purgeable space optimization triggered",
                 bytesFreed: freed
             )
         } catch {
@@ -301,7 +301,7 @@ struct MaintenanceResult {
     var bytesFreed: Int64 = 0
 
     var formattedBytesFreed: String {
-        ByteCountFormatter.string(fromByteCount: bytesFreed, countStyle: .file)
+        bytesFreed.formattedFileSize
     }
 }
 

@@ -397,7 +397,7 @@ struct PackageManagerCard: View {
 
                     Spacer()
 
-                    Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+                    Text(totalSize.formattedFileSize)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
