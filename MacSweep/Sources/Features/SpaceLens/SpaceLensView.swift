@@ -10,7 +10,6 @@ struct SpaceLensView: View {
     @State private var diskStats: DiskQuickStats?
     @State private var viewMode: ViewMode = .treemap
     @State private var nodeToTrash: DiskNode?
-    @State private var showingTrashConfirmation = false
     @State private var errorMessage: String?
 
     enum ViewMode: String, CaseIterable {
@@ -201,23 +200,21 @@ struct SpaceLensView: View {
         }
         .frame(maxHeight: .infinity)
         .macSweepCard(radius: 0)
-        .confirmationDialog(
+        // Routed through the shared destructive-confirmation modifier, driven by the
+        // optional target (no separate bool). The confirm path still calls
+        // `moveToTrash`, which enforces the SafetyChecker.validateForTrash blocklist
+        // gate for the arbitrary user-chosen path before trashing.
+        .deleteConfirmation(
             "Move to Trash?",
-            isPresented: $showingTrashConfirmation,
-            titleVisibility: .visible
+            isPresented: $nodeToTrash.isPresent(),
+            confirmTitle: "Move to Trash",
+            message: nodeToTrash.map {
+                "\"\($0.name)\" (\($0.formattedSize)) will be moved to the Trash. "
+                    + "You can restore it from there until the Trash is emptied."
+            } ?? ""
         ) {
-            Button("Move to Trash", role: .destructive) {
-                if let node = nodeToTrash {
-                    Task { await moveToTrash(node) }
-                }
-                nodeToTrash = nil
-            }
-            Button("Cancel", role: .cancel) {
-                nodeToTrash = nil
-            }
-        } message: {
             if let node = nodeToTrash {
-                Text("\"\(node.name)\" (\(node.formattedSize)) will be moved to the Trash. You can restore it from there until the Trash is emptied.")
+                Task { await moveToTrash(node) }
             }
         }
     }
@@ -271,7 +268,6 @@ struct SpaceLensView: View {
 
                     Button {
                         nodeToTrash = node
-                        showingTrashConfirmation = true
                     } label: {
                         Label("Move to Trash", systemImage: "trash")
                             .frame(maxWidth: .infinity)

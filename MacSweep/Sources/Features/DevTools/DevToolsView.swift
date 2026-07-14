@@ -136,6 +136,21 @@ struct BuildArtifactsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // Inline banner is the default non-blocking error surface; a failed
+            // cleanup leaves the page usable, so it stays inline rather than modal.
+            if let errorMessage = scanState.errorMessage {
+                MacSweepErrorBanner(message: errorMessage) {
+                    scanState.errorMessage = nil
+                }
+            }
+
+            artifactContent
+        }
+    }
+
+    @ViewBuilder
+    private var artifactContent: some View {
         Group {
             if isScanning {
                 ScanLandingView(
@@ -178,7 +193,6 @@ struct BuildArtifactsView: View {
                 }
             }
         }
-        .errorAlert("Cleanup Failed", message: $scanState.errorMessage)
     }
 
     private var noArtifactsView: some View {
