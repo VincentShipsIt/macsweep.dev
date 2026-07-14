@@ -407,7 +407,7 @@ struct SSHHostsView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(10)
-            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
         }
         .padding()
     }
@@ -706,10 +706,10 @@ struct DNSCacheView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(10)
-            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.infoPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
         }
         .padding()
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius))
     }
 
     // MARK: - Network Cache Section
@@ -764,7 +764,7 @@ struct DNSCacheView: View {
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius))
     }
 
     // MARK: - Actions

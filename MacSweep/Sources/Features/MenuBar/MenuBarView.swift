@@ -346,10 +346,12 @@ struct MenuBarView: View {
     }
 
     private var devicesColor: Color {
+        // Route the low-battery boundaries through the shared thresholds so the
+        // companion warns at the same points as the rest of the app. "Healthy"
+        // keeps its cyan connected-devices tint rather than the metric green.
         guard let lowest = lowestDeviceBattery else { return .cyan }
-        if lowest <= 10 { return .red }
-        if lowest <= 20 { return .orange }
-        return .cyan
+        let level = MetricThresholds.capacity(percent: lowest)
+        return level == .normal ? .cyan : level.color
     }
 }
 

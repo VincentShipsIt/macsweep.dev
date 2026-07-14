@@ -253,7 +253,7 @@ struct MacSweepErrorBanner: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color.red.opacity(0.1))
+        .background(MacSweepTheme.errorPanel)
     }
 }
 
@@ -300,7 +300,7 @@ struct FullDiskAccessWarningBanner: View {
         .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
         .overlay {
             RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+                .stroke(MacSweepTheme.warningStroke, lineWidth: 1)
         }
     }
 }

@@ -201,7 +201,7 @@ struct HomebrewUpdaterView: View {
                     .padding(.horizontal)
             }
             .frame(height: 140)
-            .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
@@ -280,7 +280,7 @@ struct PackageRow: View {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "sparkles")
                             .font(.caption2)
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(MacSweepTheme.accentPurple)
                         Text(insight.changesSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -299,7 +299,7 @@ struct PackageRow: View {
                         .padding(.leading, 36)
                         .padding(.vertical, 4)
                         .padding(.horizontal, 36)
-                        .background(Color.red.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        .background(MacSweepTheme.errorPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
                         .padding(.leading, 36)
                     }
                 }

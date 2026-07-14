@@ -65,14 +65,14 @@ struct ShredderView: View {
 
     private var dropZone: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: MacSweepTheme.largeRadius)
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [10])
                 )
                 .foregroundStyle(isTargeted ? .red : .secondary)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(isTargeted ? Color.red.opacity(0.1) : Color.clear)
+                    RoundedRectangle(cornerRadius: MacSweepTheme.largeRadius)
+                        .fill(isTargeted ? MacSweepTheme.errorPanel : Color.clear)
                 )
 
             VStack(spacing: 16) {
@@ -189,12 +189,12 @@ struct ShredderView: View {
                     }
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(shredLevel == level ? Color.red.opacity(0.1) : Color.clear)
+                        RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                            .fill(shredLevel == level ? MacSweepTheme.errorPanel : Color.clear)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(shredLevel == level ? Color.red : Color.gray.opacity(0.2))
+                        RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                            .stroke(shredLevel == level ? Color.red : MacSweepTheme.cardStroke)
                     )
                 }
                 .buttonStyle(.plain)
