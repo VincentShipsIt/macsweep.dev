@@ -306,11 +306,10 @@ struct DashboardView: View {
         .accessibilityElement(children: .combine)
     }
 
+    // Routed through the shared MetricThresholds so the dashboard score and the
+    // menu-bar companion can never disagree on what counts as "healthy".
     private var smartCareScoreColor: Color {
-        let score = appState.smartCareSummary?.score ?? 100
-        if score >= 85 { return .green }
-        if score >= 65 { return .orange }
-        return .red
+        MetricThresholds.score(appState.smartCareSummary?.score ?? 100).color
     }
 
     private var scanButtonTitle: String {

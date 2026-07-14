@@ -134,7 +134,41 @@ enum MacSweepTheme {
     )
     static let accent = Color(red: 0.22, green: 0.86, blue: 0.58)
     static let accentBlue = Color(red: 0.22, green: 0.52, blue: 0.84)
-    static let warningPanel = Color.orange.opacity(0.12)
+    /// Purple accent for decorative feature icons (Privacy category cards, the
+    /// Homebrew AI-insight sparkle). A fixed brand hue like `accent` /
+    /// `accentBlue`, so it reads the same in light and dark.
+    static let accentPurple = Color(red: 0.60, green: 0.40, blue: 0.86)
+
+    // MARK: Semantic status tints
+    //
+    // Adaptive info / warning / error surfaces so every banner and callout snaps
+    // to one set of hues (tracking systemBlue / systemOrange / systemRed) instead
+    // of hardcoding `Color.orange.opacity(...)` per call site. Light and dark keep
+    // the historical alpha; the high-contrast variants deepen it for legibility.
+    static let infoPanel = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 0.10),
+        dark: NSColor(srgbRed: 0.039, green: 0.518, blue: 1, alpha: 0.10),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 0.16),
+        darkHighContrast: NSColor(srgbRed: 0.039, green: 0.518, blue: 1, alpha: 0.16)
+    )
+    static let warningPanel = Color.adaptive(
+        light: NSColor(srgbRed: 1, green: 0.584, blue: 0, alpha: 0.12),
+        dark: NSColor(srgbRed: 1, green: 0.624, blue: 0.039, alpha: 0.12),
+        lightHighContrast: NSColor(srgbRed: 1, green: 0.584, blue: 0, alpha: 0.18),
+        darkHighContrast: NSColor(srgbRed: 1, green: 0.624, blue: 0.039, alpha: 0.18)
+    )
+    static let warningStroke = Color.adaptive(
+        light: NSColor(srgbRed: 1, green: 0.584, blue: 0, alpha: 0.22),
+        dark: NSColor(srgbRed: 1, green: 0.624, blue: 0.039, alpha: 0.22),
+        lightHighContrast: NSColor(srgbRed: 1, green: 0.584, blue: 0, alpha: 0.34),
+        darkHighContrast: NSColor(srgbRed: 1, green: 0.624, blue: 0.039, alpha: 0.34)
+    )
+    static let errorPanel = Color.adaptive(
+        light: NSColor(srgbRed: 1, green: 0.231, blue: 0.188, alpha: 0.10),
+        dark: NSColor(srgbRed: 1, green: 0.271, blue: 0.227, alpha: 0.10),
+        lightHighContrast: NSColor(srgbRed: 1, green: 0.231, blue: 0.188, alpha: 0.16),
+        darkHighContrast: NSColor(srgbRed: 1, green: 0.271, blue: 0.227, alpha: 0.16)
+    )
 
     // MARK: Semantic status tints
     //
@@ -153,12 +187,24 @@ enum MacSweepTheme {
 
     /// The single selection accent — the checkmark tint on every selectable row
     /// and the fill behind a selected card. Centralizes the `.blue` that the row
-    /// structs and category cards used to hardcode.
-    static let selection = Color.blue
-    static let selectionFill = Color.blue.opacity(0.1)
+    /// structs and category cards used to hardcode; adaptive like every other
+    /// token (tracks systemBlue across light / dark / high-contrast).
+    static let selection = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 1),
+        dark: NSColor(srgbRed: 0.039, green: 0.518, blue: 1, alpha: 1),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0.34, blue: 0.85, alpha: 1),
+        darkHighContrast: NSColor(srgbRed: 0.25, green: 0.61, blue: 1, alpha: 1)
+    )
+    static let selectionFill = Color.adaptive(
+        light: NSColor(srgbRed: 0, green: 0.478, blue: 1, alpha: 0.10),
+        dark: NSColor(srgbRed: 0.039, green: 0.518, blue: 1, alpha: 0.14),
+        lightHighContrast: NSColor(srgbRed: 0, green: 0.34, blue: 0.85, alpha: 0.16),
+        darkHighContrast: NSColor(srgbRed: 0.25, green: 0.61, blue: 1, alpha: 0.22)
+    )
 
     static let smallRadius: CGFloat = 8
     static let mediumRadius: CGFloat = 10
+    static let largeRadius: CGFloat = 16
 }
 
 struct MacSweepCompanionSurface: View {

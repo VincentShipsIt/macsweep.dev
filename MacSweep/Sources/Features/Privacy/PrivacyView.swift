@@ -369,7 +369,7 @@ struct PrivacyCategoryCard: View {
 
                 Image(systemName: icon)
                     .font(.title2)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(MacSweepTheme.accentPurple)
                     .frame(width: 32)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -389,12 +389,12 @@ struct PrivacyCategoryCard: View {
             }
             .padding()
             .background(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius)
                     .fill(isSelected ? MacSweepTheme.selectionFill : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? MacSweepTheme.selection : Color.gray.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius)
+                    .stroke(isSelected ? MacSweepTheme.selection : MacSweepTheme.cardStroke, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

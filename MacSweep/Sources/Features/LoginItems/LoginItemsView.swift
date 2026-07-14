@@ -94,8 +94,8 @@ struct LoginItemsView: View {
                     })
                 }
             }
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .background(MacSweepTheme.panelStrong)
+            .clipShape(RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius))
         }
     }
 

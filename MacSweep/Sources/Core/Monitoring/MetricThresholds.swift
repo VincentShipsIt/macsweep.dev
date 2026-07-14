@@ -46,6 +46,20 @@ public enum MetricThresholds {
         public static let warningPercent: Int = 50
     }
 
+    public enum Score {
+        /// Aggregate 0...100 health score (higher is better) at/above which the
+        /// state is good (normal) / fair (warning).
+        public static let goodScore: Int = 85
+        public static let fairScore: Int = 65
+    }
+
+    public enum Capacity {
+        /// Remaining charge % at/below which a battery-backed device is critical /
+        /// warning (higher is better). Used for the lowest connected-device battery.
+        public static let criticalPercent: Int = 10
+        public static let warningPercent: Int = 20
+    }
+
     /// Critical-state "pulse" animation, unified across every detail view (the
     /// pulse was previously copy-pasted with silently divergent duration/opacity).
     public enum Pulse {
@@ -88,6 +102,23 @@ public enum MetricThresholds {
         if isCharging { return .normal }
         if percent < Battery.criticalPercent { return .critical }
         if percent < Battery.warningPercent { return .warning }
+        return .normal
+    }
+
+    /// Alert level for an aggregate 0...100 health score (higher is better), e.g.
+    /// the Smart Care dashboard score. Shares boundaries with every score readout
+    /// so "healthy" means the same everywhere.
+    public static func score(_ value: Int) -> MetricAlertLevel {
+        if value >= Score.goodScore { return .normal }
+        if value >= Score.fairScore { return .warning }
+        return .critical
+    }
+
+    /// Alert level for remaining charge % (higher is better), e.g. the lowest
+    /// connected-device battery in the menu-bar companion.
+    public static func capacity(percent: Int) -> MetricAlertLevel {
+        if percent <= Capacity.criticalPercent { return .critical }
+        if percent <= Capacity.warningPercent { return .warning }
         return .normal
     }
 }
