@@ -21,7 +21,16 @@ struct MailAttachmentsView: View {
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
         ) {
-            Group {
+            VStack(spacing: 0) {
+                // Inline banner is the default non-blocking error surface: a failed
+                // attachment delete leaves the page usable, so no modal alert.
+                if let errorMessage = model.errorMessage {
+                    MacSweepErrorBanner(message: errorMessage) {
+                        model.errorMessage = nil
+                    }
+                }
+
+                Group {
             if model.items.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -65,8 +74,8 @@ struct MailAttachmentsView: View {
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
             .animated(.scanCrossfade, value: model.items.isEmpty)
+            }
         }
-        .errorAlert("Couldn't delete attachments", message: $model.errorMessage)
         .onDisappear { model.cancelScan() }
     }
 

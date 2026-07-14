@@ -136,6 +136,21 @@ struct BuildArtifactsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // Inline banner is the default non-blocking error surface; a failed
+            // cleanup leaves the page usable, so it stays inline rather than modal.
+            if let errorMessage = scanState.errorMessage {
+                MacSweepErrorBanner(message: errorMessage) {
+                    scanState.errorMessage = nil
+                }
+            }
+
+            artifactContent
+        }
+    }
+
+    @ViewBuilder
+    private var artifactContent: some View {
         Group {
             if isScanning {
                 ScanLandingView(
@@ -185,7 +200,6 @@ struct BuildArtifactsView: View {
         // Crossfade every scan-stage swap (scanning ⇄ landing ⇄ empty ⇄ results);
         // no-ops under Reduce Motion.
         .animated(.scanCrossfade, value: scanPhase)
-        .errorAlert("Cleanup Failed", message: $scanState.errorMessage)
     }
 
     /// Which scan stage is on screen, so the crossfade fires on *every* arm

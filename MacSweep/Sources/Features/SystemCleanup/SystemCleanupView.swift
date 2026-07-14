@@ -18,7 +18,16 @@ struct SystemCleanupView: View {
             hidesChrome: appState.scanResults.isEmpty,
             scrolls: appState.scanResults.isEmpty
         ) {
-            Group {
+            VStack(spacing: 0) {
+                // Inline banner is the default non-blocking error surface. A failed
+                // cleanup doesn't halt the page, so it never warranted a modal alert.
+                if let deletionError = appState.lastDeletionError {
+                    MacSweepErrorBanner(message: deletionError) {
+                        appState.lastDeletionError = nil
+                    }
+                }
+
+                Group {
             if appState.scanResults.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -60,8 +69,8 @@ struct SystemCleanupView: View {
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
             .animated(.scanCrossfade, value: appState.scanResults.isEmpty)
+            }
         }
-        .errorAlert("Cleanup Failed", message: $appState.lastDeletionError)
     }
 
     // MARK: - Results List

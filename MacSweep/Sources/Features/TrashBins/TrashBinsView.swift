@@ -116,8 +116,8 @@ struct TrashBinsView: View {
     /// change — a bare `trashItems.isEmpty` boolean would miss landing → empty
     /// when a scan finds nothing.
     private var scanPhase: ScanPhase {
-        if !trashItems.isEmpty { return .results }
-        if hasScanned && !isScanning && errorMessage == nil { return .empty }
+        if !model.items.isEmpty { return .results }
+        if model.hasScanned && !model.isScanning && model.errorMessage == nil { return .empty }
         return .landing
     }
 

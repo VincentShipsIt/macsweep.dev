@@ -227,19 +227,19 @@ struct ShredderView: View {
                 .controlSize(.large)
             }
         }
-        .confirmationDialog(
+        // Routed through the shared destructive-confirmation modifier. The confirm
+        // path still calls `shredFiles`, which enforces the
+        // SafetyChecker.validateForShred blocklist gate per file before any
+        // destructive overwrite.
+        .deleteConfirmation(
             "Shred \(droppedFiles.count) Files?",
             isPresented: $showingConfirmation,
-            titleVisibility: .visible
+            confirmTitle: "Shred Permanently",
+            message: "This will permanently destroy these files using \(shredLevel.passes) overwrite passes. This cannot be undone."
         ) {
-            Button("Shred Permanently", role: .destructive) {
-                Task {
-                    await shredFiles()
-                }
+            Task {
+                await shredFiles()
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently destroy these files using \(shredLevel.passes) overwrite passes. This cannot be undone.")
         }
     }
 

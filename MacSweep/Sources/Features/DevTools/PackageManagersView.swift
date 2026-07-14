@@ -16,6 +16,14 @@ struct PackageManagersView: View {
             header
             Divider()
 
+            // Inline banner is the default non-blocking error surface; a failed
+            // cleanup leaves the page usable, so it stays inline rather than modal.
+            if let errorMessage {
+                MacSweepErrorBanner(message: errorMessage) {
+                    self.errorMessage = nil
+                }
+            }
+
             if isScanning {
                 scanningView
             } else if cacheItems.isEmpty && dockerItems.isEmpty && dockerInfo?.isInstalled != true {
@@ -32,7 +40,6 @@ struct PackageManagersView: View {
         .task {
             await scan()
         }
-        .errorAlert("Cleanup Failed", message: $errorMessage)
     }
 
     // MARK: - Header
