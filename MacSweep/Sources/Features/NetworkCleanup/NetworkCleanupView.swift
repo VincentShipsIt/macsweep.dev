@@ -4,6 +4,7 @@ import CoreWLAN
 /// View for managing network cleanup operations
 struct NetworkCleanupView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: NetworkTab = .wifi
 
     enum NetworkTab: String, CaseIterable {
@@ -29,15 +30,22 @@ struct NetworkCleanupView: View {
 
                 Divider()
 
-                // Tab content
-                switch selectedTab {
-                case .wifi:
-                    WiFiNetworksView()
-                case .ssh:
-                    SSHHostsView()
-                case .dns:
-                    DNSCacheView()
+                // Tab content — cross-fade between tabs instead of a hard cut.
+                // `.id(selectedTab)` gives each tab a distinct identity so the
+                // opacity transition fires on switch; guarded for Reduce Motion.
+                Group {
+                    switch selectedTab {
+                    case .wifi:
+                        WiFiNetworksView()
+                    case .ssh:
+                        SSHHostsView()
+                    case .dns:
+                        DNSCacheView()
+                    }
                 }
+                .id(selectedTab)
+                .transition(reduceMotion ? .identity : .opacity)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedTab)
             }
         }
     }
