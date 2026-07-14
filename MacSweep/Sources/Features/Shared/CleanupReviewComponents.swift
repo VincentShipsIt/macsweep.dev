@@ -74,6 +74,15 @@ enum CleanupDisposition: Sendable {
         case .toolNative: return "terminal"
         }
     }
+
+    /// Accent for the prominent confirm button. Hard deletes read red;
+    /// reversible / mixed dispositions use a milder caution accent.
+    var tint: Color {
+        switch self {
+        case .trash, .permanent: return .red
+        case .localCloudCopy, .mixed, .toolNative: return .orange
+        }
+    }
 }
 
 struct CleanupReviewModifier: ViewModifier {
@@ -90,6 +99,7 @@ struct CleanupReviewModifier: ViewModifier {
     @State private var isRunning = false
     @State private var result: CleanupResult?
     @State private var requestedCount = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content.sheet(isPresented: $isPresented, onDismiss: reset) {
@@ -129,7 +139,15 @@ struct CleanupReviewModifier: ViewModifier {
                 isPresented = false
                 return
             }
-            result = completed
+            // Cross-fade review → result inside the still-open sheet instead of
+            // swapping instantly at the moment cleanup finishes.
+            if reduceMotion {
+                result = completed
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    result = completed
+                }
+            }
         }
     }
 
@@ -155,8 +173,10 @@ private struct CleanupReviewSheet: View {
         VStack(spacing: 0) {
             if let result {
                 resultView(result)
+                    .transition(.opacity)
             } else {
                 reviewView
+                    .transition(.opacity)
             }
         }
         .frame(minWidth: 560, idealWidth: 620, minHeight: 480, idealHeight: 560)
@@ -250,6 +270,7 @@ private struct CleanupReviewSheet: View {
             HStack {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
+                    .glassButton()
                     .disabled(isRunning)
                 Spacer()
                 if isRunning {
@@ -260,6 +281,8 @@ private struct CleanupReviewSheet: View {
                 }
                 Button(disposition.title, role: .destructive, action: onConfirm)
                     .keyboardShortcut(.defaultAction)
+                    .glassButton(prominent: true)
+                    .tint(disposition.tint)
                     .disabled(isRunning || summary.itemCount == 0)
             }
             .padding(16)

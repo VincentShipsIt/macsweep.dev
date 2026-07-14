@@ -252,29 +252,6 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    Button {
-                        Task {
-                            await appState.quickScan()
-                        }
-                    } label: {
-                        Label(appState.isScanning ? "Scanning" : scanButtonTitle, systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(appState.isScanning)
-
-                    Button {
-                        confirmRecommendedCleanup()
-                    } label: {
-                        Label("Clean Recommended", systemImage: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!hasRecommendedCleanup || appState.isScanning)
-                }
-                .padding(.top, 4)
             }
 
             Spacer(minLength: 16)
