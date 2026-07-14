@@ -63,9 +63,6 @@ struct MenuBarView: View {
                 .font(.title2)
                 .foregroundStyle(.purple)
 
-            Text(MacSweepVersion.productName)
-                .font(.headline)
-
             Spacer()
 
             if appState.isScanning {
@@ -78,25 +75,31 @@ struct MenuBarView: View {
     }
 
     private var headerControls: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
-                Button(action: openMainWindow) {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .companionGlassIconButton()
-                .accessibilityLabel("Open MacSweep")
-                .help("Open MacSweep")
-
-                Button(action: quitApplication) {
-                    Image(systemName: "power")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .companionGlassIconButton()
-                .accessibilityLabel("Quit MacSweep")
-                .help("Quit MacSweep")
+        HStack(spacing: 0) {
+            Button(action: openMainWindow) {
+                Image(systemName: "macwindow")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 34, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open MacSweep")
+            .help("Open MacSweep")
+
+            Divider()
+                .frame(height: 16)
+
+            Button(action: quitApplication) {
+                Image(systemName: "power")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 34, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Quit MacSweep")
+            .help("Quit MacSweep")
         }
+        .glassControl(in: Capsule(), interactive: true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("MacSweep controls")
     }
@@ -434,15 +437,6 @@ struct SystemStatCard: View {
             Color.clear
                 .frame(height: MenuBarStatCardLayout.footerHeight)
         }
-    }
-}
-
-private extension View {
-    func companionGlassIconButton() -> some View {
-        frame(width: 30, height: 30)
-            .contentShape(Circle())
-            .glassControl(in: Circle(), interactive: true)
-            .buttonStyle(.plain)
     }
 }
 

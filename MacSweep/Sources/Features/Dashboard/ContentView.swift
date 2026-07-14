@@ -89,18 +89,26 @@ struct ContentView: View {
     // of hand-scheduled offsets. Landing pages slide vertically; everything else
     // cross-fades briefly so no navigation is a hard cut.
     private var detailDeck: some View {
-        ZStack {
-            detailView(for: activeFeature)
-                .id(activeFeature)
-                .transition(
-                    reduceMotion
-                        ? .identity
-                        : usesSlideTransition
-                        ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
-                        : .opacity
-                )
+        // A GeometryReader has zero minimum size and simply reports the space the
+        // split view offers. Sizing the detail to that (rather than letting the
+        // content size the deck) stops a page whose content is a `List` — e.g.
+        // Smart Care — from reporting its full content height as the window's
+        // minimum, which previously pinned the whole window ~1500pt tall. The List
+        // now scrolls inside the available height like every ScrollView page does.
+        GeometryReader { proxy in
+            ZStack {
+                detailView(for: activeFeature)
+                    .id(activeFeature)
+                    .transition(
+                        reduceMotion
+                            ? .identity
+                            : usesSlideTransition
+                            ? .asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top))
+                            : .opacity
+                    )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func showFeature(_ newFeature: Feature) {
