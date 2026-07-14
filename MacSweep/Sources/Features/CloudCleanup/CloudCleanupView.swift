@@ -43,17 +43,22 @@ struct CloudCleanupView: View {
                         isScanning: model.isScanning,
                         action: { Task { await scanCloudStorage() } }
                     )
+                    .transition(.scanCrossfade)
                 } else {
+                    Group {
                     filterBar
                     Divider()
                     itemsList
 
                     if !filteredItems.isEmpty {
-                        Divider()
                         footer
                     }
+                    }
+                    .transition(.scanCrossfade)
                 }
             }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: model.items.isEmpty)
         }
         .onDisappear { model.cancelScan() }
     }

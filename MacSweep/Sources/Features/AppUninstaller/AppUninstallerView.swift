@@ -13,6 +13,9 @@ struct AppUninstallerView: View {
     @State private var isCleaningOrphans = false
     @State private var errorMessage: String?
     @State private var sortOrder: SortOrder = .name
+    // Follow-up: adopt the shared `animated(_:value:)` reduce-motion helper from
+    // App/Motion.swift once the "Animate scan lifecycle" work merges it in.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum SortOrder: String, CaseIterable {
         case name = "Name"
@@ -111,19 +114,29 @@ struct AppUninstallerView: View {
 
             Divider()
 
-            // App list
-            if isLoading {
-                Spacer()
-                ProgressView("Loading apps...")
-                Spacer()
-            } else {
-                List(filteredApps, selection: $selectedApp) { app in
-                    AppListRow(app: app)
-                        .tag(app)
+            // App list — crossfade the first-load spinner into the populated list
+            // instead of hard-cutting when discovery finishes.
+            ZStack {
+                if isLoading {
+                    VStack {
+                        Spacer()
+                        ProgressView("Loading apps...")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+                } else {
+                    List(filteredApps, selection: $selectedApp) { app in
+                        AppListRow(app: app)
+                            .tag(app)
+                    }
+                    .listStyle(.inset)
+                    .macSweepListSurface()
+                    .transition(.opacity)
                 }
-                .listStyle(.inset)
-                .macSweepListSurface()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isLoading)
 
             // Orphaned leftovers section
             if !orphanedLeftovers.isEmpty {
@@ -166,7 +179,13 @@ struct AppUninstallerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        // Crossfade detail <-> empty state on every selection change — the most
+        // frequent interaction in this view. `.id` gives each app (and the empty
+        // state) a distinct identity so the swap triggers the opacity transition.
+        .id(selectedApp?.id)
+        .transition(.opacity)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedApp?.id)
     }
 
     // MARK: - Orphaned Section
@@ -535,12 +554,7 @@ struct LeftoverRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    Text(leftover.type.rawValue)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.orange.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.orange)
+                    TagBadge(leftover.type.rawValue, role: .warning)
 
                     Text(leftover.path.deletingLastPathComponent().path)
                         .font(.caption2)

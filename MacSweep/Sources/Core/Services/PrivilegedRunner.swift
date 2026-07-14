@@ -91,16 +91,39 @@ enum PrivilegedRunner {
     /// Exercises the exact root-supervisor shell without authorization UI. The
     /// command runs as the test user, but process-group and timeout behavior is
     /// identical to the elevated shell path.
+    ///
+    /// `keepaliveForTesting`, when provided, lets a test pre-create and own the
+    /// cancellation keepalive so it can drive the timeout *deterministically* —
+    /// removing the file only after the child has provably emitted its output —
+    /// instead of racing a wall-clock deadline against process startup latency.
+    /// This mirrors `ProcessRunner`'s real pre-created keepalive seam. When nil,
+    /// behavior is unchanged: a fresh sentinel is created and owned internally.
     static func runSupervisedShellScriptForTesting(
         _ script: String,
         timeout: TimeInterval,
-        throughAppleScript: Bool = false
+        throughAppleScript: Bool = false,
+        keepaliveForTesting: URL? = nil
     ) async throws {
         guard isValid(timeout: timeout) else {
             throw EscalationError.failed(status: -1)
         }
-        let sentinel = try makeCancellationSentinel()
-        defer { try? FileManager.default.removeItem(at: sentinel.directory) }
+        let sentinel: CancellationSentinel
+        let ownsSentinelDirectory: Bool
+        if let keepaliveForTesting {
+            sentinel = CancellationSentinel(
+                directory: keepaliveForTesting.deletingLastPathComponent(),
+                keepalive: keepaliveForTesting
+            )
+            ownsSentinelDirectory = false
+        } else {
+            sentinel = try makeCancellationSentinel()
+            ownsSentinelDirectory = true
+        }
+        defer {
+            if ownsSentinelDirectory {
+                try? FileManager.default.removeItem(at: sentinel.directory)
+            }
+        }
         let timeoutMarker = makeTimeoutMarker()
         let supervisedScript = makeSupervisedShellScript(
             script,

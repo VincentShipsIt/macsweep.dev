@@ -65,14 +65,14 @@ struct ShredderView: View {
 
     private var dropZone: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: MacSweepTheme.largeRadius)
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: 2, dash: [10])
                 )
                 .foregroundStyle(isTargeted ? .red : .secondary)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(isTargeted ? Color.red.opacity(0.1) : Color.clear)
+                    RoundedRectangle(cornerRadius: MacSweepTheme.largeRadius)
+                        .fill(isTargeted ? MacSweepTheme.errorPanel : Color.clear)
                 )
 
             VStack(spacing: 16) {
@@ -189,12 +189,12 @@ struct ShredderView: View {
                     }
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(shredLevel == level ? Color.red.opacity(0.1) : Color.clear)
+                        RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                            .fill(shredLevel == level ? MacSweepTheme.errorPanel : Color.clear)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(shredLevel == level ? Color.red : Color.gray.opacity(0.2))
+                        RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius)
+                            .stroke(shredLevel == level ? Color.red : MacSweepTheme.cardStroke)
                     )
                 }
                 .buttonStyle(.plain)
@@ -261,9 +261,12 @@ struct ShredderView: View {
             .foregroundStyle(.secondary)
 
             HStack(spacing: 16) {
-                InfoBadge(icon: "exclamationmark.triangle", text: "Cannot be undone", color: .orange)
-                InfoBadge(icon: "clock", text: "Slower than normal delete", color: .blue)
-                InfoBadge(icon: "lock.shield", text: "Use FileVault for guarantees", color: .green)
+                TagBadge("Cannot be undone", icon: "exclamationmark.triangle",
+                         role: .warning, prominence: .plain)
+                TagBadge("Slower than normal delete", icon: "clock",
+                         role: .info, prominence: .plain)
+                TagBadge("Use FileVault for guarantees", icon: "lock.shield",
+                         role: .success, prominence: .plain)
             }
         }
         .padding()
@@ -452,24 +455,6 @@ struct ShredderView: View {
         } else {
             total = sum
         }
-    }
-}
-
-// MARK: - Info Badge
-
-struct InfoBadge: View {
-    let icon: String
-    let text: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption)
-            Text(text)
-                .font(.caption2)
-        }
-        .foregroundStyle(color)
     }
 }
 

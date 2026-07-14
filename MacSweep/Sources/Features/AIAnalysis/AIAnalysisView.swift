@@ -13,12 +13,6 @@ struct AIAnalysisView: View {
         service.findings.filter { $0.isSelected }
     }
 
-    private var totalSelectedSize: String {
-        // Best effort: sum sizes where unit is clear
-        let count = selectedFindings.count
-        return "\(count) item\(count == 1 ? "" : "s") selected"
-    }
-
     var body: some View {
         FeaturePageShell(
             title: "AI Analysis",
@@ -38,6 +32,7 @@ struct AIAnalysisView: View {
             hidesChrome: false,
             scrolls: service.findings.isEmpty && !service.isScanning
         ) {
+            Group {
             if service.findings.isEmpty && !service.isScanning {
                 ScanLandingView(
                     icon: "brain.head.profile",
@@ -55,13 +50,18 @@ struct AIAnalysisView: View {
                     hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
+                .transition(.scanCrossfade)
             } else {
+                Group {
                 resultsList
 
-                Divider()
-
                 bottomBar
+                }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: service.findings.isEmpty && !service.isScanning)
         }
         .onAppear {
             refreshProviderState()
@@ -185,38 +185,18 @@ struct AIAnalysisView: View {
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack(spacing: 16) {
-            // Select All / None
-            Button(action: toggleSelectAll) {
-                let allSelected = service.findings.allSatisfy { $0.isSelected }
-                Text(allSelected ? "Deselect All" : "Select All")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+        CleanupFooter(
+            selectedCount: selectedFindings.count,
+            selectAllTitle: allFindingsSelected ? "Deselect All" : "Select All",
+            onSelectAll: toggleSelectAll,
+            actionTitle: "Clean Selected",
+            actionDisabled: selectedFindings.isEmpty || service.isScanning || isCleaning,
+            onAction: cleanSelected
+        )
+    }
 
-            Divider().frame(height: 16)
-
-            Text(totalSelectedSize)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            if !service.findings.isEmpty {
-                Button {
-                    cleanSelected()
-                } label: {
-                    Label("Clean Selected", systemImage: "trash")
-                }
-                .glassButton(prominent: true)
-                .tint(.red)
-                .disabled(selectedFindings.isEmpty || service.isScanning || isCleaning)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(MacSweepTheme.panelStrong)
+    private var allFindingsSelected: Bool {
+        !service.findings.isEmpty && service.findings.allSatisfy { $0.isSelected }
     }
 
     // MARK: - Actions
@@ -373,34 +353,19 @@ struct CacheFindingRow: View {
                 // Badges
                 HStack(spacing: 6) {
                     // Size
-                    Text(finding.size)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundStyle(.blue)
-                        .clipShape(.rect(cornerRadius: 4))
+                    TagBadge(finding.size, role: .info)
 
                     // Auto-regenerates
                     if finding.regeneratesAutomatically {
-                        Text("Auto-regenerates")
-                            .font(.caption2)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.15))
-                            .foregroundStyle(.green)
-                            .clipShape(.rect(cornerRadius: 4))
+                        TagBadge("Auto-regenerates", role: .success)
                     }
 
-                    // Source
-                    Text(finding.source.rawValue)
-                        .font(.caption2)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(finding.source == .ai ? Color.purple.opacity(0.15) : Color.gray.opacity(0.15))
-                        .foregroundStyle(finding.source == .ai ? .purple : .secondary)
-                        .clipShape(.rect(cornerRadius: 4))
+                    // Source — AI findings keep their distinct purple tint;
+                    // heuristic findings use the neutral token.
+                    TagBadge(
+                        finding.source.rawValue,
+                        tint: finding.source == .ai ? .purple : MacSweepTheme.neutralTint
+                    )
                 }
             }
             .padding(.horizontal, 20)

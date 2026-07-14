@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 /// Captures the NSWindow that hosts a SwiftUI view (used to find the menu-bar
@@ -22,6 +23,14 @@ struct WindowAccessor: NSViewRepresentable {
 final class MenuBarDetailPanel {
     static let shared = MenuBarDetailPanel()
     private var panel: NSPanel?
+    /// Bumped on every present/dismiss so a pending fade-out completion handler
+    /// can tell whether it was superseded (e.g. the panel was re-presented mid-fade)
+    /// and skip its `orderOut`.
+    private var transitionToken = 0
+
+    private static let fadeInDuration: TimeInterval = 0.2
+    private static let reframeDuration: TimeInterval = 0.2
+    private static let fadeOutDuration: TimeInterval = 0.15
 
     /// Show `content` as a panel immediately to the left of `anchor`, aligned by
     /// the visible top edge. Detail views keep their own height instead of being
@@ -54,11 +63,69 @@ final class MenuBarDetailPanel {
 
         hostingView.rootView = AnyView(content.frame(width: width, height: height))
         p.contentView = hostingView
-        p.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
-        p.orderFront(nil)
+        present(p, at: NSRect(x: x, y: y, width: width, height: height))
     }
 
-    func dismiss() { panel?.orderOut(nil) }
+    /// Move `panel` to `targetFrame` and reveal it. Fades in on first appearance,
+    /// animates the frame when re-framing an already-visible panel (switching
+    /// widgets), and snaps directly to the final state under Reduce Motion.
+    private func present(_ panel: NSPanel, at targetFrame: NSRect) {
+        // Any in-flight fade-out is now stale — invalidate its completion handler.
+        transitionToken += 1
+
+        // Reduce Motion: snap straight to the final state, no fade or slide.
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            panel.setFrame(targetFrame, display: true)
+            panel.alphaValue = 1
+            panel.orderFront(nil)
+            return
+        }
+
+        if panel.isVisible {
+            // Switching widgets (e.g. Storage → Memory): the panel is already on
+            // screen, so animate the frame move/resize instead of snapping.
+            panel.alphaValue = 1
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Self.reframeDuration
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().setFrame(targetFrame, display: true)
+            }
+        } else {
+            // First appearance: position immediately, then fade the panel in.
+            panel.setFrame(targetFrame, display: true)
+            panel.alphaValue = 0
+            panel.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Self.fadeInDuration
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+            }
+        }
+    }
+
+    func dismiss() {
+        guard let p = panel, p.isVisible else { return }
+
+        transitionToken += 1
+        let token = transitionToken
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            p.orderOut(nil)
+            p.alphaValue = 1
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Self.fadeOutDuration
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            p.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            // Skip if a present()/dismiss() superseded this fade (token bumped).
+            guard let self, self.transitionToken == token else { return }
+            p.orderOut(nil)
+            p.alphaValue = 1
+        }
+    }
 
     private func ensurePanel() -> NSPanel {
         if let p = panel { return p }

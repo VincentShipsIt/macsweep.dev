@@ -133,19 +133,8 @@ struct DockerModule: ScanModule {
         let dockerVM = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Containers/com.docker.docker/Data/vms")
 
-        if FileManager.default.fileExists(atPath: dockerVM.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: dockerVM)) ?? 0
-            if size > 0 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: dockerVM,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Docker VM Disk",
-                    lastModified: nil
-                ))
-            }
+        if let item = await scanCacheDirectory(at: dockerVM, moduleName: "Docker VM Disk") {
+            items.append(item)
         }
 
         return items.sorted { $0.size > $1.size }
@@ -454,98 +443,4 @@ struct DockerInfo {
             return 0
         }
     }
-}
-
-// MARK: - Docker Cleanup Actions
-
-struct DockerCleanupActions {
-    /// Run docker system prune (removes all unused data)
-    static func systemPrune(includeVolumes: Bool = false) async throws -> CleanupResult {
-        var args = ["system", "prune", "-f"]
-        if includeVolumes {
-            args.append("--volumes")
-        }
-
-        let result = await runDocker(args)
-        return CleanupResult(
-            itemsProcessed: result.success ? 1 : 0,
-            bytesFreed: result.bytesFreed
-        )
-    }
-
-    /// Remove all stopped containers
-    static func pruneContainers() async throws -> CleanupResult {
-        let result = await runDocker(["container", "prune", "-f"])
-        return CleanupResult(
-            itemsProcessed: result.success ? 1 : 0,
-            bytesFreed: result.bytesFreed
-        )
-    }
-
-    /// Remove dangling images
-    static func pruneImages(all: Bool = false) async throws -> CleanupResult {
-        var args = ["image", "prune", "-f"]
-        if all {
-            args.append("-a")
-        }
-
-        let result = await runDocker(args)
-        return CleanupResult(
-            itemsProcessed: result.success ? 1 : 0,
-            bytesFreed: result.bytesFreed
-        )
-    }
-
-    /// Remove unused volumes
-    static func pruneVolumes() async throws -> CleanupResult {
-        let result = await runDocker(["volume", "prune", "-f"])
-        return CleanupResult(
-            itemsProcessed: result.success ? 1 : 0,
-            bytesFreed: result.bytesFreed
-        )
-    }
-
-    /// Clear build cache
-    static func pruneBuildCache() async throws -> CleanupResult {
-        let result = await runDocker(["builder", "prune", "-f", "--all"])
-        return CleanupResult(
-            itemsProcessed: result.success ? 1 : 0,
-            bytesFreed: result.bytesFreed
-        )
-    }
-
-    private static func runDocker(_ args: [String]) async -> (success: Bool, bytesFreed: Int64) {
-        guard let dockerPath = DockerCLI.path else { return (false, 0) }
-
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: dockerPath)
-        process.arguments = args
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
-
-            // Parse reclaimed space
-            var bytesFreed: Int64 = 0
-            if let range = output.range(of: "reclaimed space: ") {
-                let afterRange = output[range.upperBound...]
-                if let endIndex = afterRange.firstIndex(of: "\n") ?? afterRange.firstIndex(of: " ") {
-                    let sizeStr = String(afterRange[..<endIndex])
-                    bytesFreed = DockerCLI.parseBytes(sizeStr)
-                }
-            }
-
-            return (process.terminationStatus == 0, bytesFreed)
-        } catch {
-            return (false, 0)
-        }
-    }
-
 }

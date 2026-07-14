@@ -35,24 +35,13 @@ struct NetworkModule: ScanModule {
     // MARK: - Network Service Proxy Cache
 
     private func scanNetworkServiceProxy() async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
         let cacheDir = URL.libraryDirectory.appending(path: "Caches/com.apple.networkserviceproxy")
-        if FileManager.default.fileExists(atPath: cacheDir.path) {
-            let size = (try? await DiskAnalyzer.directorySize(at: cacheDir)) ?? 0
-            if size > 1024 {
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: cacheDir,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "Network Service Proxy Cache"
-                ))
-            }
-        }
-
-        return items
+        guard let item = await scanCacheDirectory(
+            at: cacheDir,
+            moduleName: "Network Service Proxy Cache",
+            threshold: 1024
+        ) else { return [] }
+        return [item]
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {

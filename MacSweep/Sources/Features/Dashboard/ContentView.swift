@@ -514,12 +514,14 @@ struct AssistantSettingsView: View {
                 } label: {
                     Label("Config Folder", systemImage: "folder")
                 }
+                .glassButton()
 
                 Spacer()
 
                 Button("Reload") {
                     reloadDraft()
                 }
+                .glassButton()
                 .disabled(isSaving)
 
                 Button("Reset Defaults") {
@@ -527,11 +529,13 @@ struct AssistantSettingsView: View {
                     selectedProvider = draft.defaultProvider
                     statusMessage = nil
                 }
+                .glassButton()
                 .disabled(isSaving)
 
                 Button(isSaving ? "Saving..." : "Save") {
                     saveDraft()
                 }
+                .glassButton(prominent: true)
                 .disabled(!canSave)
                 .keyboardShortcut(.defaultAction)
             }

@@ -21,6 +21,7 @@ struct MailAttachmentsView: View {
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
         ) {
+            Group {
             if model.items.isEmpty {
                 ZStack(alignment: .top) {
                     ScanLandingView(
@@ -43,7 +44,9 @@ struct MailAttachmentsView: View {
                             .padding(20)
                     }
                 }
+                .transition(.scanCrossfade)
             } else {
+                Group {
                 if !appState.hasFullDiskAccess {
                     FullDiskAccessWarningBanner(scope: .mail)
                         .padding(.horizontal)
@@ -54,10 +57,14 @@ struct MailAttachmentsView: View {
                 attachmentsList
 
                 if !filteredAttachments.isEmpty {
-                    Divider()
                     footer
                 }
+                }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: model.items.isEmpty)
         }
         .errorAlert("Couldn't delete attachments", message: $model.errorMessage)
         .onDisappear { model.cancelScan() }
@@ -235,23 +242,13 @@ struct AttachmentRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    // Source badge
+                    // Source badge — per-mail-client categorical color.
                     let source = item.moduleName.split(separator: " - ").first.map(String.init) ?? ""
-                    Text(source)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(sourceColor(source).opacity(0.2), in: Capsule())
-                        .foregroundStyle(sourceColor(source))
+                    TagBadge(source, tint: sourceColor(source))
 
-                    // Type badge
+                    // Type badge — per-file-type categorical color.
                     let type = item.moduleName.split(separator: " - ").last.map(String.init) ?? ""
-                    Text(type)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(typeColor(type).opacity(0.2), in: Capsule())
-                        .foregroundStyle(typeColor(type))
+                    TagBadge(type, tint: typeColor(type))
 
                     if let date = item.lastModified {
                         Text(date, style: .date)
