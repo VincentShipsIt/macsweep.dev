@@ -10,6 +10,21 @@ struct ProcessResult: Sendable {
     let status: Int32
     let output: String   // stdout
     let error: String    // stderr
+    /// Whether the captured stdout bytes were valid UTF-8. Deletion guards that
+    /// consume NUL-delimited paths use this to fail closed on undecodable bytes.
+    let outputWasValidUTF8: Bool
+
+    init(
+        status: Int32,
+        output: String,
+        error: String,
+        outputWasValidUTF8: Bool = true
+    ) {
+        self.status = status
+        self.output = output
+        self.error = error
+        self.outputWasValidUTF8 = outputWasValidUTF8
+    }
 
     /// True when the process exited 0.
     var didSucceed: Bool { status == 0 }
@@ -255,10 +270,13 @@ enum ProcessRunner {
         let lifecycleDeadline = DispatchTime.now() + timeout
         if drains.wait(timeout: lifecycleDeadline) == .success,
            let rawStatus = waitForChild(childPID, until: lifecycleDeadline) {
+            let stdout = stdoutBuffer.decodedUTF8
+            let stderr = stderrBuffer.decodedUTF8
             return ProcessResult(
                 status: terminationStatus(from: rawStatus),
-                output: stdoutBuffer.string,
-                error: stderrBuffer.string
+                output: stdout.string,
+                error: stderr.string,
+                outputWasValidUTF8: stdout.wasValid
             )
         }
 
@@ -279,10 +297,13 @@ enum ProcessRunner {
             let cooperativeDeadline = DispatchTime.now() + cooperativeTimeoutGrace
             if drains.wait(timeout: cooperativeDeadline) == .success,
                let rawStatus = waitForChild(childPID, until: cooperativeDeadline) {
+                let stdout = stdoutBuffer.decodedUTF8
+                let stderr = stderrBuffer.decodedUTF8
                 let partial = ProcessResult(
                     status: terminationStatus(from: rawStatus),
-                    output: stdoutBuffer.string,
-                    error: stderrBuffer.string
+                    output: stdout.string,
+                    error: stderr.string,
+                    outputWasValidUTF8: stdout.wasValid
                 )
                 throw ProcessRunnerError.timedOut(after: timeout, partialResult: partial)
             }
@@ -314,10 +335,13 @@ enum ProcessRunner {
             DeferredReaper.schedule(childPID)
         }
 
+        let stdout = stdoutBuffer.decodedUTF8
+        let stderr = stderrBuffer.decodedUTF8
         let partial = ProcessResult(
             status: rawStatus.map(terminationStatus(from:)) ?? -1,
-            output: stdoutBuffer.string,
-            error: stderrBuffer.string
+            output: stdout.string,
+            error: stderr.string,
+            outputWasValidUTF8: stdout.wasValid
         )
         throw ProcessRunnerError.timedOut(after: timeout, partialResult: partial)
     }
@@ -337,11 +361,12 @@ enum ProcessRunner {
             lock.unlock()
         }
 
-        var string: String {
+        var decodedUTF8: (string: String, wasValid: Bool) {
             lock.lock()
             let snapshot = data
             lock.unlock()
-            return String(decoding: snapshot, as: UTF8.self)
+            let decoded = String(bytes: snapshot, encoding: .utf8)
+            return (decoded ?? "", decoded != nil)
         }
     }
 

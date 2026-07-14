@@ -848,7 +848,7 @@ struct GitArtifactScanner: Sendable {
         let gh = Self.executablePath(for: "gh")
         let ghAuthenticated: Bool
         if gh != nil {
-            ghAuthenticated = Self.run(["gh", "auth", "status"]).status == 0
+            ghAuthenticated = await Self.run(["gh", "auth", "status"]).status == 0
         } else {
             ghAuthenticated = false
         }
@@ -864,10 +864,10 @@ struct GitArtifactScanner: Sendable {
         var items: [GitCleanupItem] = []
 
         for root in roots {
-            guard let repository = Self.repository(at: root) else { continue }
+            guard let repository = await Self.repository(at: root) else { continue }
             guard seenCommonDirectories.insert(repository.commonDirectory.path).inserted else { continue }
 
-            let checkedOutBranches = Self.checkedOutBranches(in: repository.root)
+            let checkedOutBranches = await Self.checkedOutBranches(in: repository.root)
             let staleWorktrees = await discoverStaleWorktrees(
                 in: repository,
                 checkedOutBranches: checkedOutBranches,
@@ -925,7 +925,9 @@ struct GitArtifactScanner: Sendable {
         checkedOutBranches: Set<String>,
         ghAvailable: Bool
     ) async -> [GitCleanupItem] {
-        let entries = Self.parseWorktreeList(Self.run(["git", "-C", repository.root.path, "worktree", "list", "--porcelain"]).output)
+        let entries = Self.parseWorktreeList(
+            await Self.run(["git", "-C", repository.root.path, "worktree", "list", "--porcelain"]).output
+        )
         guard !entries.isEmpty else { return [] }
 
         var items: [GitCleanupItem] = []
@@ -933,14 +935,14 @@ struct GitArtifactScanner: Sendable {
             guard index > 0 else { continue } // never remove the main worktree
             guard let path = entry.path else { continue }
             guard FileManager.default.fileExists(atPath: path.path) else { continue }
-            guard Self.isCleanWorkingTree(path) else { continue }
+            guard await Self.isCleanWorkingTree(path) else { continue }
             // Don't surface a worktree as clean/removable if it holds gitignored
             // content (secrets, local DBs) that `git worktree remove` would
             // permanently destroy.
-            guard !Self.worktreeHasValuableIgnoredContent(at: path) else { continue }
+            guard !(await Self.worktreeHasValuableIgnoredContent(at: path)) else { continue }
 
             let branch = entry.branchName
-            let lastActivity = Self.commitDate(for: entry.head, in: repository.root)
+            let lastActivity = await Self.commitDate(for: entry.head, in: repository.root)
                 ?? Self.lastModificationDate(for: path)
             guard isStale(lastActivity) else { continue }
 
@@ -949,7 +951,7 @@ struct GitArtifactScanner: Sendable {
                 if Self.isProtectedBranch(branch) || branch == repository.defaultBranch {
                     continue
                 }
-                let branchState = Self.branchRemoteState(
+                let branchState = await Self.branchRemoteState(
                     branch: branch,
                     repository: repository,
                     ghAvailable: ghAvailable && includeGitHubState
@@ -983,7 +985,7 @@ struct GitArtifactScanner: Sendable {
         checkedOutBranches: Set<String>,
         ghAvailable: Bool
     ) async -> [GitCleanupItem] {
-        let rows = Self.branchRows(in: repository.root)
+        let rows = await Self.branchRows(in: repository.root)
         guard !rows.isEmpty else { return [] }
 
         var items: [GitCleanupItem] = []
@@ -996,7 +998,7 @@ struct GitArtifactScanner: Sendable {
             guard row.worktreePath == nil || row.worktreePath?.isEmpty == true else { continue }
             guard isStale(row.lastCommitDate) else { continue }
 
-            let branchState = Self.branchRemoteState(
+            let branchState = await Self.branchRemoteState(
                 branch: branch,
                 repository: repository,
                 branchRow: row,
@@ -1098,9 +1100,10 @@ struct GitArtifactScanner: Sendable {
         return entries
     }
 
-    static func branchRows(in repositoryRoot: URL) -> [GitBranchRow] {
-        let format = "%(refname:short)%09%(committerdate:iso8601-strict)%09%(upstream:short)%09%(upstream:track)%09%(worktreepath)"
-        let result = run(["git", "-C", repositoryRoot.path, "for-each-ref", "refs/heads", "--format=\(format)"])
+    static func branchRows(in repositoryRoot: URL) async -> [GitBranchRow] {
+        let format = "%(refname:short)%09%(committerdate:iso8601-strict)%09"
+            + "%(upstream:short)%09%(upstream:track)%09%(worktreepath)"
+        let result = await run(["git", "-C", repositoryRoot.path, "for-each-ref", "refs/heads", "--format=\(format)"])
         guard result.status == 0 else { return [] }
         return parseBranchRows(result.output)
     }
@@ -1126,13 +1129,13 @@ struct GitArtifactScanner: Sendable {
         return branch.hasPrefix("release/") || branch.hasPrefix("hotfix/")
     }
 
-    private static func repository(at root: URL) -> GitRepository? {
-        let topLevel = run(["git", "-C", root.path, "rev-parse", "--show-toplevel"])
+    private static func repository(at root: URL) async -> GitRepository? {
+        let topLevel = await run(["git", "-C", root.path, "rev-parse", "--show-toplevel"])
         guard topLevel.status == 0 else { return nil }
         let repositoryRoot = URL(fileURLWithPath: topLevel.output.trimmingCharacters(in: .whitespacesAndNewlines))
             .standardizedFileURL
 
-        let common = run(["git", "-C", repositoryRoot.path, "rev-parse", "--git-common-dir"])
+        let common = await run(["git", "-C", repositoryRoot.path, "rev-parse", "--git-common-dir"])
         guard common.status == 0 else { return nil }
         let commonText = common.output.trimmingCharacters(in: .whitespacesAndNewlines)
         let commonDirectory: URL
@@ -1142,8 +1145,8 @@ struct GitArtifactScanner: Sendable {
             commonDirectory = repositoryRoot.appending(path: commonText).standardizedFileURL
         }
 
-        let defaultInfo = defaultBranch(in: repositoryRoot)
-        let current = run(["git", "-C", repositoryRoot.path, "branch", "--show-current"])
+        let defaultInfo = await defaultBranch(in: repositoryRoot)
+        let current = await run(["git", "-C", repositoryRoot.path, "branch", "--show-current"])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -1156,31 +1159,43 @@ struct GitArtifactScanner: Sendable {
         )
     }
 
-    private static func defaultBranch(in repositoryRoot: URL) -> (branch: String?, reference: String?) {
-        let originHead = run(["git", "-C", repositoryRoot.path, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+    private static func defaultBranch(in repositoryRoot: URL) async -> (branch: String?, reference: String?) {
+        let originHead = await run([
+            "git", "-C", repositoryRoot.path,
+            "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"
+        ])
             .output
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !originHead.isEmpty {
             let branch = originHead.replacingOccurrences(of: "origin/", with: "")
-            if localBranchExists(branch, in: repositoryRoot) {
+            if await localBranchExists(branch, in: repositoryRoot) {
                 return (branch, branch)
             }
             return (branch, originHead)
         }
 
-        for candidate in ["main", "master", "trunk", "develop"] where localBranchExists(candidate, in: repositoryRoot) {
-            return (candidate, candidate)
+        // `for where` cannot suspend while evaluating its predicate.
+        // swiftlint:disable for_where
+        for candidate in ["main", "master", "trunk", "develop"] {
+            if await localBranchExists(candidate, in: repositoryRoot) {
+                return (candidate, candidate)
+            }
         }
+        // swiftlint:enable for_where
 
         return (nil, nil)
     }
 
-    private static func localBranchExists(_ branch: String, in repositoryRoot: URL) -> Bool {
-        run(["git", "-C", repositoryRoot.path, "show-ref", "--verify", "--quiet", "refs/heads/\(branch)"]).status == 0
+    private static func localBranchExists(_ branch: String, in repositoryRoot: URL) async -> Bool {
+        await run([
+            "git", "-C", repositoryRoot.path,
+            "show-ref", "--verify", "--quiet", "refs/heads/\(branch)"
+        ]).status == 0
     }
 
-    private static func checkedOutBranches(in repositoryRoot: URL) -> Set<String> {
-        Set(parseWorktreeList(run(["git", "-C", repositoryRoot.path, "worktree", "list", "--porcelain"]).output).compactMap(\.branchName))
+    private static func checkedOutBranches(in repositoryRoot: URL) async -> Set<String> {
+        let result = await run(["git", "-C", repositoryRoot.path, "worktree", "list", "--porcelain"])
+        return Set(parseWorktreeList(result.output).compactMap(\.branchName))
     }
 
     private static func branchRemoteState(
@@ -1188,17 +1203,20 @@ struct GitArtifactScanner: Sendable {
         repository: GitRepository,
         branchRow: GitBranchRow? = nil,
         ghAvailable: Bool
-    ) -> BranchStaleState {
+    ) async -> BranchStaleState {
         if branchRow?.tracking?.contains("[gone]") == true {
             return BranchStaleState(isSafeToClean: true, reason: "Upstream branch is gone")
         }
 
         if let defaultReference = repository.defaultReference,
-           run(["git", "-C", repository.root.path, "merge-base", "--is-ancestor", branch, defaultReference]).status == 0 {
+           await run([
+               "git", "-C", repository.root.path,
+               "merge-base", "--is-ancestor", branch, defaultReference
+           ]).status == 0 {
             return BranchStaleState(isSafeToClean: true, reason: "Merged into \(defaultReference)")
         }
 
-        if ghAvailable, let prState = githubPRState(branch: branch, repositoryRoot: repository.root) {
+        if ghAvailable, let prState = await githubPRState(branch: branch, repositoryRoot: repository.root) {
             switch prState {
             case .merged:
                 return BranchStaleState(isSafeToClean: true, reason: "GitHub pull request is merged")
@@ -1212,8 +1230,8 @@ struct GitArtifactScanner: Sendable {
         return BranchStaleState(isSafeToClean: false, reason: "Branch is not proven merged or closed")
     }
 
-    private static func githubPRState(branch: String, repositoryRoot: URL) -> GitHubPRState? {
-        let result = run([
+    private static func githubPRState(branch: String, repositoryRoot: URL) async -> GitHubPRState? {
+        let result = await run([
             "gh", "pr", "list",
             "--head", branch,
             "--state", "all",
@@ -1240,9 +1258,9 @@ struct GitArtifactScanner: Sendable {
         return nil
     }
 
-    private static func commitDate(for commit: String?, in repositoryRoot: URL) -> Date? {
+    private static func commitDate(for commit: String?, in repositoryRoot: URL) async -> Date? {
         guard let commit, !commit.isEmpty else { return nil }
-        let result = run(["git", "-C", repositoryRoot.path, "show", "-s", "--format=%cI", commit])
+        let result = await run(["git", "-C", repositoryRoot.path, "show", "-s", "--format=%cI", commit])
         guard result.status == 0 else { return nil }
         return parseGitDate(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
@@ -1251,10 +1269,10 @@ struct GitArtifactScanner: Sendable {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
-    private static func isCleanWorkingTree(_ url: URL) -> Bool {
-        run(["git", "-C", url.path, "status", "--porcelain", "--ignore-submodules"]).output
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty
+    private static func isCleanWorkingTree(_ url: URL) async -> Bool {
+        let result = await run(["git", "-C", url.path, "status", "--porcelain", "--ignore-submodules"])
+        return result.status == 0
+            && result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// True if the worktree holds gitignored content that `git worktree remove`
@@ -1268,8 +1286,8 @@ struct GitArtifactScanner: Sendable {
     /// has nonzero size on disk; empty ignored placeholders (e.g. an empty
     /// `dist/`) don't count. Fails closed: if git can't report, we treat the
     /// tree as unsafe to delete.
-    static func worktreeHasValuableIgnoredContent(at url: URL) -> Bool {
-        let result = run([
+    static func worktreeHasValuableIgnoredContent(at url: URL) async -> Bool {
+        let result = await run([
             "git", "-C", url.path,
             "status", "--porcelain=v1", "-z", "--ignored", "--ignore-submodules"
         ])
@@ -1344,49 +1362,53 @@ struct GitArtifactScanner: Sendable {
         return nil
     }
 
-    static func run(_ arguments: [String], currentDirectory: URL? = nil) -> ProcessResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = arguments
-        process.currentDirectoryURL = currentDirectory
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+    static func run(
+        _ arguments: [String],
+        currentDirectory: URL? = nil,
+        timeout: TimeInterval = 10
+    ) async -> ProcessResult {
+        guard let command = arguments.first,
+              let executable = executablePath(for: command) else {
+            return ProcessResult(status: 127, output: "", error: "Command not found")
+        }
 
         do {
-            try process.run()
+            let result = try await ProcessRunner.run(
+                executable: executable,
+                arguments: Array(arguments.dropFirst()),
+                currentDirectory: currentDirectory,
+                timeout: timeout
+            )
+            return strictUTF8Result(result)
+        } catch ProcessRunnerError.timedOut(_, let partialResult) {
+            let timeoutError = "Subprocess timed out after \(timeout)s"
+            let error = partialResult.error.trimmingCharacters(in: .whitespacesAndNewlines)
+            return strictUTF8Result(ProcessResult(
+                status: 124,
+                output: partialResult.output,
+                error: error.isEmpty ? timeoutError : "\(error)\n\(timeoutError)",
+                outputWasValidUTF8: partialResult.outputWasValidUTF8
+            ))
         } catch {
             return ProcessResult(status: 127, output: "", error: error.localizedDescription)
         }
+    }
 
-        // Drain stderr on a separate thread while draining stdout here, then wait.
-        // Reading only after waitUntilExit would deadlock once the child fills
-        // either pipe's 64 KB buffer — `git status --porcelain` on a dirty tree
-        // with many untracked files easily exceeds that. Mirrors the concurrent
-        // drain in AssistantConversationService.runProcess.
-        let stderrHandle = stderr.fileHandleForReading
-        let drainQueue = DispatchQueue(label: "MacSweep.devtools.stderr-drain")
-        var errorData = Data()
-        drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
-
-        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        drainQueue.sync {}   // ensure the stderr drain has completed
-
-        let error = String(data: errorData, encoding: .utf8) ?? ""
-        // Git `-z` output can contain raw filename bytes. Never turn a decode
-        // failure into empty successful output: deletion guards rely on status.
-        guard let output = String(data: outputData, encoding: .utf8) else {
+    /// Git `-z` output can contain raw filename bytes. Never turn a decode
+    /// failure into replacement characters and apparent success: deletion guards
+    /// rely on the subprocess status to fail closed.
+    private static func strictUTF8Result(_ result: ProcessResult) -> ProcessResult {
+        guard result.outputWasValidUTF8 else {
             let decodeError = "Subprocess stdout was not valid UTF-8"
+            let error = result.error.trimmingCharacters(in: .whitespacesAndNewlines)
             return ProcessResult(
-                status: process.terminationStatus == 0 ? -1 : process.terminationStatus,
+                status: result.status == 0 ? -1 : result.status,
                 output: "",
-                error: error.isEmpty ? decodeError : "\(error)\n\(decodeError)"
+                error: error.isEmpty ? decodeError : "\(error)\n\(decodeError)",
+                outputWasValidUTF8: false
             )
         }
-        return ProcessResult(status: process.terminationStatus, output: output, error: error)
+        return result
     }
 
     private static func parseGitDate(_ raw: String) -> Date? {
@@ -1428,17 +1450,26 @@ actor GitArtifactCleaner {
                     continue
                 }
 
-                guard GitArtifactScanner.parseWorktreeList(
-                    GitArtifactScanner.run(["git", "-C", item.repositoryPath.path, "worktree", "list", "--porcelain"]).output
-                ).contains(where: { $0.path?.standardizedFileURL.path == path.standardizedFileURL.path }) else {
+                let worktreeList = await GitArtifactScanner.run([
+                    "git", "-C", item.repositoryPath.path,
+                    "worktree", "list", "--porcelain"
+                ])
+                guard GitArtifactScanner.parseWorktreeList(worktreeList.output)
+                    .contains(where: { $0.path?.standardizedFileURL.path == path.standardizedFileURL.path }) else {
                     errors.append(CleanupError(path: path, message: "Worktree is no longer registered"))
                     continue
                 }
 
-                guard GitArtifactScanner.run(["git", "-C", path.path, "status", "--porcelain", "--ignore-submodules"]).output
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty else {
-                    errors.append(CleanupError(path: path, message: "Worktree has local changes"))
+                let worktreeStatus = await GitArtifactScanner.run([
+                    "git", "-C", path.path,
+                    "status", "--porcelain", "--ignore-submodules"
+                ])
+                guard worktreeStatus.status == 0,
+                      worktreeStatus.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    errors.append(CleanupError(
+                        path: path,
+                        message: "Worktree status could not be verified or has local changes"
+                    ))
                     continue
                 }
 
@@ -1446,15 +1477,18 @@ actor GitArtifactCleaner {
                 // gitignored files, so a worktree whose only extra content is a
                 // gitignored `.env` or local DB would be permanently destroyed.
                 // Refuse when valuable ignored content is present.
-                guard !GitArtifactScanner.worktreeHasValuableIgnoredContent(at: path) else {
+                guard !(await GitArtifactScanner.worktreeHasValuableIgnoredContent(at: path)) else {
                     errors.append(CleanupError(
                         path: path,
-                        message: "Worktree contains gitignored files (e.g. .env, local database); skipped to avoid permanent data loss"
+                        message: "Worktree contains gitignored files; skipped to avoid permanent data loss"
                     ))
                     continue
                 }
 
-                let result = GitArtifactScanner.run(["git", "-C", item.repositoryPath.path, "worktree", "remove", path.path])
+                let result = await GitArtifactScanner.run([
+                    "git", "-C", item.repositoryPath.path,
+                    "worktree", "remove", path.path
+                ])
                 if result.status == 0 {
                     processed += 1
                     freed += item.size
@@ -1477,7 +1511,10 @@ actor GitArtifactCleaner {
                     continue
                 }
 
-                let result = GitArtifactScanner.run(["git", "-C", item.repositoryPath.path, "branch", "-d", branch])
+                let result = await GitArtifactScanner.run([
+                    "git", "-C", item.repositoryPath.path,
+                    "branch", "-d", branch
+                ])
                 if result.status == 0 {
                     processed += 1
                 } else {
@@ -1538,11 +1575,6 @@ private enum GitHubPRState: Sendable {
     case closed
     case merged
 }
-
-// `ProcessResult` now lives in ProcessRunner.swift (the canonical subprocess
-// result type). `DevToolsModule.run` still produces it directly — migrating this
-// synchronous git runner to the async `ProcessRunner` is tracked as remainder on
-// #93 because it would ripple `async` through every synchronous git call site.
 
 private extension String {
     func removingPrefix(_ prefix: String) -> String? {
