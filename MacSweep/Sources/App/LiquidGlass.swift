@@ -136,6 +136,21 @@ enum MacSweepTheme {
     static let accentBlue = Color(red: 0.22, green: 0.52, blue: 0.84)
     static let warningPanel = Color.orange.opacity(0.12)
 
+    // MARK: Semantic status tints
+    //
+    // The single source of truth for the meaning-colors used by status labels
+    // (see `TagBadge`) and any other semantic accent: danger = red, warning =
+    // orange, success = brand green (`accent`), info = brand blue (`accentBlue`),
+    // neutral = secondary/gray. Callers should reference these tokens (or a
+    // `TagRole`) instead of hardcoding `.red` / `.orange.opacity(...)` so the
+    // palette stays consistent and re-themable in one place. Introduced for the
+    // badge unification; the broader design-token sweep can reuse them.
+    static let infoTint = accentBlue
+    static let successTint = accent
+    static let warningTint = Color.orange
+    static let dangerTint = Color.red
+    static let neutralTint = Color.secondary
+
     /// The single selection accent — the checkmark tint on every selectable row
     /// and the fill behind a selected card. Centralizes the `.blue` that the row
     /// structs and category cards used to hardcode.

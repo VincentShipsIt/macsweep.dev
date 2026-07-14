@@ -310,12 +310,7 @@ struct NetworkRow: View {
                         .font(.body)
 
                     if network.isCurrentlyConnected {
-                        Text("Connected")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.green.opacity(0.2), in: Capsule())
-                            .foregroundStyle(.green)
+                        TagBadge("Connected", role: .success)
                     }
 
                     if isProtected {
@@ -574,20 +569,10 @@ struct SSHHostRow: View {
                     .fontDesign(.monospaced)
 
                 HStack(spacing: 8) {
-                    Text(host.algorithm)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.blue.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.blue)
+                    TagBadge(host.algorithm, role: .info)
 
                     if host.isHashed {
-                        Text("Hashed")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.orange.opacity(0.2), in: Capsule())
-                            .foregroundStyle(.orange)
+                        TagBadge("Hashed", role: .warning)
                     }
                 }
             }

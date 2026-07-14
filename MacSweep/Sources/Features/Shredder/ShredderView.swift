@@ -261,9 +261,12 @@ struct ShredderView: View {
             .foregroundStyle(.secondary)
 
             HStack(spacing: 16) {
-                InfoBadge(icon: "exclamationmark.triangle", text: "Cannot be undone", color: .orange)
-                InfoBadge(icon: "clock", text: "Slower than normal delete", color: .blue)
-                InfoBadge(icon: "lock.shield", text: "Use FileVault for guarantees", color: .green)
+                TagBadge("Cannot be undone", icon: "exclamationmark.triangle",
+                         role: .warning, prominence: .plain)
+                TagBadge("Slower than normal delete", icon: "clock",
+                         role: .info, prominence: .plain)
+                TagBadge("Use FileVault for guarantees", icon: "lock.shield",
+                         role: .success, prominence: .plain)
             }
         }
         .padding()
@@ -452,24 +455,6 @@ struct ShredderView: View {
         } else {
             total = sum
         }
-    }
-}
-
-// MARK: - Info Badge
-
-struct InfoBadge: View {
-    let icon: String
-    let text: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption)
-            Text(text)
-                .font(.caption2)
-        }
-        .foregroundStyle(color)
     }
 }
 

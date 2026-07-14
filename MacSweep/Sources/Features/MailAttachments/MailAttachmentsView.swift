@@ -243,23 +243,13 @@ struct AttachmentRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    // Source badge
+                    // Source badge — per-mail-client categorical color.
                     let source = item.moduleName.split(separator: " - ").first.map(String.init) ?? ""
-                    Text(source)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(sourceColor(source).opacity(0.2), in: Capsule())
-                        .foregroundStyle(sourceColor(source))
+                    TagBadge(source, tint: sourceColor(source))
 
-                    // Type badge
+                    // Type badge — per-file-type categorical color.
                     let type = item.moduleName.split(separator: " - ").last.map(String.init) ?? ""
-                    Text(type)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(typeColor(type).opacity(0.2), in: Capsule())
-                        .foregroundStyle(typeColor(type))
+                    TagBadge(type, tint: typeColor(type))
 
                     if let date = item.lastModified {
                         Text(date, style: .date)

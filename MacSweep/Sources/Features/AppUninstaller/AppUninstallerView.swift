@@ -554,12 +554,7 @@ struct LeftoverRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    Text(leftover.type.rawValue)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.orange.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.orange)
+                    TagBadge(leftover.type.rawValue, role: .warning)
 
                     Text(leftover.path.deletingLastPathComponent().path)
                         .font(.caption2)
