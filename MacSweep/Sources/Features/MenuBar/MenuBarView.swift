@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var monitor = SystemMonitor()
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expandedWidget: WidgetType?
     @State private var menuWindow: NSWindow?
     @AppStorage(CompanionToolbarPreferences.storageCardVisible) private var storageCardVisible = true
@@ -48,11 +49,14 @@ struct MenuBarView: View {
             if showsQuickActions {
                 Divider()
                     .padding(.vertical, 6)
+                    .transition(quickActionsTransition)
 
                 quickActions
+                    .transition(quickActionsTransition)
             }
         }
         .padding(16)
+        .animation(motionAnimation, value: showsQuickActions)
     }
 
     // MARK: - Header
@@ -113,6 +117,7 @@ struct MenuBarView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 48)
+                    .transition(quickActionsTransition)
             } else {
                 LazyVGrid(columns: [
                     GridItem(.flexible(), spacing: MenuBarStatCardLayout.gridSpacing),
@@ -122,8 +127,10 @@ struct MenuBarView: View {
                         companionToolbarCard(card)
                     }
                 }
+                .transition(quickActionsTransition)
             }
         }
+        .animation(motionAnimation, value: visibleToolbarCards.isEmpty)
     }
 
     // MARK: - Quick Actions
@@ -137,6 +144,7 @@ struct MenuBarView: View {
                     compact: true
                 )
                 .padding(.horizontal, 4)
+                .transition(quickActionsTransition)
             }
 
             if !appState.scanResults.isEmpty {
@@ -152,6 +160,7 @@ struct MenuBarView: View {
                         .fontWeight(.medium)
                 }
                 .padding(.horizontal, 4)
+                .transition(quickActionsTransition)
             }
 
             if let lastCleanup = appState.lastCleanup {
@@ -166,8 +175,26 @@ struct MenuBarView: View {
 
                     Spacer()
                 }
+                .transition(quickActionsTransition)
             }
         }
+        .animation(motionAnimation, value: appState.isScanning)
+        .animation(motionAnimation, value: appState.scanResults.count)
+        .animation(motionAnimation, value: appState.lastCleanup != nil)
+    }
+
+    // MARK: - Motion
+
+    /// Shared, Reduce-Motion-aware animation for the conditional overview/quick-action
+    /// blocks. Nil disables the animation entirely when Reduce Motion is on.
+    private var motionAnimation: Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.2)
+    }
+
+    /// Opacity + slight vertical slide for rows that appear/disappear as scan state
+    /// changes; collapses to `.identity` (an instant cut) under Reduce Motion.
+    private var quickActionsTransition: AnyTransition {
+        reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top))
     }
 
     // MARK: - Helpers
@@ -346,10 +373,12 @@ struct MenuBarView: View {
     }
 
     private var devicesColor: Color {
+        // Route the low-battery boundaries through the shared thresholds so the
+        // companion warns at the same points as the rest of the app. "Healthy"
+        // keeps its cyan connected-devices tint rather than the metric green.
         guard let lowest = lowestDeviceBattery else { return .cyan }
-        if lowest <= 10 { return .red }
-        if lowest <= 20 { return .orange }
-        return .cyan
+        let level = MetricThresholds.capacity(percent: lowest)
+        return level == .normal ? .cyan : level.color
     }
 }
 

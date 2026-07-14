@@ -221,44 +221,76 @@ struct CleanupFooterSummary: View {
     }
 }
 
-/// The standard cleanup footer: a selection summary on the left, then a
-/// `Select All` button and one prominent destructive action on the right. Only
-/// the summary noun, the verb in `summary`, and the action label/tint vary
-/// between pages. Attach the confirmation with `.deleteConfirmation(...)`.
+/// The standard cleanup footer, rendered as the signature Tahoe floating glass
+/// bar: an inset, rounded glass surface that hovers over the results List rather
+/// than a flat opaque band. A selection summary sits on the left; a `Select All`
+/// button, an optional secondary action, and one prominent action group on the
+/// right. Every control lives in a single `GlassEffectContainer` so the bar
+/// surface and its buttons sample the content behind them consistently.
+///
+/// Only the summary noun, the verb in `summary`, and the action label/tint vary
+/// between pages. Attach the confirmation with `.deleteConfirmation(...)` or
+/// `.cleanupReview(...)` at the call site.
 struct CleanupFooter: View {
     let selectedCount: Int
     var totalCount: Int? = nil
     var countNoun: String? = nil
-    let summary: String
+    /// The "Will free 1.2 GB" headline. `nil` omits it (e.g. Homebrew, which
+    /// shows only the selection count).
+    var summary: String? = nil
     var selectAllTitle: String = "Select All"
     let onSelectAll: () -> Void
+
+    /// The single prominent action, rendered `.glassProminent`.
     let actionTitle: String
-    /// Tint for the destructive action. `nil` leaves the prominent glass style
-    /// untinted (e.g. Cloud Cleanup's "Reclaim Space").
+    /// Tint for the prominent action. `nil` leaves it untinted (e.g. Cloud
+    /// Cleanup's "Reclaim Space", Homebrew's "Upgrade All").
     var actionTint: Color? = .red
     let actionDisabled: Bool
     let onAction: () -> Void
-    /// Some footers sit on a `panelStrong` bar (System Junk, Package Managers).
-    var showsPanelBackground: Bool = false
+
+    /// Optional secondary action, rendered as a second `.glass` button between
+    /// `Select All` and the prominent action. HomebrewUpdater uses it for
+    /// "Upgrade Selected" alongside the prominent "Upgrade All". Omitting it
+    /// (the default) leaves the footer with a single action, unchanged.
+    var secondaryActionTitle: String? = nil
+    var secondaryActionDisabled: Bool = false
+    var onSecondaryAction: (() -> Void)? = nil
+
+    /// Shared by the `GlassEffectContainer` and the button `HStack` so adjacent
+    /// glass shapes sample against a region that matches the layout spacing.
+    private static let controlSpacing: CGFloat = 10
 
     var body: some View {
-        HStack {
-            CleanupFooterSummary(
-                selectedCount: selectedCount,
-                totalCount: totalCount,
-                countNoun: countNoun,
-                summary: summary
-            )
+        GlassEffectContainer(spacing: Self.controlSpacing) {
+            HStack(spacing: Self.controlSpacing) {
+                CleanupFooterSummary(
+                    selectedCount: selectedCount,
+                    totalCount: totalCount,
+                    countNoun: countNoun,
+                    summary: summary
+                )
 
-            Spacer()
+                Spacer(minLength: 12)
 
-            Button(selectAllTitle, action: onSelectAll)
-                .glassButton()
+                Button(selectAllTitle, action: onSelectAll)
+                    .glassButton()
 
-            actionButton
+                if let secondaryActionTitle, let onSecondaryAction {
+                    Button(secondaryActionTitle, action: onSecondaryAction)
+                        .glassButton()
+                        .disabled(secondaryActionDisabled)
+                }
+
+                actionButton
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .glassControl(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .padding()
-        .modifier(FooterBackground(active: showsPanelBackground))
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
     }
 
     @ViewBuilder
@@ -269,18 +301,6 @@ struct CleanupFooter: View {
             button.tint(actionTint).disabled(actionDisabled)
         } else {
             button.disabled(actionDisabled)
-        }
-    }
-}
-
-private struct FooterBackground: ViewModifier {
-    let active: Bool
-
-    func body(content: Content) -> some View {
-        if active {
-            content.background(MacSweepTheme.panelStrong)
-        } else {
-            content
         }
     }
 }

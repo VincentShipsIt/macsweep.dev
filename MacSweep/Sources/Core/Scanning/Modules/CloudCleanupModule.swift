@@ -95,24 +95,19 @@ struct CloudCleanupModule: ScanModule {
 
         var items: [CleanupItem] = []
         let checker = SafetyChecker()
-        for root in roots where FileManager.default.fileExists(atPath: root.path) {
+        let moduleID = id
+        for root in roots {
             // Defense-in-depth: only surface a cache root the safety gate accepts.
-            guard checker.validateForScan(root, moduleID: id).isSafe else { continue }
-
-            let size = (try? await DiskAnalyzer.directorySize(at: root)) ?? 0
-            guard size >= minimumFileSize else { continue }
-
-            let date = (try? root.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? nil
-
-            items.append(CleanupItem(
-                id: UUID(),
-                path: root,
-                size: size,
-                type: .directory,
-                module: id,
+            // `minimumFileSize - 1` preserves the original inclusive
+            // `size >= minimumFileSize` bound against the helper's strict `>`.
+            if let item = await scanCacheDirectory(
+                at: root,
                 moduleName: "\(providerName(for: root)) Cache",
-                lastModified: date
-            ))
+                threshold: minimumFileSize - 1,
+                safetyCheck: { checker.validateForScan($0, moduleID: moduleID).isSafe }
+            ) {
+                items.append(item)
+            }
         }
 
         return items

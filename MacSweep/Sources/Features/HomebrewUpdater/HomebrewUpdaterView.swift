@@ -36,7 +36,6 @@ struct HomebrewUpdaterView: View {
                 }
 
                 if !service.packages.isEmpty && !service.isLoading {
-                    Divider()
                     bottomBar
                 }
 
@@ -58,13 +57,7 @@ struct HomebrewUpdaterView: View {
     private var packageList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("\(service.packages.count) outdated")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.orange.opacity(0.85), in: Capsule())
-                    .foregroundStyle(.white)
+                TagBadge("\(service.packages.count) outdated", role: .warning, prominence: .strong)
 
                 Spacer()
 
@@ -142,35 +135,27 @@ struct HomebrewUpdaterView: View {
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack {
-            let selectedCount = service.packages.filter(\.isSelected).count
-            Text("\(selectedCount) of \(service.packages.count) selected")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button("Select All") {
+        let selectedCount = service.packages.filter(\.isSelected).count
+        return CleanupFooter(
+            selectedCount: selectedCount,
+            totalCount: service.packages.count,
+            onSelectAll: {
                 for i in service.packages.indices { service.packages[i].isSelected = true }
-            }
-            .buttonStyle(.plain)
-            .font(.caption)
-
-            Button("Upgrade Selected") {
+            },
+            actionTitle: "Upgrade All",
+            actionTint: nil,
+            actionDisabled: service.isUpgrading,
+            onAction: {
+                showLog = true
+                Task { await service.upgradeAll() }
+            },
+            secondaryActionTitle: "Upgrade Selected",
+            secondaryActionDisabled: service.isUpgrading || selectedCount == 0,
+            onSecondaryAction: {
                 showLog = true
                 Task { await service.upgradeSelected() }
             }
-            .glassButton()
-            .disabled(service.isUpgrading || service.packages.filter(\.isSelected).isEmpty)
-
-            Button("Upgrade All") {
-                showLog = true
-                Task { await service.upgradeAll() }
-            }
-            .glassButton(prominent: true)
-            .disabled(service.isUpgrading)
-        }
-        .padding()
+        )
     }
 
     // MARK: - Upgrade Log
@@ -201,7 +186,7 @@ struct HomebrewUpdaterView: View {
                     .padding(.horizontal)
             }
             .frame(height: 140)
-            .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
@@ -253,23 +238,14 @@ struct PackageRow: View {
                 if let insight = package.aiInsight {
                     HStack(spacing: 6) {
                         if insight.hasBreakingChanges {
-                            Label("Breaking", systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.red.opacity(0.85), in: Capsule())
+                            TagBadge("Breaking", icon: "exclamationmark.triangle.fill",
+                                     role: .danger, prominence: .strong)
                         }
 
-                        Text(insight.upgradeRecommendation)
-                            .font(.caption2)
-                            .foregroundStyle(insight.upgradeRecommendation == "Safe" ? .green : .orange)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                (insight.upgradeRecommendation == "Safe" ? Color.green : Color.orange).opacity(0.15),
-                                in: Capsule()
-                            )
+                        TagBadge(
+                            insight.upgradeRecommendation,
+                            role: insight.upgradeRecommendation == "Safe" ? .success : .warning
+                        )
                     }
                 }
             }
@@ -280,7 +256,7 @@ struct PackageRow: View {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "sparkles")
                             .font(.caption2)
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(MacSweepTheme.accentPurple)
                         Text(insight.changesSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -299,7 +275,7 @@ struct PackageRow: View {
                         .padding(.leading, 36)
                         .padding(.vertical, 4)
                         .padding(.horizontal, 36)
-                        .background(Color.red.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        .background(MacSweepTheme.errorPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
                         .padding(.leading, 36)
                     }
                 }

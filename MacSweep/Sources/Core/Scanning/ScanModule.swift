@@ -15,20 +15,36 @@ protocol ScanModule: Identifiable, Sendable {
 }
 
 extension ScanModule {
-    /// Build a `CleanupItem` for a cache directory if it exists and has nonzero
-    /// size; returns nil otherwise. Centralizes the
-    /// exists → directorySize → size>0 → CleanupItem idiom the package-manager and
-    /// dev-tools scanners repeat dozens of times. Behaviour is identical to the
-    /// hand-written blocks, including the zero-size guard. Scan-only — the
-    /// safety-gated deletion path in `clean()` is untouched.
+    /// Build a `CleanupItem` for a cache directory if it exists and clears the
+    /// size `threshold`; returns nil otherwise. Centralizes the
+    /// exists → directorySize → size>threshold → CleanupItem idiom that the
+    /// package-manager, dev-tools, service-worker, network, cloud, docker, and
+    /// browser scanners otherwise repeat inline. Behaviour is identical to the
+    /// hand-written blocks.
+    ///
+    /// - Parameters:
+    ///   - threshold: Exclusive lower size bound. The default of `0` preserves
+    ///     the original `size > 0` guard; pass e.g. `1024` for a `size > 1024`
+    ///     block. The comparison is strict (`size > threshold`), matching every
+    ///     migrated `>` site verbatim. A site written as `size >= minimum` maps
+    ///     to `threshold: minimum - 1`.
+    ///   - safetyCheck: Optional scan-time gate (e.g. CloudCleanupModule's
+    ///     `SafetyChecker.validateForScan`). When it returns `false` the
+    ///     directory is skipped before its size is computed, exactly as the
+    ///     inline `guard …isSafe else { continue }` did.
+    ///
+    /// Scan-only — the safety-gated deletion path in `clean()` is untouched.
     func scanCacheDirectory(
         at url: URL,
         moduleName displayName: String,
-        type: CleanupItem.ItemType = .directory
+        type: CleanupItem.ItemType = .directory,
+        threshold: Int64 = 0,
+        safetyCheck: (@Sendable (URL) -> Bool)? = nil
     ) async -> CleanupItem? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        if let safetyCheck, !safetyCheck(url) { return nil }
         let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
-        guard size > 0 else { return nil }
+        guard size > threshold else { return nil }
         let lastModified = try? url.resourceValues(
             forKeys: [.contentModificationDateKey]
         ).contentModificationDate

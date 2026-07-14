@@ -79,7 +79,9 @@ struct LargeFilesView: View {
                         isScanning: model.isScanning,
                         action: { Task { await scanLargeFiles() } }
                     )
+                    .transition(.scanCrossfade)
                 } else {
+                    Group {
                     ManualReviewNotice(
                         message: "Review-only results — large files and folders are never "
                             + "selected for automatic cleanup."
@@ -90,11 +92,14 @@ struct LargeFilesView: View {
                     itemsList
 
                     if !filteredItems.isEmpty {
-                        Divider()
                         footer
                     }
+                    }
+                    .transition(.scanCrossfade)
                 }
             }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: model.items.isEmpty)
         }
         .quickLookPreview($previewURL)
         .onDisappear { model.cancelScan() }

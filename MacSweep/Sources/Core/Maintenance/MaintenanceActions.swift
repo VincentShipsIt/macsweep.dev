@@ -42,34 +42,26 @@ actor MaintenanceActions {
     }
 
     private static func getAvailableMemory() async -> Int64 {
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/vm_stat")
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
         do {
-            try process.run()
-            // Drain the pipe BEFORE reaping: readDataToEndOfFile blocks until the
-            // child closes its write end (on exit), so a verbose child can't fill
-            // the 64 KB pipe buffer and deadlock against waitUntilExit.
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return 0 }
+            // The shared runner drains stdout concurrently and bounds the whole
+            // lifecycle with a watchdog, so a wedged vm_stat can no longer hang
+            // this best-effort read. Non-UTF-8 stdout arrives as "" and parses to 0.
+            let result = try await ProcessRunner.run(
+                executable: "/usr/bin/vm_stat",
+                timeout: 30
+            )
 
             // Page size is 4 KB on Intel but 16 KB on Apple Silicon — read it
             // dynamically so the byte total isn't 4x wrong on Apple Silicon.
             let pageSize = Int64(sysconf(Int32(_SC_PAGESIZE)))
             let resolvedPageSize = pageSize > 0 ? pageSize : 4096
 
-            return parseVMStatFreeBytes(output, pageSize: resolvedPageSize)
+            return parseVMStatFreeBytes(result.output, pageSize: resolvedPageSize)
         } catch {
             // Best-effort: a vm_stat failure reports 0 free bytes rather than aborting.
             Log.process.debug("vm_stat free-memory read failed: \(error.localizedDescription, privacy: .public)")
+            return 0
         }
-
-        return 0
     }
 
     /// Free bytes from `vm_stat` output ("Pages free: 12345.") for the given
@@ -126,32 +118,34 @@ actor MaintenanceActions {
 
     /// Run disk repair (First Aid) - Note: Full repair requires Recovery Mode
     static func repairDiskPermissions() async throws -> MaintenanceResult {
-        // diskutil verifyVolume is the closest we can do without Recovery
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
-        process.arguments = ["verifyVolume", "/"]
-        process.standardOutput = pipe
-        process.standardError = pipe
-
+        // diskutil verifyVolume is the closest we can do without Recovery. The
+        // shared runner drains both streams concurrently — a damaged volume can
+        // emit thousands of lines — and bounds the run so a wedged verify can no
+        // longer hang indefinitely.
         do {
-            try process.run()
-            // Drain before reaping: a damaged volume can emit thousands of error
-            // lines, overflowing the 64 KB pipe buffer and deadlocking a
-            // wait-then-read ordering.
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            let output = String(data: data, encoding: .utf8) ?? ""
-
-            let success = process.terminationStatus == 0
-            return MaintenanceResult(
-                success: success,
-                message: success ? "Volume verified successfully" : "Volume verification found issues: \(output.prefix(200))"
+            let result = try await ProcessRunner.run(
+                executable: "/usr/sbin/diskutil",
+                arguments: ["verifyVolume", "/"],
+                timeout: 600
             )
+            // The runner keeps stdout and stderr separate; the previous shared
+            // pipe merged them, so concatenate to preserve the diagnostic text.
+            return verifyVolumeResult(status: result.status, output: result.output + result.error)
         } catch {
             throw MaintenanceError.commandFailed("diskutil", error.localizedDescription)
         }
+    }
+
+    /// Build the verify-volume result from a completed `diskutil verifyVolume`
+    /// run. Split from `repairDiskPermissions` so the success/failure message
+    /// contract — including the 200-character diagnostic clamp — stays
+    /// deterministic and testable without spawning diskutil.
+    static func verifyVolumeResult(status: Int32, output: String) -> MaintenanceResult {
+        let success = status == 0
+        return MaintenanceResult(
+            success: success,
+            message: success ? "Volume verified successfully" : "Volume verification found issues: \(output.prefix(200))"
+        )
     }
 
     // MARK: - Free Purgeable Space
@@ -171,21 +165,19 @@ actor MaintenanceActions {
 
         // Allocate a real 1GB file (NOT sparse) to apply space pressure. The
         // previous "-n" flag created a sparse file that reserves no blocks, so
-        // it never forced APFS to reclaim purgeable space — the whole point.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: mkfilePath)
-        process.arguments = ["1g", tempFile.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
+        // it never forced APFS to reclaim purgeable space — the whole point. The
+        // shared runner bounds the allocation so a stalled mkfile can't hang.
         do {
-            try process.run()
-            process.waitUntilExit()
+            let result = try await ProcessRunner.run(
+                executable: mkfilePath,
+                arguments: ["1g", tempFile.path],
+                timeout: 120
+            )
 
             // Whether the pressure file was actually allocated. If mkfile failed
             // (e.g. the disk had < 1 GB free), no space pressure was applied and we
             // must not report success as if reclamation was triggered.
-            let mkfileSucceeded = process.terminationStatus == 0
+            let mkfileSucceeded = result.status == 0
 
             // Delete the file
             try? FileManager.default.removeItem(at: tempFile)
@@ -193,23 +185,30 @@ actor MaintenanceActions {
             let afterPurgeable = await getPurgeableSpace()
             let freed = max(0, beforePurgeable - afterPurgeable)
 
-            guard mkfileSucceeded else {
-                return MaintenanceResult(
-                    success: false,
-                    message: "Could not allocate the 1 GB pressure file; no user data was changed",
-                    bytesFreed: freed
-                )
-            }
-
-            return MaintenanceResult(
-                success: true,
-                message: freed > 0 ? "Freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)) of purgeable space" : "Purgeable space optimization triggered",
-                bytesFreed: freed
-            )
+            return purgeableResult(mkfileSucceeded: mkfileSucceeded, freed: freed)
         } catch {
             try? FileManager.default.removeItem(at: tempFile)
             throw MaintenanceError.commandFailed("mkfile", error.localizedDescription)
         }
+    }
+
+    /// Build the purgeable-space result from the mkfile outcome and the measured
+    /// reclamation. Split from `freePurgeableSpace` so the success/failure
+    /// contract stays deterministic and testable without allocating a 1 GB file.
+    static func purgeableResult(mkfileSucceeded: Bool, freed: Int64) -> MaintenanceResult {
+        guard mkfileSucceeded else {
+            return MaintenanceResult(
+                success: false,
+                message: "Could not allocate the 1 GB pressure file; no user data was changed",
+                bytesFreed: freed
+            )
+        }
+
+        return MaintenanceResult(
+            success: true,
+            message: freed > 0 ? "Freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)) of purgeable space" : "Purgeable space optimization triggered",
+            bytesFreed: freed
+        )
     }
 
     private static func getPurgeableSpace() async -> Int64 {
@@ -245,19 +244,17 @@ actor MaintenanceActions {
 
     /// Clear font caches
     static func clearFontCaches() async throws -> MaintenanceResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/atsutil")
-        process.arguments = ["databases", "-remove"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
         do {
-            try process.run()
-            process.waitUntilExit()
+            let result = try await ProcessRunner.run(
+                executable: "/usr/bin/atsutil",
+                arguments: ["databases", "-remove"],
+                timeout: 120
+            )
 
+            let success = result.status == 0
             return MaintenanceResult(
-                success: process.terminationStatus == 0,
-                message: process.terminationStatus == 0 ? "Font caches cleared" : "Failed to clear font caches"
+                success: success,
+                message: success ? "Font caches cleared" : "Failed to clear font caches"
             )
         } catch {
             throw MaintenanceError.commandFailed("atsutil", error.localizedDescription)
@@ -272,20 +269,18 @@ actor MaintenanceActions {
             throw MaintenanceError.commandFailed("lsregister", "Launch Services tool not found at expected location")
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: launchServicesExecutablePath)
-        // Use only user domain for sandboxed apps (system/local require elevated privileges)
-        process.arguments = ["-kill", "-r", "-domain", "user"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
         do {
-            try process.run()
-            process.waitUntilExit()
+            let result = try await ProcessRunner.run(
+                executable: launchServicesExecutablePath,
+                // Use only user domain for sandboxed apps (system/local require elevated privileges)
+                arguments: ["-kill", "-r", "-domain", "user"],
+                timeout: 300
+            )
 
+            let success = result.status == 0
             return MaintenanceResult(
-                success: process.terminationStatus == 0,
-                message: process.terminationStatus == 0 ? "Launch Services database rebuilt" : "Failed to rebuild Launch Services (may require elevated privileges)"
+                success: success,
+                message: success ? "Launch Services database rebuilt" : "Failed to rebuild Launch Services (may require elevated privileges)"
             )
         } catch {
             throw MaintenanceError.commandFailed("lsregister", error.localizedDescription)

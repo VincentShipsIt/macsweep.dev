@@ -4,6 +4,7 @@ import CoreWLAN
 /// View for managing network cleanup operations
 struct NetworkCleanupView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: NetworkTab = .wifi
 
     enum NetworkTab: String, CaseIterable {
@@ -29,15 +30,22 @@ struct NetworkCleanupView: View {
 
                 Divider()
 
-                // Tab content
-                switch selectedTab {
-                case .wifi:
-                    WiFiNetworksView()
-                case .ssh:
-                    SSHHostsView()
-                case .dns:
-                    DNSCacheView()
+                // Tab content — cross-fade between tabs instead of a hard cut.
+                // `.id(selectedTab)` gives each tab a distinct identity so the
+                // opacity transition fires on switch; guarded for Reduce Motion.
+                Group {
+                    switch selectedTab {
+                    case .wifi:
+                        WiFiNetworksView()
+                    case .ssh:
+                        SSHHostsView()
+                    case .dns:
+                        DNSCacheView()
+                    }
                 }
+                .id(selectedTab)
+                .transition(reduceMotion ? .identity : .opacity)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedTab)
             }
         }
     }
@@ -302,12 +310,7 @@ struct NetworkRow: View {
                         .font(.body)
 
                     if network.isCurrentlyConnected {
-                        Text("Connected")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.green.opacity(0.2), in: Capsule())
-                            .foregroundStyle(.green)
+                        TagBadge("Connected", role: .success)
                     }
 
                     if isProtected {
@@ -441,7 +444,7 @@ struct SSHHostsView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(10)
-            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.warningPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
         }
         .padding()
     }
@@ -601,20 +604,10 @@ struct SSHHostRow: View {
                     .fontDesign(.monospaced)
 
                 HStack(spacing: 8) {
-                    Text(host.algorithm)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.blue.opacity(0.2), in: Capsule())
-                        .foregroundStyle(.blue)
+                    TagBadge(host.algorithm, role: .info)
 
                     if host.isHashed {
-                        Text("Hashed")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.orange.opacity(0.2), in: Capsule())
-                            .foregroundStyle(.orange)
+                        TagBadge("Hashed", role: .warning)
                     }
                 }
             }
@@ -748,10 +741,10 @@ struct DNSCacheView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(10)
-            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .background(MacSweepTheme.infoPanel, in: RoundedRectangle(cornerRadius: MacSweepTheme.smallRadius))
         }
         .padding()
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius))
     }
 
     // MARK: - Network Cache Section
@@ -806,7 +799,7 @@ struct DNSCacheView: View {
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .background(MacSweepTheme.panel, in: RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius))
     }
 
     // MARK: - Actions

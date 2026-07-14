@@ -58,26 +58,13 @@ struct ServiceWorkerModule: ScanModule {
         var items: [CleanupItem] = []
 
         for app in Self.electronApps {
-            let expandedPath = app.path.expandingTilde
-            let url = URL(fileURLWithPath: expandedPath)
-
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-
-            do {
-                let size = try await DiskAnalyzer.directorySize(at: url)
-                guard size > 1024 else { continue }  // Skip tiny items
-
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: url,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "\(app.name) Service Worker",
-                    lastModified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-                ))
-            } catch {
-                continue
+            let url = URL(fileURLWithPath: app.path.expandingTilde)
+            if let item = await scanCacheDirectory(
+                at: url,
+                moduleName: "\(app.name) Service Worker",
+                threshold: 1024  // Skip tiny items
+            ) {
+                items.append(item)
             }
         }
 
@@ -106,25 +93,12 @@ struct ServiceWorkerModule: ScanModule {
             // Skip if we already know about this app
             if knownPaths.contains(serviceWorkerPath.path) { continue }
 
-            guard FileManager.default.fileExists(atPath: serviceWorkerPath.path) else { continue }
-
-            do {
-                let size = try await DiskAnalyzer.directorySize(at: serviceWorkerPath)
-                guard size > 10240 else { continue }  // Skip very small ones
-
-                let appName = appDir.lastPathComponent
-
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: serviceWorkerPath,
-                    size: size,
-                    type: .directory,
-                    module: id,
-                    moduleName: "\(appName) Service Worker",
-                    lastModified: nil
-                ))
-            } catch {
-                continue
+            if let item = await scanCacheDirectory(
+                at: serviceWorkerPath,
+                moduleName: "\(appDir.lastPathComponent) Service Worker",
+                threshold: 10240  // Skip very small ones
+            ) {
+                items.append(item)
             }
         }
 

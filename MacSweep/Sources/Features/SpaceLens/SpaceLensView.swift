@@ -43,6 +43,7 @@ struct SpaceLensView: View {
                 }
 
                 if !isScanning, let node = currentNode {
+                    Group {
                     contentToolbar
                     Divider()
 
@@ -53,6 +54,8 @@ struct SpaceLensView: View {
                         detailPane
                             .frame(minWidth: 250, maxWidth: 350)
                     }
+                    }
+                    .transition(.scanCrossfade)
                 } else {
                     ScanLandingView(
                         icon: "chart.pie",
@@ -67,8 +70,11 @@ struct SpaceLensView: View {
                         isScanning: isScanning,
                         action: { Task { await scanDisk() } }
                     )
+                    .transition(.scanCrossfade)
                 }
             }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: isScanning || currentNode == nil)
         }
     }
 

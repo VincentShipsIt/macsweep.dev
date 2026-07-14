@@ -8,6 +8,9 @@ struct BrowserCleanupView: View {
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
     @State private var errorMessage: String?
+    // Follow-up: adopt the shared `animated(_:value:)` reduce-motion helper from
+    // App/Motion.swift once the "Animate scan lifecycle" work merges it in.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let browsers: [any BrowserModule] = [
         ChromeModule(),
@@ -31,16 +34,25 @@ struct BrowserCleanupView: View {
 
             Divider()
 
-            if isScanning {
-                scanningView
-            } else if browserResults.isEmpty {
-                emptyState
-            } else {
-                resultsList
+            // This view predates the shared ScanLandingView, so crossfade the
+            // three-way content swap by hand. `contentPhase` collapses the two
+            // booleans into one Equatable so the animation fires on every branch.
+            ZStack {
+                if isScanning {
+                    scanningView
+                        .transition(.opacity)
+                } else if browserResults.isEmpty {
+                    emptyState
+                        .transition(.opacity)
+                } else {
+                    resultsList
+                        .transition(.opacity)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: contentPhase)
 
             if !browserResults.isEmpty && !isScanning {
-                Divider()
                 footer
             }
         }
@@ -254,6 +266,19 @@ struct BrowserCleanupView: View {
 
     // MARK: - Computed
 
+    /// The three mutually exclusive content states, so the crossfade animation
+    /// has a single Equatable value to watch across both driving booleans.
+    private enum ContentPhase: Equatable {
+        case scanning
+        case empty
+        case results
+    }
+
+    private var contentPhase: ContentPhase {
+        if isScanning { return .scanning }
+        return browserResults.isEmpty ? .empty : .results
+    }
+
     private var allItems: [CleanupItem] {
         browserResults.flatMap(\.items)
     }
@@ -291,12 +316,13 @@ struct BrowserResultCard: View {
     let result: BrowserScanResult
     @Binding var selectedItems: Set<UUID>
     @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             Button {
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -410,6 +436,7 @@ struct ServiceWorkerSection: View {
     let items: [CleanupItem]
     @Binding var selectedItems: Set<UUID>
     @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var totalSize: String {
         items.formattedTotalSize()
@@ -418,7 +445,7 @@ struct ServiceWorkerSection: View {
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -509,32 +536,6 @@ struct SafariFDAWarningBanner: View {
     private func openFDASettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
         NSWorkspace.shared.open(url)
-    }
-}
-
-// MARK: - Risk Warning Banner
-
-struct RiskWarningBanner: View {
-    let riskLevel: BrowserDataRiskLevel
-
-    var body: some View {
-        if let message = riskLevel.warningMessage {
-            HStack(spacing: 12) {
-                Image(systemName: riskLevel >= .high ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                    .foregroundStyle(riskLevel >= .high ? .red : .orange)
-
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-            }
-            .padding()
-            .background(
-                (riskLevel >= .high ? Color.red : Color.orange).opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-        }
     }
 }
 

@@ -33,7 +33,6 @@ struct PackageManagersView: View {
             }
 
             if !allCleanupItems.isEmpty && !isScanning {
-                Divider()
                 footer
             }
         }
@@ -209,8 +208,7 @@ struct PackageManagersView: View {
             onSelectAll: { selectedItems = Set(allCleanupItems.map(\.id)) },
             actionTitle: "Clean Selected",
             actionDisabled: selectedItems.isEmpty,
-            onAction: { showingConfirmation = true },
-            showsPanelBackground: true
+            onAction: { showingConfirmation = true }
         )
         .cleanupReview(
             isPresented: $showingConfirmation,

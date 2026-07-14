@@ -58,6 +58,7 @@ struct SystemCleanupView: View {
                             .padding(20)
                     }
                 }
+                .transition(.scanCrossfade)
             } else {
                 VStack(spacing: 0) {
                     if !appState.hasFullDiskAccess {
@@ -68,11 +69,13 @@ struct SystemCleanupView: View {
 
                     resultsList
 
-                    Divider()
-
                     footer
                 }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
+            .animated(.scanCrossfade, value: appState.scanResults.isEmpty)
         }
     }
 
@@ -80,25 +83,13 @@ struct SystemCleanupView: View {
 
     private var resultsList: some View {
         VStack(spacing: 0) {
-            // Search and select all
+            // Search field — selection now lives in the floating footer.
             HStack {
                 TextField("Search", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 200)
 
                 Spacer()
-
-                Button("Select All") {
-                    appState.selectAll()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.blue)
-
-                Button("Deselect All") {
-                    appState.deselectAll()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -120,27 +111,15 @@ struct SystemCleanupView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text("\(appState.selectedItems.count) of \(appState.scanResults.count) selected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Will free \(appState.selectedSize.formattedFileSize)")
-                    .font(.headline)
-            }
-
-            Spacer()
-
-            Button("Clean") {
-                showingConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.red)
-            .disabled(appState.selectedItems.isEmpty)
-        }
-        .padding()
-        .background(MacSweepTheme.panelStrong)
+        CleanupFooter(
+            selectedCount: appState.selectedItems.count,
+            totalCount: appState.scanResults.count,
+            summary: "Will free \(appState.selectedSize.formattedFileSize)",
+            onSelectAll: { appState.selectAll() },
+            actionTitle: "Clean",
+            actionDisabled: appState.selectedItems.isEmpty,
+            onAction: { showingConfirmation = true }
+        )
         .cleanupReview(
             isPresented: $showingConfirmation,
             items: selectedResults,

@@ -4,7 +4,9 @@ import UniformTypeIdentifiers
 
 struct ShareView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var statusMessage: String?
+    @State private var statusResetTask: Task<Void, Never>?
 
     private let windowDays = 30
 
@@ -125,23 +127,43 @@ struct ShareView: View {
         """
     }
 
+    /// Shows a transient status caption, animating it in and clearing it after a
+    /// short delay so the `.transition(.opacity)` on the caption actually fires.
+    @MainActor
+    private func showStatus(_ message: String) {
+        // Snapshot the flag now; `@Environment` is only reliable during body
+        // evaluation, and the reset runs later inside an escaping Task.
+        let animates = !reduceMotion
+        statusResetTask?.cancel()
+        withAnimation(animates ? .easeInOut(duration: 0.2) : nil) {
+            statusMessage = message
+        }
+        statusResetTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(animates ? .easeInOut(duration: 0.2) : nil) {
+                statusMessage = nil
+            }
+        }
+    }
+
     @MainActor
     private func copyPNG() {
         guard let data = renderedPNGData() else {
-            statusMessage = "Could not render PNG."
+            showStatus("Could not render PNG.")
             return
         }
 
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(data, forType: .png)
-        statusMessage = "PNG copied."
+        showStatus("PNG copied.")
     }
 
     @MainActor
     private func savePNG() {
         guard let data = renderedPNGData() else {
-            statusMessage = "Could not render PNG."
+            showStatus("Could not render PNG.")
             return
         }
 
@@ -154,17 +176,18 @@ struct ShareView: View {
 
         do {
             try data.write(to: url, options: .atomic)
-            statusMessage = "PNG saved."
+            showStatus("PNG saved.")
         } catch {
-            statusMessage = "Could not save PNG."
+            showStatus("Could not save PNG.")
         }
     }
 
+    @MainActor
     private func copyTweetText() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(tweetText, forType: .string)
-        statusMessage = "Text copied."
+        showStatus("Text copied.")
     }
 
     @MainActor

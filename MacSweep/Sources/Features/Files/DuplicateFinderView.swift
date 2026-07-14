@@ -28,6 +28,7 @@ struct DuplicateFinderView: View {
                 }
             }
 
+            Group {
             if model.items.isEmpty {
                 if model.hasScanned && !model.isScanning && model.errorMessage == nil {
                     EmptyResultState(
@@ -37,6 +38,7 @@ struct DuplicateFinderView: View {
                         actionTitle: "Scan Again",
                         action: { Task { await scanDuplicates() } }
                     )
+                    .transition(.scanCrossfade)
                 } else {
                     ScanLandingView(
                         icon: "doc.on.doc",
@@ -59,8 +61,10 @@ struct DuplicateFinderView: View {
                         isScanning: model.isScanning,
                         action: { Task { await scanDuplicates() } }
                     )
+                    .transition(.scanCrossfade)
                 }
             } else {
+                Group {
                 ManualReviewNotice(
                     message: "Review-only results — MacSweep suggests one keeper per group and "
                         + "selects nothing until you choose."
@@ -68,12 +72,26 @@ struct DuplicateFinderView: View {
                 filterBar
                 Divider()
                 groupsList
-                Divider()
                 footer
+                }
+                .transition(.scanCrossfade)
             }
+            }
+            // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
+            // no-ops under Reduce Motion.
+            .animated(.scanCrossfade, value: scanPhase)
         }
         .quickLookPreview($previewURL)
         .onDisappear { model.cancelScan() }
+    }
+
+    /// Which scan stage is on screen, so the crossfade fires on *every* arm
+    /// change — a bare `items.isEmpty` boolean would miss landing → empty when a
+    /// scan finds nothing.
+    private var scanPhase: ScanPhase {
+        if !model.items.isEmpty { return .results }
+        if model.hasScanned && !model.isScanning && model.errorMessage == nil { return .empty }
+        return .landing
     }
 
     private var filterBar: some View {

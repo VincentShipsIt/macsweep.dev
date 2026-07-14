@@ -79,6 +79,28 @@ struct MetricThresholdsTests {
         #expect(MetricThresholds.battery(percent: 19, isCharging: false) == .critical)
     }
 
+    // MARK: - Health score (Smart Care; higher is better)
+
+    @Test func scoreBoundaries() {
+        #expect(MetricThresholds.score(100) == .normal)
+        #expect(MetricThresholds.score(85) == .normal)
+        #expect(MetricThresholds.score(84) == .warning)
+        #expect(MetricThresholds.score(65) == .warning)
+        #expect(MetricThresholds.score(64) == .critical)
+        #expect(MetricThresholds.score(0) == .critical)
+    }
+
+    // MARK: - Capacity (lowest device battery; higher is better)
+
+    @Test func capacityBoundaries() {
+        #expect(MetricThresholds.capacity(percent: 100) == .normal)
+        #expect(MetricThresholds.capacity(percent: 21) == .normal)
+        #expect(MetricThresholds.capacity(percent: 20) == .warning)   // at/below is worse
+        #expect(MetricThresholds.capacity(percent: 11) == .warning)
+        #expect(MetricThresholds.capacity(percent: 10) == .critical)
+        #expect(MetricThresholds.capacity(percent: 0) == .critical)
+    }
+
     // MARK: - Battery health band
 
     @Test func batteryHealthBandBoundaries() {
