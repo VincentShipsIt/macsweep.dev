@@ -512,32 +512,6 @@ struct SafariFDAWarningBanner: View {
     }
 }
 
-// MARK: - Risk Warning Banner
-
-struct RiskWarningBanner: View {
-    let riskLevel: BrowserDataRiskLevel
-
-    var body: some View {
-        if let message = riskLevel.warningMessage {
-            HStack(spacing: 12) {
-                Image(systemName: riskLevel >= .high ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                    .foregroundStyle(riskLevel >= .high ? .red : .orange)
-
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-            }
-            .padding()
-            .background(
-                (riskLevel >= .high ? Color.red : Color.orange).opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-        }
-    }
-}
-
 #if !SWIFT_PACKAGE
 #Preview {
     BrowserCleanupView()
