@@ -1,0 +1,85 @@
+name: Bug report
+description: Report reproducible incorrect or unsafe behavior
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before filing. Use a concise title without version, type, area, priority, or audit prefixes. Do not include secrets, credentials, personal data, or security-vulnerability details.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the failure and its user impact in a few sentences.
+      placeholder: What is broken, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide deterministic steps or the smallest known failing scenario.
+      placeholder: |
+        1. Start from ...
+        2. Run or open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the safe or correct result.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: State what happens instead, including exact errors when available.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Version or commit, operating system, runtime, and relevant configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that must be true before this issue can close.
+      placeholder: |
+        - [ ] The failing scenario produces the expected result.
+        - [ ] A regression check covers the failure mode.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Explain how a reviewer or CI can prove the fix works.
+      placeholder: Commands, fixtures, manual checks, or workflow names.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Add relevant logs, screenshots, or recordings after removing sensitive data.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and pull requests for this problem.
+          required: true
+        - label: I removed secrets, credentials, personal data, and customer data.
+          required: true
+        - label: This report does not publicly disclose a security vulnerability.
+          required: true
