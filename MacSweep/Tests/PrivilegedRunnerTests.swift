@@ -18,22 +18,62 @@ struct PrivilegedRunnerTests {
 
     @Test(.timeLimit(.minutes(1)))
     func timeoutIsMappedAndPreservesPartialOutput() async throws {
-        let scriptURL = try makeExecutable("""
-        #!/bin/sh
+        // Deterministic cancellation. The prior version relied on a 1s wall-clock
+        // timeout firing *after* the osascript child emitted its output — but
+        // osascript cold-start under CI load can consume the whole budget, so the
+        // watchdog would unlink `keepalive` before the child ran its echoes. The
+        // trusted-command guard (`[ -e keepalive ]`) then skipped the script
+        // entirely, leaving no partial output and flaking the assertions.
+        //
+        // Instead the test now owns the keepalive and triggers the timeout only
+        // after the child publishes a sentinel proving both streams were written
+        // and flushed. This exercises the identical osascript partial-output
+        // capture path without racing process startup against the deadline.
+        let workDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("macsweep-partial-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workDirectory) }
+
+        let keepalive = workDirectory.appendingPathComponent("keepalive")
+        #expect(FileManager.default.createFile(atPath: keepalive.path, contents: Data()))
+        let flushed = workDirectory.appendingPathComponent("flushed")
+
+        // Emit both streams, publish the sentinel only after those writes have
+        // returned (so the bytes are already in the supervisor's capture files),
+        // then hang while ignoring TERM so escalation must reach SIGKILL.
+        let script = """
         echo "privileged stdout before timeout"
         echo "privileged stderr before timeout" 1>&2
+        /usr/bin/printf '%s\\n' flushed > \(shellQuote(flushed.path))
         trap '' TERM
-        exec /bin/sleep 4
-        """)
-        defer { try? FileManager.default.removeItem(at: scriptURL) }
+        exec /bin/sleep 120
+        """
 
-        do {
-            let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        let invocation = Task {
             try await PrivilegedRunner.runSupervisedShellScriptForTesting(
                 script,
-                timeout: 1,
-                throughAppleScript: true
+                timeout: 20,
+                throughAppleScript: true,
+                keepaliveForTesting: keepalive
             )
+        }
+
+        // Wait until the child confirms its partial output is captured. Generous
+        // bound absorbs osascript startup under load without affecting the result.
+        let flushedDeadline = Date().addingTimeInterval(20)
+        while !FileManager.default.fileExists(atPath: flushed.path), Date() < flushedDeadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(FileManager.default.fileExists(atPath: flushed.path))
+
+        // Now drive cancellation deterministically. The supervisor observes the
+        // removed keepalive, flushes the already-captured partial output, and
+        // exits 124 — a clean EOF for ProcessRunner, so capture never contends
+        // with the escalation kill.
+        try? FileManager.default.removeItem(at: keepalive)
+
+        do {
+            try await invocation.value
             Issue.record("Expected the privileged invocation to time out")
         } catch let error as PrivilegedRunner.EscalationError {
             switch error {
