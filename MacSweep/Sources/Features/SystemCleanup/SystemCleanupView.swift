@@ -29,28 +29,22 @@ struct SystemCleanupView: View {
 
                 Group {
             if appState.scanResults.isEmpty {
-                ZStack(alignment: .top) {
-                    ScanLandingView(
-                        icon: "sparkles",
-                        title: "Scan for System Junk",
-                        description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
-                        ctaTitle: "Scan System Junk",
-                        benefits: [
-                            ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
-                            ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
-                        ],
-                        illustration: "sparkles",
-                        isScanning: appState.isScanning,
-                        progress: appState.scanProgress,
-                        scanningMessage: appState.currentScanModule,
-                        action: { Task { await appState.scan(modules: ["system-cache"]) } }
-                    )
-
-                    if !appState.hasFullDiskAccess && !appState.isScanning {
-                        FullDiskAccessWarningBanner(scope: .systemData)
-                            .padding(20)
-                    }
-                }
+                ScanLandingView(
+                    icon: "sparkles",
+                    title: "Scan for System Junk",
+                    description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
+                    ctaTitle: "Scan System Junk",
+                    benefits: [
+                        ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
+                        ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
+                    ],
+                    illustration: "sparkles",
+                    isScanning: appState.isScanning,
+                    progress: appState.scanProgress,
+                    scanningMessage: appState.currentScanModule,
+                    permissionWarning: appState.hasFullDiskAccess ? nil : .systemData,
+                    action: { Task { await appState.scan(modules: ["system-cache"]) } }
+                )
                 .transition(.scanCrossfade)
             } else {
                 VStack(spacing: 0) {

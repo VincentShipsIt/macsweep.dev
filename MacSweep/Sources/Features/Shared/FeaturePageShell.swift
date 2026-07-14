@@ -131,6 +131,9 @@ struct ScanLandingView: View {
     var progress: Double = 0
     var scanningMessage: String? = nil
     var hidesPageChrome: Bool = true
+    /// Kept in the hero's layout so the callout remains centered and never
+    /// slides beneath the full-bleed titlebar treatment.
+    var permissionWarning: FullDiskAccessScope? = nil
     let action: () -> Void
 
     var body: some View {
@@ -181,6 +184,11 @@ struct ScanLandingView: View {
                         Image(systemName: illustration ?? icon)
                             .font(.system(size: 128, weight: .ultraLight))
                             .foregroundStyle(MacSweepTheme.accent.opacity(0.92))
+                    }
+
+                    if let permissionWarning {
+                        FullDiskAccessWarningBanner(scope: permissionWarning)
+                            .frame(maxWidth: 620)
                     }
 
                     CircularScanButton(accessibilityLabel: ctaTitle, action: action)
@@ -287,7 +295,7 @@ struct FullDiskAccessWarningBanner: View {
             Button("Open System Settings") {
                 FullDiskAccess.openSystemPreferences()
             }
-            .glassButton(prominent: true)
+            .glassButton()
             .controlSize(.small)
             .tint(.orange)
 
