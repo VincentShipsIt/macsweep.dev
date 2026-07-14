@@ -45,11 +45,11 @@ struct LoginItemsView: View {
                 await service.scan()
             }
         }
-        .alert("Delete item?", isPresented: .init(
+        .alert("Move login item to Trash?", isPresented: .init(
             get: { showDeleteConfirm != nil },
             set: { if !$0 { showDeleteConfirm = nil } }
         )) {
-            Button("Delete", role: .destructive) {
+            Button("Move to Trash", role: .destructive) {
                 if let item = showDeleteConfirm {
                     Task { await service.delete(item) }
                 }
@@ -58,7 +58,7 @@ struct LoginItemsView: View {
             Button("Cancel", role: .cancel) { showDeleteConfirm = nil }
         } message: {
             if let item = showDeleteConfirm {
-                Text("This will remove \"\(item.name)\" permanently.")
+                Text("This moves \"\(item.name)\" to the Trash so it can be restored if needed.")
             }
         }
         .errorAlert(message: $service.errorMessage)

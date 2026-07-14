@@ -76,7 +76,7 @@ struct MaintenanceActionsTests {
         let expected: Set<String> = [
             "free-ram", "flush-dns", "rebuild-spotlight", "verify-disk",
             "free-purgeable", "maintenance-scripts", "clear-font-cache",
-            "rebuild-launchservices",
+            "rebuild-launchservices"
         ]
         #expect(Set(ids) == expected)
     }
@@ -87,7 +87,31 @@ struct MaintenanceActionsTests {
         )
         #expect(requiresAdmin["rebuild-spotlight"] == true)
         #expect(requiresAdmin["maintenance-scripts"] == true)
-        #expect(requiresAdmin["free-ram"] == false)
+        #expect(requiresAdmin["free-ram"] == true)
         #expect(requiresAdmin["flush-dns"] == false)
+    }
+
+    @Test func unavailableTasksReportEveryMissingExecutable() throws {
+        let task = try #require(MaintenanceTask.allTasks.first { $0.id == "rebuild-launchservices" })
+        let availability = task.availability { _ in false }
+
+        #expect(availability == .unavailable(missingExecutables: task.requiredExecutables))
+    }
+
+    @Test func availableTasksPreserveAdministratorDisclosure() throws {
+        let adminTask = try #require(MaintenanceTask.allTasks.first { $0.id == "free-ram" })
+        let ordinaryTask = try #require(MaintenanceTask.allTasks.first { $0.id == "flush-dns" })
+
+        #expect(adminTask.availability { _ in true } == .requiresAdministrator)
+        #expect(ordinaryTask.availability { _ in true } == .available)
+    }
+
+    @Test func everyTaskDeclaresItsRequiredExecutable() {
+        #expect(MaintenanceTask.allTasks.allSatisfy { !$0.requiredExecutables.isEmpty })
+    }
+
+    @Test func unsupportedTasksAreHiddenFromTheVisibleTaskList() {
+        #expect(MaintenanceTask.visibleTasks { _ in false }.isEmpty)
+        #expect(MaintenanceTask.visibleTasks { _ in true }.count == MaintenanceTask.allTasks.count)
     }
 }

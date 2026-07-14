@@ -348,23 +348,11 @@ struct MemoryUsage: Sendable, Equatable {
         ByteCountFormatter.string(fromByteCount: Int64(free), countStyle: .memory)
     }
 
-    var pressureLevel: MemoryPressure {
-        let usedPercent = usedPercentage
-        if usedPercent > 0.9 { return .critical }
-        if usedPercent > 0.75 { return .warning }
-        return .normal
-    }
-
-    enum MemoryPressure: String {
-        case normal, warning, critical
-
-        var color: String {
-            switch self {
-            case .normal: return "green"
-            case .warning: return "orange"
-            case .critical: return "red"
-            }
-        }
+    /// Shared pressure classification used by the GUI and headless/CLI output.
+    /// Keeping this on the unified metric thresholds prevents boundary drift
+    /// between surfaces (the previous copy used strict `>` comparisons).
+    var pressureLevel: MetricAlertLevel {
+        MetricThresholds.memory(usagePercent: usedPercentage)
     }
 }
 
