@@ -38,6 +38,45 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build
 
+      # A successful compile is insufficient for an ad-hoc-signed app with an
+      # embedded framework: hardened-runtime library validation rejects Sparkle
+      # because neither binary has a Team ID. Keep local/CI builds unhardened
+      # (credentialed release jobs override this) and prove the app reaches its
+      # event loop instead of dying in dyld before main.
+      - name: Smoke-test GUI app launch
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/DerivedData/Build/Products/Release/MacSweep.app"
+          EXECUTABLE="$APP/Contents/MacOS/MacSweep"
+          LOG="$RUNNER_TEMP/macsweep-launch.log"
+
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          if codesign -dvv "$APP" 2>&1 | grep -q 'flags=.*runtime'; then
+            echo "::error::Ad-hoc CI app unexpectedly enables hardened runtime"
+            exit 1
+          fi
+
+          "$EXECUTABLE" >"$LOG" 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+
+          for _ in {1..10}; do
+            sleep 0.2
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              set +e
+              wait "$APP_PID"
+              STATUS=$?
+              set -e
+              cat "$LOG"
+              echo "::error::MacSweep exited during launch smoke test (status $STATUS)"
+              exit 1
+            fi
+          done
+
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+          trap - EXIT
+
       # scripts/coverage.sh wraps scripts/test.sh (which auto-detects the
       # toolchain: plain `swift test` on this full-Xcode runner, standalone
       # swift-testing runner on a CLT-only host) with --enable-code-coverage,
