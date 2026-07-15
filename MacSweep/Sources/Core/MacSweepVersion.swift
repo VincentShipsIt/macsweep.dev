@@ -5,5 +5,5 @@ import Foundation
 /// Keep this in sync with `MARKETING_VERSION` in `MacSweep.xcodeproj`.
 public enum MacSweepVersion {
     public static let productName = "macsweep.dev"
-    public static let current = "1.1.1"
+    public static let current = "1.1.2"
 }
