@@ -59,7 +59,7 @@ actor MaintenanceActions {
             return parseVMStatFreeBytes(result.output, pageSize: resolvedPageSize)
         } catch {
             // Best-effort: a vm_stat failure reports 0 free bytes rather than aborting.
-            Log.process.debug("vm_stat free-memory read failed: \(error.localizedDescription, privacy: .public)")
+            Log.processDebug("vm_stat free-memory read failed: \(error.localizedDescription)")
             return 0
         }
     }

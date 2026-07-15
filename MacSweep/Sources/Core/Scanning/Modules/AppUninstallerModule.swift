@@ -437,7 +437,7 @@ struct AppUninstaller {
     /// Disposal hook; production moves items to the Trash. Injected so tests can
     /// verify the guard/accounting paths without writing to the user's Trash.
     var trashItem: (URL) throws -> Void = {
-        try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
+        try CleanupFileRemover.recoverable($0, module: "app-uninstaller")
     }
 
     /// Uninstall an app and optionally its leftovers

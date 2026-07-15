@@ -16,6 +16,7 @@ struct ContentView: View {
     var allowsInitialSidebarFocus = true
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(DeveloperModePreferences.enabledKey) private var developerModeEnabled = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
     @State private var usesSlideTransition = true
@@ -40,6 +41,11 @@ struct ContentView: View {
             \.macSweepSidebarFocus,
             MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
         )
+        .onChange(of: developerModeEnabled) { _, enabled in
+            if !enabled, appState.selectedFeature == .developerLogs {
+                appState.selectedFeature = .smartScan
+            }
+        }
         // No full-window gradient: it would bleed across the sidebar and leave the
         // system's Liquid Glass nothing neutral to refract. The window background
         // and native glass chrome carry the look.
@@ -49,7 +55,7 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List(selection: $appState.selectedFeature) {
-            ForEach(FeatureSection.allCases) { section in
+            ForEach(visibleSections) { section in
                 if section == .main {
                     // Smart Scan at top (no header)
                     ForEach(section.features) { feature in
@@ -75,6 +81,12 @@ struct ContentView: View {
         // material and selection highlight. Hiding the scroll background or forcing
         // it clear suppresses that material and was the cause of the broken-looking
         // selection chip.
+    }
+
+    private var visibleSections: [FeatureSection] {
+        developerModeEnabled
+            ? FeatureSection.allCases
+            : FeatureSection.allCases.filter { $0 != .developer }
     }
 
     // MARK: - Detail Deck
@@ -201,6 +213,10 @@ struct ContentView: View {
             landingDetail(SimilarPhotosView())
         case .shredder:
             staticDetail(ShredderView())
+
+        // Developer
+        case .developerLogs:
+            staticDetail(DeveloperLogsView())
         }
     }
 
@@ -240,7 +256,8 @@ private extension Feature {
              .maintenance,
              .uninstaller,
              .homebrewUpdater,
-             .shredder:
+             .shredder,
+             .developerLogs:
             return false
         }
     }
@@ -282,6 +299,11 @@ struct SettingsView: View {
             AssistantSettingsView()
                 .tabItem {
                     Label("Assistant", systemImage: "sparkles")
+                }
+
+            DeveloperSettingsView()
+                .tabItem {
+                    Label("Developer", systemImage: "hammer")
                 }
 
             AboutView()
@@ -404,6 +426,31 @@ struct SafetySettingsView: View {
                 Text("Cleanups larger than this are blocked. Protected paths cannot be modified — MacSweep will never delete system files, credentials, or user documents.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct DeveloperSettingsView: View {
+    @AppStorage(DeveloperModePreferences.enabledKey) private var developerModeEnabled = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Developer mode", isOn: $developerModeEnabled)
+            } footer: {
+                Text(
+                    "Shows the Developer section and its local Logs page. "
+                        + "Deletion auditing stays active even when Developer mode is off."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("Logging") {
+                LabeledContent("Retention", value: "5,000 events or 180 days")
+                LabeledContent("Storage", value: "On this Mac only")
             }
         }
         .formStyle(.grouped)

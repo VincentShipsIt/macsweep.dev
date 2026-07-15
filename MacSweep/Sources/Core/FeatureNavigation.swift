@@ -9,6 +9,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
     case speed = "Speed"
     case applications = "Applications"
     case files = "Files"
+    case developer = "Developer"
 
     var id: String { rawValue }
 
@@ -26,6 +27,8 @@ enum FeatureSection: String, CaseIterable, Identifiable {
             return [.uninstaller, .homebrewUpdater]
         case .files:
             return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
+        case .developer:
+            return [.developerLogs]
         }
     }
 }
@@ -61,6 +64,8 @@ enum Feature: String, CaseIterable, Identifiable {
     case similarPhotos = "Similar Photos"
     case shredder = "Shredder"
 
+    case developerLogs = "Logs"
+
     var id: String { rawValue }
 
     var icon: String {
@@ -89,6 +94,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .duplicateFiles: return "doc.on.doc"
         case .similarPhotos: return "photo.stack"
         case .shredder: return "scissors"
+        case .developerLogs: return "list.bullet.rectangle"
         }
     }
 
@@ -100,6 +106,11 @@ enum Feature: String, CaseIterable, Identifiable {
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .homebrewUpdater: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
+        case .developerLogs: return .developer
         }
     }
+}
+
+enum DeveloperModePreferences {
+    static let enabledKey = "developerModeEnabled"
 }

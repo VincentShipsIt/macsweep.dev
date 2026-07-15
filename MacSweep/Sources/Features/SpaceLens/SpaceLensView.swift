@@ -408,7 +408,7 @@ struct SpaceLensView: View {
             return
         }
         do {
-            try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
+            try CleanupFileRemover.recoverable(node.url, module: "space-lens")
         } catch {
             errorMessage = "Couldn't move \"\(node.name)\" to Trash: \(error.localizedDescription)"
             return
