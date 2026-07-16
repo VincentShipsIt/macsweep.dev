@@ -64,6 +64,13 @@ struct AppLogEvent: Codable, Equatable, Identifiable, Sendable {
             .compactMap { $0 }
             .joined(separator: " ")
     }
+
+    static func chronological(_ lhs: AppLogEvent, _ rhs: AppLogEvent) -> Bool {
+        if lhs.timestamp != rhs.timestamp {
+            return lhs.timestamp < rhs.timestamp
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
 }
 
 /// Durable newline-delimited JSON log owned by MacSweep.
@@ -188,7 +195,7 @@ final class AppLogStore: @unchecked Sendable {
         return data
             .split(separator: 0x0A)
             .compactMap { try? decoder.decode(AppLogEvent.self, from: Data($0)) }
-            .sorted { $0.timestamp < $1.timestamp }
+            .sorted(by: AppLogEvent.chronological)
     }
 
     private func rewrite(_ events: [AppLogEvent]) throws {
@@ -228,14 +235,34 @@ final class AppLogStore: @unchecked Sendable {
 
     private func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .deferredToDate
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }
 
     private func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            if let seconds = try? container.decode(Double.self) {
+                return Date(timeIntervalSinceReferenceDate: seconds)
+            }
+            let value = try container.decode(String.self)
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: value) {
+                return date
+            }
+            let legacy = ISO8601DateFormatter()
+            legacy.formatOptions = [.withInternetDateTime]
+            guard let date = legacy.date(from: value) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid app log timestamp"
+                )
+            }
+            return date
+        }
         return decoder
     }
 
@@ -247,7 +274,7 @@ final class AppLogStore: @unchecked Sendable {
         ) ?? .distantPast
         let recent = events
             .filter { $0.timestamp >= cutoff }
-            .sorted { $0.timestamp < $1.timestamp }
+            .sorted(by: AppLogEvent.chronological)
         return Array(recent.suffix(maxEntries))
     }
 }

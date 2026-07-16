@@ -21,7 +21,7 @@ final class AppLogStoreTests {
     }
 
     private var now: Date {
-        Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        Date()
     }
 
     @Test func persistsStructuredDeletionEventsAcrossStoreInstances() throws {
@@ -120,6 +120,36 @@ final class AppLogStoreTests {
         #expect(fileSize <= 1_024)
         #expect(writer.events.count < 20)
         #expect(writer.events.last?.message.hasPrefix("Deletion 19:") == true)
+    }
+
+    @Test func preservesSubsecondTimestampsAndOrdersTimestampTiesByID() throws {
+        let timestamp = Date(timeIntervalSince1970: 1_750_000_000.123_456)
+        let first = AppLogEvent(
+            id: try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001")),
+            timestamp: timestamp,
+            category: .scan,
+            level: .notice,
+            message: "First"
+        )
+        let second = AppLogEvent(
+            id: try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000002")),
+            timestamp: timestamp,
+            category: .scan,
+            level: .notice,
+            message: "Second"
+        )
+        let later = AppLogEvent(
+            timestamp: timestamp.addingTimeInterval(0.25),
+            category: .scan,
+            level: .notice,
+            message: "Later"
+        )
+        let writer = store()
+        writer.record(second)
+        writer.record(later)
+        writer.record(first)
+
+        #expect(store().events == [first, second, later])
     }
 }
 

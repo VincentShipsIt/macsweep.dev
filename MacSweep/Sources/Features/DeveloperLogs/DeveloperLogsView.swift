@@ -20,7 +20,7 @@ struct DeveloperLogsView: View {
         loadsPersistentLogs = snapshotEvents == nil
         let initialEvents = snapshotEvents ?? []
 #endif
-        let sortedEvents = initialEvents.sorted { $0.timestamp > $1.timestamp }
+        let sortedEvents = initialEvents.sorted { AppLogEvent.chronological($1, $0) }
         _allEvents = State(initialValue: sortedEvents)
         _displayedEvents = State(initialValue: sortedEvents)
     }
@@ -160,7 +160,7 @@ struct DeveloperLogsView: View {
         let store = store
         let loaded = await Task.detached(priority: .userInitiated) {
             (
-                events: store.events.sorted { $0.timestamp > $1.timestamp },
+                events: store.events.sorted { AppLogEvent.chronological($1, $0) },
                 hasLogFile: FileManager.default.fileExists(atPath: store.fileURL.path)
             )
         }.value
