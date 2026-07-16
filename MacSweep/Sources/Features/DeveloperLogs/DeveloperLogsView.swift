@@ -43,7 +43,9 @@ struct DeveloperLogsView: View {
             }
         }
         .searchable(text: $searchText, prompt: "Search paths, modules, errors")
-        .onAppear(perform: refresh)
+        .task {
+            await refresh()
+        }
         .onChange(of: searchText) { applyFilters() }
         .onChange(of: selectedCategory) { applyFilters() }
         .confirmationDialog(
@@ -53,7 +55,7 @@ struct DeveloperLogsView: View {
         ) {
             Button("Clear Log", role: .destructive) {
                 store.clear()
-                refresh()
+                Task { await refresh() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -65,7 +67,9 @@ struct DeveloperLogsView: View {
     }
 
     private var refreshButton: some View {
-        Button(action: refresh) {
+        Button {
+            Task { await refresh() }
+        } label: {
             Label("Refresh Logs", systemImage: "arrow.clockwise")
         }
         .disabled(!loadsPersistentLogs)
@@ -148,13 +152,21 @@ struct DeveloperLogsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func refresh() {
+    private func refresh() async {
         guard loadsPersistentLogs else {
             applyFilters()
             return
         }
-        allEvents = store.events.sorted { $0.timestamp > $1.timestamp }
-        hasLogFile = FileManager.default.fileExists(atPath: store.fileURL.path)
+        let store = store
+        let loaded = await Task.detached(priority: .userInitiated) {
+            (
+                events: store.events.sorted { $0.timestamp > $1.timestamp },
+                hasLogFile: FileManager.default.fileExists(atPath: store.fileURL.path)
+            )
+        }.value
+        guard !Task.isCancelled else { return }
+        allEvents = loaded.events
+        hasLogFile = loaded.hasLogFile
         applyFilters()
     }
 

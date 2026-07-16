@@ -206,8 +206,8 @@ final class AppLogStore: @unchecked Sendable {
     }
 
     private func fileSize() -> UInt64 {
-        let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(max(0, values?.fileSize ?? 0))
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        return (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
     }
 
     private func eventsFittingFileLimit(_ events: [AppLogEvent]) -> [AppLogEvent] {

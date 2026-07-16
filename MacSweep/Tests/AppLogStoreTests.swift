@@ -101,6 +101,26 @@ final class AppLogStoreTests {
         #expect(writer.events.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: logURL.path))
     }
+
+    @Test func rotatesGrowingAuditFileUsingFreshOnDiskSize() throws {
+        let writer = store()
+        let payload = String(repeating: "x", count: 320)
+
+        for index in 0..<20 {
+            writer.record(AppLogEvent(
+                timestamp: now.addingTimeInterval(TimeInterval(index)),
+                category: .deletion,
+                level: .notice,
+                message: "Deletion \(index): \(payload)"
+            ))
+        }
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: logURL.path)
+        let fileSize = try #require((attributes[.size] as? NSNumber)?.uint64Value)
+        #expect(fileSize <= 1_024)
+        #expect(writer.events.count < 20)
+        #expect(writer.events.last?.message.hasPrefix("Deletion 19:") == true)
+    }
 }
 
 private extension FileHandle {
