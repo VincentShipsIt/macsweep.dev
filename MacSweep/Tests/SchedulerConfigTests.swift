@@ -46,6 +46,44 @@ final class SchedulerConfigTests {
         #expect(config().intervalDays == 365)
     }
 
+    @Test func enabledIntervalUpdatePersistsAndReanchorsNextScan() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let nextScan = try #require(
+            config().updateIntervalDays(14, scheduleEnabled: true, now: now)
+        )
+
+        #expect(config().intervalDays == 14)
+        #expect(nextScan == now.addingTimeInterval(14 * 24 * 60 * 60))
+        #expect(config().nextScheduledScan == nextScan)
+    }
+
+    @Test func disabledIntervalUpdatePersistsAndClearsNextScan() {
+        config().setNextScheduledScan(Date(timeIntervalSince1970: 1_900_000_000))
+
+        let nextScan = config().updateIntervalDays(30, scheduleEnabled: false)
+
+        #expect(config().intervalDays == 30)
+        #expect(nextScan == nil)
+        #expect(config().nextScheduledScan == nil)
+    }
+
+    @Test func intervalUpdateAnchorsUsingClampedValue() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let nextScan = try #require(
+            config().updateIntervalDays(999, scheduleEnabled: true, now: now)
+        )
+
+        #expect(config().intervalDays == SchedulerConfig.maxIntervalDays)
+        #expect(
+            nextScan
+                == now.addingTimeInterval(
+                    TimeInterval(SchedulerConfig.maxIntervalDays) * 24 * 60 * 60
+                )
+        )
+    }
+
     @Test func persistsAndClearsNextScheduledScan() {
         #expect(config().nextScheduledScan == nil)
 

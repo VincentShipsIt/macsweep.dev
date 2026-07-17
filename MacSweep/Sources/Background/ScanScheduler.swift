@@ -12,7 +12,7 @@ final class ScanScheduler {
     static let shared = ScanScheduler()
     static let taskIdentifier = "dev.macsweep.weeklyscan"
 
-    /// Defaults key backing Settings → General → "Weekly background scan".
+    /// Defaults key backing Settings → General → "Background scans".
     static let enabledDefaultsKey = "backgroundScanEnabled"
 
     /// Enabled unless the user has explicitly turned the setting off.
@@ -34,11 +34,25 @@ final class ScanScheduler {
         scheduleIfNeeded()
     }
 
-    func scheduleWeeklyScan() {
+    func scheduleNextScan() {
         // Store next scan date one interval out (interval is user-configurable via CLI).
         let nextScanDate = Date(timeIntervalSinceNow: config.intervalSeconds)
         config.setNextScheduledScan(nextScanDate)
         scheduleTimer(for: nextScanDate)
+    }
+
+    func updateIntervalDays(_ days: Int) {
+        let nextScanDate = config.updateIntervalDays(
+            days,
+            scheduleEnabled: Self.isEnabled
+        )
+
+        if let nextScanDate {
+            scheduleTimer(for: nextScanDate)
+        } else {
+            timer?.invalidate()
+            timer = nil
+        }
     }
 
     func cancelScheduledScan() {
@@ -56,8 +70,8 @@ final class ScanScheduler {
                 Task { await runBackgroundScan() }
             }
         } else {
-            // First launch — schedule for 7 days out
-            scheduleWeeklyScan()
+            // First launch — schedule one configured interval out.
+            scheduleNextScan()
         }
     }
 
@@ -73,7 +87,7 @@ final class ScanScheduler {
         let engine = ScanEngine()
         guard let items = try? await engine.scan() else {
             if Self.isEnabled {
-                scheduleWeeklyScan()
+                scheduleNextScan()
             }
             return
         }
@@ -95,7 +109,7 @@ final class ScanScheduler {
 
         // Schedule next scan, unless the user disabled the setting mid-scan.
         if Self.isEnabled {
-            scheduleWeeklyScan()
+            scheduleNextScan()
         }
     }
 }
