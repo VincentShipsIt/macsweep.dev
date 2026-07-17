@@ -173,7 +173,10 @@ enum PrivilegedRunner {
         } catch let runnerError as ProcessRunnerError {
             switch runnerError {
             case .timedOut(_, let partialResult):
-                throw EscalationError.timedOut(partialResult: partialResult)
+                let normalizedResult = timeoutMarker.map {
+                    normalizedTimeoutResult(partialResult, timeoutMarker: $0)
+                } ?? partialResult
+                throw EscalationError.timedOut(partialResult: normalizedResult)
             case .launchFailed, .nonZeroExit:
                 throw EscalationError.failed(status: -1)
             }
@@ -183,7 +186,9 @@ enum PrivilegedRunner {
 
         if let timeoutMarker,
            result.output.contains(timeoutMarker) || result.error.contains(timeoutMarker) {
-            throw EscalationError.timedOut(partialResult: result)
+            throw EscalationError.timedOut(
+                partialResult: normalizedTimeoutResult(result, timeoutMarker: timeoutMarker)
+            )
         }
         guard result.status == 0 else {
             throw EscalationError.failed(status: result.status)
@@ -248,12 +253,19 @@ enum PrivilegedRunner {
         release_file="$state_dir/release"
         cancel_file="$state_dir/cancelled"
         timeout_reader_ready="$state_dir/timeout-reader-ready"
+        # Pin both capture inodes before the command starts. Opening them only
+        # after cancellation races the anchor's bounded cleanup handoff: a
+        # scheduler-delayed outer supervisor can otherwise lose the files before
+        # it obtains descriptors, leaving osascript with only the timeout marker.
+        /usr/bin/touch "$stdout_file" || exit 125
+        /usr/bin/touch "$stderr_file" || exit 125
+        exec 3<"$stdout_file" 4<"$stderr_file"
         # macOS /bin/sh provides SECONDS as an elapsed wall-clock counter. Use
         # one origin for every supervisor loop so scheduler-delayed polling can
         # never multiply the intended fallback or release bounds.
         SECONDS=0
         if [ ! -e \(keepalive) ]; then
-          : >"$cancel_file"
+          /usr/bin/touch "$cancel_file" 2>/dev/null || true
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
           exit 124
         fi
@@ -300,7 +312,7 @@ enum PrivilegedRunner {
             orphaned_supervisor=yes
           fi
           if [ ! -e \(keepalive) ] || [ "$SECONDS" -ge \(anchorFallbackSeconds) ]; then
-            : >"$cancel_file"
+            /usr/bin/touch "$cancel_file" 2>/dev/null || true
           fi
           if [ -e "$cancel_file" ] || [ ! -d "$state_dir" ]; then
             if [ "$orphaned_supervisor" = yes ]; then
@@ -321,31 +333,30 @@ enum PrivilegedRunner {
             terminate_group
           fi
           exit "$command_status"
-        ) &
+        ) 3<&- 4<&- &
+        anchor_pid=$!
         set +m
         while [ ! -s "$status_file" ] && [ ! -e "$cancel_file" ] && [ -e \(keepalive) ] && [ "$SECONDS" -lt \(fallbackSeconds) ]; do
           /bin/sleep 0.1
         done
         if [ -e "$cancel_file" ] || [ ! -e \(keepalive) ] || [ "$SECONDS" -ge \(fallbackSeconds) ]; then
-          : >"$cancel_file"
-          # Pin the root-owned capture files before the anchor is allowed to
-          # unlink its state directory. The held descriptors remain readable
-          # after unlink, so scheduler delay cannot discard partial output.
-          if exec 3<"$stdout_file" 4<"$stderr_file"; then
-            : >"$timeout_reader_ready"
-            /bin/sleep 0.7
-            /bin/cat <&3 >&2
-            /bin/cat <&4 >&2
-          else
-            : >"$timeout_reader_ready" 2>/dev/null
-            /bin/sleep 0.7
-          fi
+          /usr/bin/touch "$cancel_file" 2>/dev/null || true
+          # The descriptors were pinned before launch, so the anchor may unlink
+          # its private state as soon as it observes this handoff without racing
+          # away the captured bytes.
+          /usr/bin/touch "$timeout_reader_ready" 2>/dev/null || true
+          # The anchor kills its own job group, and some shells print the entire
+          # terminated subshell at wait. Keep that diagnostic out of the captured
+          # privileged-command payload while synchronizing on anchor completion.
+          wait "$anchor_pid" 2>/dev/null || true
+          /bin/cat <&3 >&2
+          /bin/cat <&4 >&2
           /usr/bin/printf '%s\n' '\(timeoutMarker)' >&2
           exit 124
         fi
         if [ -s "$status_file" ]; then
           IFS= read -r command_status <"$status_file"
-          : >"$release_file"
+          /usr/bin/touch "$release_file" 2>/dev/null || true
           /bin/cat "$stdout_file"
           /bin/cat "$stderr_file" >&2
           exit "${command_status:-1}"
