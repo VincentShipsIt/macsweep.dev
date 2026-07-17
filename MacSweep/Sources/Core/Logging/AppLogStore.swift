@@ -105,6 +105,9 @@ final class AppLogStore: @unchecked Sendable {
     private let maxFileBytes: UInt64
     private let inMemory: Bool
     private var memoryEvents: [AppLogEvent] = []
+    private var diskEntryCount: Int?
+    private var diskByteCount: UInt64?
+    private var appendsSinceMaintenance = 0
 
     init(
         fileURL: URL? = nil,
@@ -136,12 +139,12 @@ final class AppLogStore: @unchecked Sendable {
             }
 
             do {
-                try append(event)
-                let loaded = loadEvents()
-                let retained = pruned(loaded)
-                if retained.count != loaded.count || fileSize() > maxFileBytes {
-                    try rewrite(eventsFittingFileLimit(retained))
-                }
+                let hadExistingEvents = prepareDiskMetricsIfNeeded()
+                let appendedBytes = try append(event)
+                diskEntryCount = (diskEntryCount ?? 0) + 1
+                diskByteCount = (diskByteCount ?? 0) + appendedBytes
+                appendsSinceMaintenance += 1
+                try maintainDiskLog(force: hadExistingEvents)
             } catch {
                 // Unified logging still contains the event. Never make cleanup
                 // fail just because its secondary on-disk audit could not write.
@@ -157,6 +160,9 @@ final class AppLogStore: @unchecked Sendable {
             memoryEvents.removeAll()
             guard !inMemory else { return }
             try? FileManager.default.removeItem(at: fileURL)
+            diskEntryCount = nil
+            diskByteCount = nil
+            appendsSinceMaintenance = 0
         }
     }
 
@@ -171,7 +177,8 @@ final class AppLogStore: @unchecked Sendable {
             .appendingPathComponent("app-log.ndjson", isDirectory: false)
     }
 
-    private func append(_ event: AppLogEvent) throws {
+    @discardableResult
+    private func append(_ event: AppLogEvent) throws -> UInt64 {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directory,
@@ -189,6 +196,7 @@ final class AppLogStore: @unchecked Sendable {
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: line)
+        return UInt64(line.count)
     }
 
     private func loadEvents() -> [AppLogEvent] {
@@ -200,7 +208,8 @@ final class AppLogStore: @unchecked Sendable {
             .sorted(by: AppLogEvent.chronological)
     }
 
-    private func rewrite(_ events: [AppLogEvent]) throws {
+    @discardableResult
+    private func rewrite(_ events: [AppLogEvent]) throws -> UInt64 {
         var data = Data()
         let encoder = makeEncoder()
         for event in events {
@@ -212,11 +221,48 @@ final class AppLogStore: @unchecked Sendable {
             withIntermediateDirectories: true
         )
         try data.write(to: fileURL, options: .atomic)
+        return UInt64(data.count)
     }
 
-    private func fileSize() -> UInt64 {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
-        return (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
+    /// Initializes cheap append counters without decoding every event. Existing
+    /// logs get one maintenance pass on the first append so age retention and
+    /// malformed-line cleanup are not deferred until the periodic threshold.
+    private func prepareDiskMetricsIfNeeded() -> Bool {
+        guard diskEntryCount == nil || diskByteCount == nil else { return false }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            diskEntryCount = 0
+            diskByteCount = 0
+            return false
+        }
+        diskEntryCount = data.split(separator: 0x0A).count
+        diskByteCount = UInt64(data.count)
+        return !data.isEmpty
+    }
+
+    private var maintenanceAppendInterval: Int {
+        min(100, max(1, maxEntries / 10))
+    }
+
+    private func maintainDiskLog(force: Bool) throws {
+        let entryLimitWithSlack = maxEntries + maintenanceAppendInterval
+        let needsMaintenance = force
+            || appendsSinceMaintenance >= maintenanceAppendInterval
+            || (diskEntryCount ?? 0) >= entryLimitWithSlack
+            || (diskByteCount ?? 0) > maxFileBytes
+        guard needsMaintenance else { return }
+
+        let loaded = loadEvents()
+        let retained = eventsFittingFileLimit(pruned(loaded))
+        let containsMalformedLines = loaded.count != (diskEntryCount ?? 0)
+        let needsRewrite = containsMalformedLines
+            || retained.count != loaded.count
+            || (diskByteCount ?? 0) > maxFileBytes
+
+        if needsRewrite {
+            diskByteCount = try rewrite(retained)
+        }
+        diskEntryCount = needsRewrite ? retained.count : loaded.count
+        appendsSinceMaintenance = 0
     }
 
     private func eventsFittingFileLimit(_ events: [AppLogEvent]) -> [AppLogEvent] {
