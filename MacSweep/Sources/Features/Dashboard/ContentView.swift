@@ -289,7 +289,7 @@ struct SettingsView: View {
                     Label("About", systemImage: "info.circle")
                 }
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 720, height: 620)
     }
 }
 
@@ -393,20 +393,305 @@ struct CompanionSettingsView: View {
 
 struct SafetySettingsView: View {
     @AppStorage(DeletionGuard.maxDeleteSizeGBKey) private var maxDeleteSizeGB = DeletionGuard.defaultMaxDeleteSizeGB
+    @State private var selectedRuleKind = UserProtectionRuleKind.ignore
+    @State private var ignoreDocument = UserProtectionRuleDocument.empty(
+        kind: .ignore,
+        homeURL: FileManager.default.homeDirectoryForCurrentUser
+    )
+    @State private var protectDocument = UserProtectionRuleDocument.empty(
+        kind: .protect,
+        homeURL: FileManager.default.homeDirectoryForCurrentUser
+    )
+    @State private var ignoreEntries: [UserProtectionRuleDocument.Entry] = []
+    @State private var protectEntries: [UserProtectionRuleDocument.Entry] = []
+    @State private var errorMessage: String?
+    @State private var savedMessage: String?
+
+    private let ruleStore = UserProtectionRuleStore()
+
+    private var selectedEntries: Binding<[UserProtectionRuleDocument.Entry]> {
+        switch selectedRuleKind {
+        case .ignore: $ignoreEntries
+        case .protect: $protectEntries
+        }
+    }
+
+    private var selectedDocument: UserProtectionRuleDocument {
+        switch selectedRuleKind {
+        case .ignore: ignoreDocument
+        case .protect: protectDocument
+        }
+    }
+
+    private var selectedValidationMessage: String? {
+        selectedEntries.wrappedValue.compactMap {
+            UserProtectionRuleDocument.validationMessage(for: $0)
+        }.first
+    }
 
     var body: some View {
         Form {
-            Section {
+            Section("Deletion limit") {
                 Slider(value: $maxDeleteSizeGB, in: 1...50, step: 1) {
                     Text("Max delete size: \(Int(maxDeleteSizeGB)) GB")
                 }
+                LabeledContent("Current aggregate cap") {
+                    Text("\(Int(maxDeleteSizeGB)) GB per cleanup")
+                        .foregroundStyle(.secondary)
+                }
             } footer: {
-                Text("Cleanups larger than this are blocked. Protected paths cannot be modified — MacSweep will never delete system files, credentials, or user documents.")
+                Text(
+                    "MacSweep re-measures selected paths immediately before deletion "
+                        + "and blocks the whole cleanup when the live total exceeds this cap."
+                )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("User path rules") {
+                Picker("Rule file", selection: $selectedRuleKind) {
+                    ForEach(UserProtectionRuleKind.allCases) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                LabeledContent("Backing file") {
+                    Text(selectedDocument.fileURL.path)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Text(selectedRuleKind.behaviorDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ProtectionRuleEditor(
+                    entries: selectedEntries,
+                    kind: selectedRuleKind
+                )
+
+                HStack {
+                    Button {
+                        selectedEntries.wrappedValue.append(
+                            UserProtectionRuleDocument.Entry(pattern: "")
+                        )
+                        savedMessage = nil
+                    } label: {
+                        Label("Add Rule", systemImage: "plus")
+                    }
+
+                    Spacer()
+
+                    Button("Reload") {
+                        loadRuleFile(selectedRuleKind)
+                    }
+
+                    Button("Save File") {
+                        saveSelectedRuleFile()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedValidationMessage != nil)
+                }
+
+                if let selectedValidationMessage {
+                    Label(selectedValidationMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                if let errorMessage {
+                    MacSweepErrorBanner(message: errorMessage) {
+                        self.errorMessage = nil
+                    }
+                } else if let savedMessage {
+                    Label(savedMessage, systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            } footer: {
+                Text(
+                    "Rules accept absolute paths, ~/ paths, home-relative paths, *, ** and ?. "
+                        + "Enable Exception to cancel an earlier user rule. "
+                        + "Comments and blank lines in each file are preserved."
+                )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Safety defaults") {
+                SafetyDefaultRow(
+                    icon: "trash",
+                    title: "Trash first",
+                    detail: "Review-oriented cleanup moves user data to Trash so it can be recovered."
+                )
+                SafetyDefaultRow(
+                    icon: "exclamationmark.shield",
+                    title: "Permanent-delete exceptions",
+                    detail: "Regenerable caches, browser and privacy data, Empty Trash, "
+                        + "and secure shredding are permanent after confirmation."
+                )
+                SafetyDefaultRow(
+                    icon: "lock.shield",
+                    title: "Built-in protected paths",
+                    detail: "System roots, credentials, cloud data, and user document roots "
+                        + "remain blocked even when a user rule contains an exception."
+                )
+                SafetyDefaultRow(
+                    icon: "gauge.with.dots.needle.67percent",
+                    title: "Aggregate deletion cap",
+                    detail: "A single cleanup above \(Int(maxDeleteSizeGB)) GB is blocked "
+                        + "instead of partially deleting the selection."
+                )
+            }
+        }
+        .formStyle(.grouped)
+        .task {
+            loadRuleFiles()
+        }
+        .onChange(of: selectedRuleKind) {
+            errorMessage = nil
+            savedMessage = nil
+        }
+    }
+
+    private func loadRuleFiles() {
+        var failures: [String] = []
+        for kind in UserProtectionRuleKind.allCases {
+            if let failure = loadRuleFile(kind, updatesMessage: false) {
+                failures.append(failure)
+            }
+        }
+        errorMessage = failures.isEmpty ? nil : failures.joined(separator: " ")
+        savedMessage = nil
+    }
+
+    @discardableResult
+    private func loadRuleFile(
+        _ kind: UserProtectionRuleKind,
+        updatesMessage: Bool = true
+    ) -> String? {
+        do {
+            let document = try ruleStore.load(kind)
+            switch kind {
+            case .ignore:
+                ignoreDocument = document
+                ignoreEntries = document.entries
+            case .protect:
+                protectDocument = document
+                protectEntries = document.entries
+            }
+            if updatesMessage {
+                errorMessage = nil
+                savedMessage = nil
+            }
+            return nil
+        } catch {
+            let message = Self.actionableMessage(for: error)
+            if updatesMessage {
+                errorMessage = message
+                savedMessage = nil
+            }
+            return message
+        }
+    }
+
+    private func saveSelectedRuleFile() {
+        do {
+            var document = selectedDocument
+            try document.replaceEntries(selectedEntries.wrappedValue)
+            try ruleStore.save(document)
+
+            switch selectedRuleKind {
+            case .ignore:
+                ignoreDocument = document
+                ignoreEntries = document.entries
+            case .protect:
+                protectDocument = document
+                protectEntries = document.entries
+            }
+            errorMessage = nil
+            savedMessage = "Saved \(document.fileURL.lastPathComponent) atomically."
+        } catch {
+            errorMessage = Self.actionableMessage(for: error)
+            savedMessage = nil
+        }
+    }
+
+    private static func actionableMessage(for error: Error) -> String {
+        let description = error.localizedDescription
+        guard let recovery = (error as? LocalizedError)?.recoverySuggestion else {
+            return description
+        }
+        return "\(description) \(recovery)"
+    }
+}
+
+private struct ProtectionRuleEditor: View {
+    @Binding var entries: [UserProtectionRuleDocument.Entry]
+    let kind: UserProtectionRuleKind
+
+    var body: some View {
+        if entries.isEmpty {
+            ContentUnavailableView {
+                Label("No \(kind.title.lowercased())", systemImage: "doc.text")
+            } description: {
+                Text("The backing file has no active rules.")
+            }
+            .frame(minHeight: 90)
+        } else {
+            VStack(spacing: 8) {
+                ForEach($entries) { $entry in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Toggle("Exception", isOn: $entry.isException)
+                                .toggleStyle(.checkbox)
+                                .help("Cancel an earlier matching rule in this file")
+
+                            TextField("Path or glob", text: $entry.pattern)
+                                .font(.body.monospaced())
+
+                            Button(role: .destructive) {
+                                entries.removeAll { $0.id == entry.id }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove rule")
+                        }
+
+                        if let validationMessage = UserProtectionRuleDocument.validationMessage(for: entry) {
+                            Text(validationMessage)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct SafetyDefaultRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .frame(width: 20)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
     }
 }
 

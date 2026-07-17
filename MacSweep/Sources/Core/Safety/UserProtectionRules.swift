@@ -1,5 +1,109 @@
 import Foundation
 
+enum UserProtectionRuleFileError: LocalizedError {
+    case invalidPattern(String)
+    case invalidRule(line: Int, reason: String)
+    case readFailed(URL, any Error)
+    case writeFailed(URL, any Error)
+    case unexpectedFile(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPattern(let reason):
+            reason
+        case .invalidRule(let line, let reason):
+            "Rule on line \(line) is invalid: \(reason)"
+        case .readFailed(let url, let error):
+            "Couldn't read \(url.path): \(error.localizedDescription)"
+        case .writeFailed(let url, let error):
+            "Couldn't save \(url.path): \(error.localizedDescription)"
+        case .unexpectedFile(let url):
+            "Refused to save an unexpected rule file at \(url.path)."
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .invalidPattern:
+            "Use an absolute path, a ~/ path, or a path relative to your home directory."
+        case .invalidRule, .readFailed:
+            "Fix the file at the displayed path, then reload it. Existing content was not changed."
+        case .writeFailed:
+            "Check the file and home-directory permissions, then try again. Existing content was not changed."
+        case .unexpectedFile:
+            "Reload the rule files from Settings before saving again."
+        }
+    }
+}
+
+struct UserProtectionRuleStore {
+    typealias ReadContents = (URL) throws -> String
+    typealias WriteContents = (String, URL) throws -> Void
+
+    let homeURL: URL
+    private let fileManager: FileManager
+    private let readContents: ReadContents
+    private let writeContents: WriteContents
+
+    init(
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) {
+        self.init(
+            homeURL: homeURL,
+            fileManager: fileManager,
+            readContents: { try String(contentsOf: $0, encoding: .utf8) },
+            writeContents: { contents, url in
+                try contents.write(to: url, atomically: true, encoding: .utf8)
+            }
+        )
+    }
+
+    init(
+        homeURL: URL,
+        fileManager: FileManager,
+        readContents: @escaping ReadContents,
+        writeContents: @escaping WriteContents
+    ) {
+        self.homeURL = homeURL
+        self.fileManager = fileManager
+        self.readContents = readContents
+        self.writeContents = writeContents
+    }
+
+    func load(_ kind: UserProtectionRuleKind) throws -> UserProtectionRuleDocument {
+        let fileURL = homeURL.appending(path: kind.filename)
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return .empty(kind: kind, homeURL: homeURL)
+        }
+
+        do {
+            return try UserProtectionRuleDocument(
+                kind: kind,
+                fileURL: fileURL,
+                contents: readContents(fileURL)
+            )
+        } catch let error as UserProtectionRuleFileError {
+            throw error
+        } catch {
+            throw UserProtectionRuleFileError.readFailed(fileURL, error)
+        }
+    }
+
+    func save(_ document: UserProtectionRuleDocument) throws {
+        let expectedURL = homeURL.appending(path: document.kind.filename).standardizedFileURL
+        guard document.fileURL.standardizedFileURL == expectedURL else {
+            throw UserProtectionRuleFileError.unexpectedFile(document.fileURL)
+        }
+
+        do {
+            try writeContents(document.renderedContents, expectedURL)
+        } catch {
+            throw UserProtectionRuleFileError.writeFailed(expectedURL, error)
+        }
+    }
+}
+
 /// User-owned path rules shared by the GUI and CLI through ``SafetyChecker``.
 ///
 /// MacSweep intentionally uses two small, line-oriented files in the user's home
@@ -113,17 +217,12 @@ struct UserProtectionRules: Sendable {
 
     private static func parse(_ contents: String, homeURL: URL) -> [Rule] {
         contents.components(separatedBy: .newlines).compactMap { rawLine in
-            var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty, !line.hasPrefix("#") else { return nil }
+            let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#"),
+                  let entry = try? UserProtectionRuleDocument.parseEntry(rawLine)
+            else { return nil }
 
-            let isException = line.hasPrefix("!")
-            if isException {
-                line.removeFirst()
-                line = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            guard !line.isEmpty else { return nil }
-
-            let expanded = expand(line, homeURL: homeURL)
+            let expanded = expand(entry.pattern, homeURL: homeURL)
             let standardized = URL(fileURLWithPath: expanded).standardized.path
             let normalized = SafetyChecker.caseNormalized(
                 standardized.count > 1 && standardized.hasSuffix("/")
@@ -133,10 +232,10 @@ struct UserProtectionRules: Sendable {
             let hasGlob = normalized.contains("*") || normalized.contains("?")
 
             return Rule(
-                pattern: line,
+                pattern: entry.pattern,
                 normalizedPattern: normalized,
                 regex: hasGlob ? globRegex(normalized) : nil,
-                isException: isException
+                isException: entry.isException
             )
         }
     }
