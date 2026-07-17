@@ -265,8 +265,7 @@ struct TrashBinsView: View {
                 previewItems: previewItems,
                 remainingItems: model.items
             )
-            let remainingPaths = Set(model.items.map(\.path))
-            for item in previewItems where !remainingPaths.contains(item.path) {
+            for item in previewItems where result.historyActions[item.id] != nil {
                 Log.deletion(path: item.path, module: item.module, disposition: .delete)
             }
             return result

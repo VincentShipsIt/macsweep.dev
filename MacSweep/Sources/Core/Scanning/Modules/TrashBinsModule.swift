@@ -134,7 +134,10 @@ struct TrashBinsModule: ScanModule {
         return CleanupResult(
             itemsProcessed: removedItems.count,
             bytesFreed: bytesFreed,
-            errors: errors
+            errors: errors,
+            historyActions: Dictionary(
+                uniqueKeysWithValues: removedItems.map { ($0.id, .deletePermanently) }
+            )
         )
     }
 }

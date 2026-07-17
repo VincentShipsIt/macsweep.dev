@@ -87,6 +87,30 @@ final class AppLogStoreTests {
         #expect(writer.events == Array(recent.suffix(2)))
     }
 
+    @Test func persistsRetentionPruningToTheAuditFile() throws {
+        let writer = store(maxEntries: 2)
+        writer.record(AppLogEvent(
+            timestamp: Date(timeIntervalSinceNow: -200 * 24 * 60 * 60),
+            category: .deletion,
+            level: .notice,
+            message: "Expired sensitive path",
+            path: "/tmp/expired-secret"
+        ))
+
+        for index in 0..<3 {
+            writer.record(AppLogEvent(
+                timestamp: now.addingTimeInterval(TimeInterval(index)),
+                category: .deletion,
+                level: .notice,
+                message: "Recent \(index)"
+            ))
+        }
+
+        let rawLog = try String(contentsOf: logURL, encoding: .utf8)
+        #expect(!rawLog.contains("expired-secret"))
+        #expect(rawLog.split(separator: "\n").count == 2)
+    }
+
     @Test func clearRemovesEventsAndAuditFile() {
         let writer = store()
         writer.record(AppLogEvent(
@@ -123,7 +147,7 @@ final class AppLogStoreTests {
     }
 
     @Test func preservesSubsecondTimestampsAndOrdersTimestampTiesByID() throws {
-        let timestamp = Date(timeIntervalSince1970: 1_750_000_000.123_456)
+        let timestamp = now.addingTimeInterval(-1).addingTimeInterval(0.123_456)
         let first = AppLogEvent(
             id: try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001")),
             timestamp: timestamp,

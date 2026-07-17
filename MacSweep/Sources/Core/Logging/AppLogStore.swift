@@ -137,8 +137,10 @@ final class AppLogStore: @unchecked Sendable {
 
             do {
                 try append(event)
-                if fileSize() > maxFileBytes {
-                    try rewrite(eventsFittingFileLimit(pruned(loadEvents())))
+                let loaded = loadEvents()
+                let retained = pruned(loaded)
+                if retained.count != loaded.count || fileSize() > maxFileBytes {
+                    try rewrite(eventsFittingFileLimit(retained))
                 }
             } catch {
                 // Unified logging still contains the event. Never make cleanup

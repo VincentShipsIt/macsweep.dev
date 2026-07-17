@@ -17,6 +17,7 @@ struct TrashBinsModuleTests {
         #expect(result.itemsProcessed == 1)
         #expect(result.bytesFreed == 120)
         #expect(result.errors.map(\.path) == [retained.path])
+        #expect(result.historyActions == [removed.id: .deletePermanently])
     }
 
     @Test func emptyAllResultReportsCompletePreviewRemoval() {
