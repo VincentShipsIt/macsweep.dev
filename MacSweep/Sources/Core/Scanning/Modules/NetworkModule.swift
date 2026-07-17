@@ -317,6 +317,13 @@ struct SSHKnownHost: Identifiable {
 
 // MARK: - DNS Cache Manager
 
+typealias DNSCacheCommandRunner =
+    @Sendable (
+        _ executable: String,
+        _ arguments: [String],
+        _ timeout: TimeInterval
+    ) async throws -> ProcessResult
+
 struct DNSCacheManager {
     /// Check if we can flush DNS
     static var canFlush: Bool {
@@ -326,21 +333,21 @@ struct DNSCacheManager {
     /// Flush the DNS cache
     /// Note: Full DNS flush (mDNSResponder restart) requires admin privileges.
     /// This method performs a partial flush that doesn't require elevation.
-    static func flush() async throws {
-        // First, try dscacheutil which doesn't require admin
-        let dscacheutil = Process()
-        dscacheutil.executableURL = URL(fileURLWithPath: "/usr/bin/dscacheutil")
-        dscacheutil.arguments = ["-flushcache"]
-        dscacheutil.standardOutput = FileHandle.nullDevice
-        dscacheutil.standardError = FileHandle.nullDevice
-
+    static func flush(
+        commandRunner: DNSCacheCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) async throws {
         do {
-            try dscacheutil.run()
-            dscacheutil.waitUntilExit()
-
-            if dscacheutil.terminationStatus != 0 {
-                throw DNSError.flushFailed
-            }
+            try await commandRunner(
+                "/usr/bin/dscacheutil",
+                ["-flushcache"],
+                30
+            ).checkedSuccess()
         } catch {
             throw DNSError.flushFailed
         }
