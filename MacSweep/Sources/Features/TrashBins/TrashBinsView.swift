@@ -261,11 +261,16 @@ struct TrashBinsView: View {
             try await module.emptyAllTrash()
             model.items = try await module.scan()
             trashSummary = await TrashSummary.current()
-            return TrashBinsModule.verifiedEmptyAllResult(
+            let result = TrashBinsModule.verifiedEmptyAllResult(
                 previewItems: previewItems,
                 remainingItems: model.items
             )
+            for item in previewItems where result.historyActions[item.id] != nil {
+                Log.deletion(path: item.path, module: item.module, disposition: .delete)
+            }
+            return result
         } catch {
+            Log.scanError("Empty Trash failed: \(error.localizedDescription)")
             model.items = (try? await module.scan()) ?? model.items
             trashSummary = await TrashSummary.current()
             model.errorMessage = "Couldn't empty Trash: \(error.localizedDescription)"

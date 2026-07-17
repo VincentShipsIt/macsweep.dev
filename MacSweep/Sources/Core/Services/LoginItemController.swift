@@ -91,7 +91,7 @@ actor LoginItemController {
         let match = try locate(label: label)
 
         do {
-            try FileManager.default.trashItem(at: match.url, resultingItemURL: nil)
+            try CleanupFileRemover.recoverable(match.url, module: "login-items")
         } catch {
             throw MutationError.failed(error.localizedDescription)
         }

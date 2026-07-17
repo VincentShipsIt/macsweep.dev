@@ -92,7 +92,7 @@ struct TrashBinsModule: ScanModule {
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         await cleanItems(items, dryRun: dryRun) { item, _ in
-            try FileManager.default.removeItem(at: item.path)
+            try CleanupFileRemover.permanent(item.path, module: item.module)
         }
     }
 
@@ -134,7 +134,10 @@ struct TrashBinsModule: ScanModule {
         return CleanupResult(
             itemsProcessed: removedItems.count,
             bytesFreed: bytesFreed,
-            errors: errors
+            errors: errors,
+            historyActions: Dictionary(
+                uniqueKeysWithValues: removedItems.map { ($0.id, .deletePermanently) }
+            )
         )
     }
 }

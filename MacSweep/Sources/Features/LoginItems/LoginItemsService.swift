@@ -215,7 +215,7 @@ final class LoginItemsService: ObservableObject {
             // LoginItemController.remove and the rest of the cleanup modules.
             // Off the main actor so trashItem doesn't stall the UI.
             try await Task.detached(priority: .userInitiated) {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                try CleanupFileRemover.recoverable(url, module: "login-items")
             }.value
         } catch {
             errorMessage = "Couldn't remove \(item.name): \(error.localizedDescription)"

@@ -581,6 +581,7 @@ extension Feature {
         case .duplicateFiles: return "duplicate-files"
         case .similarPhotos: return "similar-photos"
         case .shredder: return "shredder"
+        case .developerLogs: return "developer-logs"
         }
     }
 }

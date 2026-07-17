@@ -120,7 +120,7 @@ struct DevToolsModule: ScanModule {
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
         await cleanItems(items, dryRun: dryRun) { item, _ in
-            try FileManager.default.trashItem(at: item.path, resultingItemURL: nil)
+            try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
     }
 

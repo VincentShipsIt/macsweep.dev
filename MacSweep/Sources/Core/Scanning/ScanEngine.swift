@@ -321,6 +321,9 @@ actor ScanEngine {
                     ))
                 case .failure(let failure, let moduleName):
                     failures.append(failure)
+                    Log.scanError(
+                        "Scan failed [\(failure.moduleID)] \(failure.moduleName): \(failure.message)"
+                    )
                     await progress?(ScanProgressUpdate(
                         completedModules: completedModules,
                         totalModules: totalModules,
@@ -356,9 +359,17 @@ actor ScanEngine {
                 dryRun: false,
                 confirmedLargeDeletion: confirmedLargeDeletion
             )
+            if let firstError = result.errors.first {
+                let count = result.errors.count
+                Log.scanError(
+                    "Cleanup completed with \(count) item error\(count == 1 ? "" : "s"). "
+                        + "First: \(firstError.path.path): \(firstError.message)"
+                )
+            }
             cleanupHistoryStore.record(items: items, result: result)
             return result
         } catch let partial as PartialCleanupFailure {
+            Log.scanError("Cleanup partially failed: \(partial.underlyingError.localizedDescription)")
             if !partial.finalizedItems.isEmpty {
                 cleanupHistoryStore.record(
                     items: partial.finalizedItems,
@@ -373,6 +384,7 @@ actor ScanEngine {
             }
             throw partial.underlyingError
         } catch {
+            Log.scanError("Cleanup failed: \(error.localizedDescription)")
             cleanupHistoryStore.recordFailure(items: items, error: error)
             throw error
         }
