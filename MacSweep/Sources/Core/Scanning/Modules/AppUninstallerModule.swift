@@ -165,40 +165,33 @@ actor AppDiscovery {
         // name ("Google Chrome.app"), not the bundle ID ("com.google.Chrome"),
         // and ~/Applications apps aren't under /Applications at all. So mdls
         // always hit a non-existent path and last-used was perpetually nil.
-        // mdls blocks ~50-200ms per app. Run it on a detached task so it doesn't
-        // pin a cooperative-pool thread for every app in a sequential scan.
-        return await withCheckedContinuation { continuation in
-            Task.detached(priority: .utility) {
-                let process = Process()
-                let pipe = Pipe()
-
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/mdls")
-                process.arguments = ["-name", "kMDItemLastUsedDate", "-raw", bundleURL.path]
-                process.standardOutput = pipe
-                process.standardError = FileHandle.nullDevice
-
-                do {
-                    try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                          output != "(null)"
-                    else {
-                        continuation.resume(returning: nil)
-                        return
-                    }
-
-                    // Parse date (format: 2024-01-15 10:30:00 +0000). The POSIX
-                    // locale is required: on a 12-hour or non-Gregorian user
-                    // locale a plain DateFormatter fails to parse this 24-hour
-                    // format and "last used" silently reads back nil.
-                    let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
-                    continuation.resume(returning: formatter.date(from: output))
-                } catch {
-                    continuation.resume(returning: nil)
-                }
-            }
+        // The shared runner drains both streams off the cooperative pool and
+        // bounds metadata lookup so one wedged Spotlight query cannot stall the
+        // entire installed-app scan. This remains best-effort: launch failures,
+        // timeouts, and nonzero exits all mean "last used unavailable."
+        guard let result = try? await ProcessRunner.run(
+            executable: "/usr/bin/mdls",
+            arguments: ["-name", "kMDItemLastUsedDate", "-raw", bundleURL.path],
+            timeout: 10
+        ), result.didSucceed else {
+            return nil
         }
+
+        return Self.parseLastUsedDate(result.output)
+    }
+
+    /// Parses the fixed-format value emitted by `mdls -raw`. Split from the
+    /// subprocess boundary so locale handling and Spotlight's null sentinel are
+    /// deterministic in unit tests.
+    static func parseLastUsedDate(_ output: String) -> Date? {
+        let value = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value != "(null)" else { return nil }
+
+        // Parse date (format: 2024-01-15 10:30:00 +0000). The POSIX locale is
+        // required: on a 12-hour or non-Gregorian user locale a plain
+        // DateFormatter fails to parse this 24-hour format.
+        let formatter = DateFormatter.posixShellDate(format: "yyyy-MM-dd HH:mm:ss Z")
+        return formatter.date(from: value)
     }
 }
 
