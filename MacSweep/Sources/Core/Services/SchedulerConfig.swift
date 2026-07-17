@@ -53,6 +53,24 @@ public struct SchedulerConfig: @unchecked Sendable {
         return clamped
     }
 
+    /// Persists a new interval and updates the next-run anchor to match the
+    /// scheduler's enabled state. Disabled schedules retain the configured
+    /// interval but never leave a stale next-run date behind.
+    @discardableResult
+    public func updateIntervalDays(
+        _ days: Int,
+        scheduleEnabled: Bool,
+        now: Date = Date()
+    ) -> Date? {
+        setIntervalDays(days)
+
+        let nextScan = scheduleEnabled
+            ? now.addingTimeInterval(intervalSeconds)
+            : nil
+        setNextScheduledScan(nextScan)
+        return nextScan
+    }
+
     public var nextScheduledScan: Date? {
         defaults.object(forKey: Self.nextScheduledScanKey) as? Date
     }

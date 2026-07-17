@@ -297,6 +297,7 @@ struct GeneralSettingsView: View {
     // SMAppService is the source of truth for login-item state; the toggle
     // mirrors it rather than persisting a parallel flag in defaults.
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var backgroundScanIntervalDays = SchedulerConfig().intervalDays
     @AppStorage(MenuBarPreferences.iconVisibleKey) private var showMenuBarIcon = true
     @AppStorage(ScanScheduler.enabledDefaultsKey) private var backgroundScanEnabled = true
     @AppStorage(UpdateChannel.defaultsKey) private var updateChannelRaw = UpdateChannel.resolved().rawValue
@@ -323,14 +324,29 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle("Weekly background scan", isOn: $backgroundScanEnabled)
+                Toggle("Background scans", isOn: $backgroundScanEnabled)
                     .onChange(of: backgroundScanEnabled) { _, enabled in
                         if enabled {
-                            ScanScheduler.shared.scheduleWeeklyScan()
+                            ScanScheduler.shared.scheduleNextScan()
                         } else {
                             ScanScheduler.shared.cancelScheduledScan()
                         }
                     }
+
+                Stepper(
+                    value: $backgroundScanIntervalDays,
+                    in: SchedulerConfig.minIntervalDays...SchedulerConfig.maxIntervalDays
+                ) {
+                    LabeledContent("Scan interval") {
+                        Text(
+                            "\(backgroundScanIntervalDays) "
+                                + (backgroundScanIntervalDays == 1 ? "day" : "days")
+                        )
+                    }
+                }
+                .onChange(of: backgroundScanIntervalDays) { _, days in
+                    ScanScheduler.shared.updateIntervalDays(days)
+                }
 
                 if let lastScan = LastScanStore.shared.lastScan {
                     LabeledContent("Last scan") {
@@ -338,6 +354,13 @@ struct GeneralSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            } footer: {
+                Text(
+                    "Background scans run while MacSweep is open. "
+                        + "Changing the interval schedules the next scan from now when enabled."
+                )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
