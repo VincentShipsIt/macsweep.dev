@@ -32,29 +32,33 @@ struct SimilarPhotosModule: ScanModule {
     /// review-only cleanup candidates consumed by Smart Care and the CLI.
     func scanReviewGroups() async throws -> [FileReviewGroup] {
         let groups = try await similarPhotoGroups()
-        let selector = SimilarPhotoSelector()
 
         return groups.compactMap { group in
-            guard let keeper = selector.recommendedKeeper(in: group) else { return nil }
-            let items = group.photos.map { photo in
-                CleanupItem(
-                    id: photo.id,
-                    path: photo.path,
-                    size: photo.size,
-                    type: .file,
-                    module: id,
-                    moduleName: "Similar to \(group.reference.displayName)",
-                    lastModified: photo.modifiedDate
-                )
-            }
-            return FileReviewGroup(
-                id: group.id,
-                title: group.reference.displayName,
-                items: items,
-                suggestedKeeperID: keeper.id,
-                suggestionReason: "Oldest photo, then largest file"
+            reviewGroup(from: group)
+        }
+    }
+
+    func reviewGroup(from group: SimilarPhotoGroup) -> FileReviewGroup? {
+        guard let keeper = SimilarPhotoSelector().recommendedKeeper(in: group) else { return nil }
+        let keeperName = keeper.displayName
+        let items = group.photos.map { photo in
+            CleanupItem(
+                id: photo.id,
+                path: photo.path,
+                size: photo.size,
+                type: .file,
+                module: id,
+                moduleName: "Similar to \(keeperName)",
+                lastModified: photo.modifiedDate
             )
         }
+        return FileReviewGroup(
+            id: group.id,
+            title: keeperName,
+            items: items,
+            suggestedKeeperID: keeper.id,
+            suggestionReason: "Oldest photo, then largest file"
+        )
     }
 
     private func similarPhotoGroups() async throws -> [SimilarPhotoGroup] {

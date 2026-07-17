@@ -120,6 +120,39 @@ struct SimilarPhotosModuleTests {
         #expect(selected == [newer])
     }
 
+    @Test func reviewGroupLabelsMatchRecommendedKeeperWhenReferenceDiffers() throws {
+        let createdDate = Date(timeIntervalSince1970: 1_000)
+        let reference = SimilarPhotoCandidate(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/tmp/reference.jpg"),
+            size: 1_000,
+            createdDate: createdDate,
+            modifiedDate: createdDate,
+            signature: SimilarPhotoSignature(bits: 7, aspectRatioBucket: 10)
+        )
+        let keeper = SimilarPhotoCandidate(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/tmp/keeper.jpg"),
+            size: 2_000,
+            createdDate: createdDate,
+            modifiedDate: createdDate,
+            signature: SimilarPhotoSignature(bits: 7, aspectRatioBucket: 10)
+        )
+        let group = SimilarPhotoGroup(
+            id: UUID(),
+            reference: reference,
+            photos: [reference, keeper]
+        )
+
+        let reviewGroup = try #require(SimilarPhotosModule().reviewGroup(from: group))
+
+        #expect(reviewGroup.suggestedKeeperID == keeper.id)
+        #expect(reviewGroup.title == keeper.displayName)
+        #expect(reviewGroup.items.allSatisfy {
+            $0.moduleName == "Similar to \(keeper.displayName)"
+        })
+    }
+
     @Test func reviewGroupsExposeWholeClusterWithOneSuggestedKeeper() async throws {
         let temp = try TempTestDirectory(prefix: "MacSweepSimilarPhotoReview")
         let original = temp.appendingPathComponent("original.png")
