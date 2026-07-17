@@ -58,16 +58,14 @@ struct PrivilegedRunnerTests {
             )
         }
 
-        // Wait until the child confirms its partial output is captured. Generous
-        // bound absorbs osascript startup under load without affecting the result.
+        // Wait until the child confirms its partial output is captured.
         let flushedDeadline = Date().addingTimeInterval(20)
         while !FileManager.default.fileExists(atPath: flushed.path), Date() < flushedDeadline {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         #expect(FileManager.default.fileExists(atPath: flushed.path))
 
-        // Now drive cancellation deterministically. The supervisor observes the
-        // removed keepalive, flushes the already-captured partial output, and
+        // The supervisor observes the removed keepalive and flushes the captured output, then
         // exits 124 — a clean EOF for ProcessRunner, so capture never contends
         // with the escalation kill.
         try? FileManager.default.removeItem(at: keepalive)
@@ -81,6 +79,8 @@ struct PrivilegedRunnerTests {
                 let partialOutput = partialResult.output + partialResult.error
                 #expect(partialOutput.contains("privileged stdout before timeout"))
                 #expect(partialOutput.contains("privileged stderr before timeout"))
+                #expect(!partialOutput.contains("__MACSWEEP_PRIVILEGED_TIMEOUT_"))
+                #expect(!partialOutput.contains(": execution error:"))
             case .failed(let status):
                 Issue.record("Timeout was incorrectly mapped to failure status \(status)")
             }
