@@ -1,5 +1,12 @@
 import Foundation
 
+typealias CacheAnalyzerExecutableResolver = @Sendable (_ command: String) -> String?
+typealias CacheAnalyzerCommandRunner = @Sendable (
+    _ executable: String,
+    _ arguments: [String],
+    _ timeout: TimeInterval
+) async throws -> ProcessResult
+
 /// Deterministic + optional AI-assisted developer-cache scanner.
 ///
 /// Ported from the GUI-only `AIAnalysisService` into Core so the headless/CLI
@@ -9,6 +16,31 @@ import Foundation
 /// the Keychain only when no local provider succeeds. No state is mutated and
 /// nothing is deleted — this is read-only reconnaissance.
 struct CacheAnalyzer {
+    private static let providerTimeout: TimeInterval = 600
+
+    private enum ProviderAttempt {
+        case success(findings: [Finding], provider: String)
+        case failure(String)
+    }
+
+    private let executableResolver: CacheAnalyzerExecutableResolver
+    private let commandRunner: CacheAnalyzerCommandRunner
+
+    init(
+        executableResolver: @escaping CacheAnalyzerExecutableResolver = {
+            CacheAnalyzer.executablePath(for: $0)
+        },
+        commandRunner: @escaping CacheAnalyzerCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) {
+        self.executableResolver = executableResolver
+        self.commandRunner = commandRunner
+    }
 
     /// Mirrors the GUI `CacheCategory` raw values so JSON output is identical
     /// across the app and CLI.
@@ -228,66 +260,105 @@ struct CacheAnalyzer {
         """
     }
 
-    private func runLocalAIScan(prompt: String) async -> (findings: [Finding], provider: String?, error: String?) {
+    func runLocalAIScan(prompt: String) async -> (findings: [Finding], provider: String?, error: String?) {
         var errors: [String] = []
 
-        if Self.executablePath(for: "claude") != nil {
-            // Run off the cooperative pool — the CLI can take many seconds and
-            // runProcess blocks on waitUntilExit (matches runFastScan's pattern).
-            let result = await Task.detached(priority: .userInitiated) {
-                Self.runProcess([
-                    "claude",
-                    "-p",
-                    "--json-schema", Self.aiSchemaString,
-                    prompt
-                ])
-            }.value
-            if result.status == 0 {
-                if let findings = Self.parseAIFindings(result.output, source: "AI Analysis") {
-                    return (findings, "Claude CLI", nil)
-                }
-                errors.append("Claude CLI returned an unparseable AI scan response.")
-            } else {
-                errors.append(Self.processError("Claude CLI", result))
+        if let attempt = await runClaude(prompt: prompt) {
+            switch attempt {
+            case .success(let findings, let provider):
+                return (findings, provider, nil)
+            case .failure(let error):
+                errors.append(error)
             }
         }
 
-        if Self.executablePath(for: "codex") != nil {
-            let schemaURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-schema-\(UUID().uuidString).json")
-            let outputURL = FileManager.default.temporaryDirectory.appending(path: "macsweep-cache-\(UUID().uuidString).json")
-            do {
-                try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
-                let result = await Task.detached(priority: .userInitiated) {
-                    Self.runProcess([
-                        "codex",
-                        "exec",
-                        "--skip-git-repo-check",
-                        "--sandbox", "read-only",
-                        "--ephemeral",
-                        "--output-schema", schemaURL.path,
-                        "-o", outputURL.path,
-                        prompt
-                    ])
-                }.value
-                if result.status == 0 {
-                    let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
-                    if let findings = Self.parseAIFindings(text, source: "AI Analysis") {
-                        try? FileManager.default.removeItem(at: schemaURL)
-                        try? FileManager.default.removeItem(at: outputURL)
-                        return (findings, "Codex CLI", nil)
-                    }
-                    errors.append("Codex CLI returned an unparseable AI scan response.")
-                } else {
-                    errors.append(Self.processError("Codex CLI", result))
-                }
-            } catch {
-                errors.append("Codex CLI scan failed: \(error.localizedDescription)")
+        if let attempt = await runCodex(prompt: prompt) {
+            switch attempt {
+            case .success(let findings, let provider):
+                return (findings, provider, nil)
+            case .failure(let error):
+                errors.append(error)
             }
+        }
+
+        return ([], nil, errors.isEmpty ? nil : errors.joined(separator: " "))
+    }
+
+    private func runClaude(prompt: String) async -> ProviderAttempt? {
+        guard let executable = executableResolver("claude") else { return nil }
+
+        let invocation = await runProvider(
+            "Claude CLI",
+            executable: executable,
+            arguments: [
+                "-p",
+                "--json-schema", Self.aiSchemaString,
+                prompt
+            ]
+        )
+        if let error = invocation.error {
+            return .failure(error)
+        }
+        guard let result = invocation.result else {
+            return .failure("Claude CLI scan failed")
+        }
+        guard result.didSucceed else {
+            return .failure(Self.processError("Claude CLI", result))
+        }
+        guard let findings = Self.parseAIFindings(result.output, source: "AI Analysis") else {
+            return .failure("Claude CLI returned an unparseable AI scan response.")
+        }
+        return .success(findings: findings, provider: "Claude CLI")
+    }
+
+    private func runCodex(prompt: String) async -> ProviderAttempt? {
+        guard let executable = executableResolver("codex") else { return nil }
+
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+        let schemaURL = temporaryDirectory.appending(
+            path: "macsweep-cache-schema-\(UUID().uuidString).json"
+        )
+        let outputURL = temporaryDirectory.appending(
+            path: "macsweep-cache-\(UUID().uuidString).json"
+        )
+        defer {
             try? FileManager.default.removeItem(at: schemaURL)
             try? FileManager.default.removeItem(at: outputURL)
         }
 
-        return ([], nil, errors.isEmpty ? nil : errors.joined(separator: " "))
+        do {
+            try Self.aiSchemaString.write(to: schemaURL, atomically: true, encoding: .utf8)
+        } catch {
+            return .failure("Codex CLI scan failed: \(error.localizedDescription)")
+        }
+
+        let invocation = await runProvider(
+            "Codex CLI",
+            executable: executable,
+            arguments: [
+                "exec",
+                "--skip-git-repo-check",
+                "--sandbox", "read-only",
+                "--ephemeral",
+                "--output-schema", schemaURL.path,
+                "-o", outputURL.path,
+                prompt
+            ]
+        )
+        if let error = invocation.error {
+            return .failure(error)
+        }
+        guard let result = invocation.result else {
+            return .failure("Codex CLI scan failed")
+        }
+        guard result.didSucceed else {
+            return .failure(Self.processError("Codex CLI", result))
+        }
+        let text = (try? String(contentsOf: outputURL, encoding: .utf8)) ?? result.output
+        guard let findings = Self.parseAIFindings(text, source: "AI Analysis") else {
+            return .failure("Codex CLI returned an unparseable AI scan response.")
+        }
+        return .success(findings: findings, provider: "Codex CLI")
     }
 
     /// POST the largest `~/Library/Application Support` directories to the
@@ -379,44 +450,40 @@ struct CacheAnalyzer {
         return nil
     }
 
-    private static func runProcess(_ arguments: [String]) -> ProcessResult {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = arguments
-        let stdout = Pipe()
-        let stderr = Pipe()
-        task.standardOutput = stdout
-        task.standardError = stderr
+    private func runProvider(
+        _ provider: String,
+        executable: String,
+        arguments: [String]
+    ) async -> (result: ProcessResult?, error: String?) {
         do {
-            try task.run()
+            return (
+                try await commandRunner(executable, arguments, Self.providerTimeout),
+                nil
+            )
+        } catch ProcessRunnerError.timedOut(let timeout, let partialResult) {
+            return (
+                nil,
+                Self.processError(
+                    provider,
+                    partialResult,
+                    context: "timed out after \(Int(timeout))s"
+                )
+            )
         } catch {
-            return ProcessResult(status: 127, output: "", error: error.localizedDescription)
+            return (nil, "\(provider) scan failed: \(String(describing: error))")
         }
-        // Drain stderr concurrently with stdout, then wait. Reading only after
-        // waitUntilExit would deadlock once the child fills either pipe's 64 KB
-        // buffer. Mirrors the concurrent drain in
-        // AssistantConversationService.runProcess.
-        let stderrHandle = stderr.fileHandleForReading
-        let drainQueue = DispatchQueue(label: "macsweep.cacheanalyzer.stderr-drain")
-        var errorData = Data()
-        drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
-
-        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        drainQueue.sync {}   // ensure the stderr drain has completed
-
-        return ProcessResult(
-            status: task.terminationStatus,
-            output: String(data: outputData, encoding: .utf8) ?? "",
-            error: String(data: errorData, encoding: .utf8) ?? ""
-        )
     }
 
-    private static func processError(_ provider: String, _ result: ProcessResult) -> String {
+    private static func processError(
+        _ provider: String,
+        _ result: ProcessResult,
+        context: String = "failed"
+    ) -> String {
         let message = result.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? result.output.trimmingCharacters(in: .whitespacesAndNewlines)
             : result.error.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "\(provider) scan failed: \(message)"
+        let summary = "\(provider) scan \(context)"
+        return message.isEmpty ? summary : "\(summary): \(message)"
     }
 
     /// Runs a sequence of argv stages connected by pipes
