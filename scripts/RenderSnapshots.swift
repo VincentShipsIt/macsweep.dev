@@ -189,6 +189,22 @@ struct SnapshotRenderer {
                 TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
                 appState: AppState()
             )),
+            ("trash-bins-scanning", wrap(
+                TrashBinsView(snapshotItems: [], snapshotIsScanning: true),
+                appState: AppState()
+            )),
+            ("trash-bins-empty", wrap(
+                TrashBinsView(snapshotItems: [], snapshotHasScanned: true),
+                appState: AppState()
+            )),
+            ("trash-bins-error", wrap(
+                TrashBinsView(
+                    snapshotItems: [],
+                    snapshotHasScanned: true,
+                    snapshotError: "Couldn't scan Trash bins: permission denied"
+                ),
+                appState: AppState()
+            )),
             ("large-old-files-results", wrap(
                 LargeFilesView(snapshotItems: largeItems, snapshotSelection: largeSelection),
                 appState: AppState()
