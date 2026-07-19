@@ -32,11 +32,15 @@ struct TrashBinsView: View {
     init(
         snapshotItems: [CleanupItem],
         snapshotSelection: Set<UUID> = [],
+        snapshotIsScanning: Bool = false,
+        snapshotHasScanned: Bool = false,
         snapshotError: String? = nil
     ) {
         _model = StateObject(wrappedValue: ScanFeatureModel(
             items: snapshotItems,
             selectedItems: snapshotSelection,
+            isScanning: snapshotIsScanning,
+            hasScanned: snapshotHasScanned,
             errorMessage: snapshotError
         ))
         disableAutoLoad = true
@@ -104,21 +108,12 @@ struct TrashBinsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
             // no-ops under Reduce Motion.
-            .animated(.scanCrossfade, value: scanPhase)
+            .animated(.scanCrossfade, value: model.scanPhase)
         }
         .task {
             if !disableAutoLoad { await loadTrashSummary() }
         }
         .onDisappear { model.cancelScan() }
-    }
-
-    /// Which scan stage is on screen, so the crossfade fires on *every* arm
-    /// change — a bare `trashItems.isEmpty` boolean would miss landing → empty
-    /// when a scan finds nothing.
-    private var scanPhase: ScanPhase {
-        if !model.items.isEmpty { return .results }
-        if model.hasScanned && !model.isScanning && model.errorMessage == nil { return .empty }
-        return .landing
     }
 
     // MARK: - Trash List
