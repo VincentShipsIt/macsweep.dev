@@ -450,7 +450,7 @@ struct SafetySettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("User path rules") {
+            Section {
                 Picker("Rule file", selection: $selectedRuleKind) {
                     ForEach(UserProtectionRuleKind.allCases) { kind in
                         Text(kind.title).tag(kind)
@@ -512,6 +512,8 @@ struct SafetySettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.green)
                 }
+            } header: {
+                Text("User path rules")
             } footer: {
                 Text(
                     "Rules accept absolute paths, ~/ paths, home-relative paths, *, ** and ?. "
