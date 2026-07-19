@@ -194,7 +194,8 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 The protected GitHub `release` environment must contain the Developer ID,
 notarization, and Sparkle credentials consumed by
-`.github/workflows/release.yml`. The Sparkle-specific values are:
+`.github/workflows/release.yml`. The complete credential contract lives in
+`.claude/commands/release.md`; the Sparkle-specific values are:
 
 - Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
   release builds.
@@ -222,7 +223,9 @@ The `nightly` environment must mirror these `release` values:
 
 Keep the environment free of required reviewers and restrict its deployment
 branch policy to `master`. Verify names and policy without printing secret
-values:
+values. The final endpoint exists only when the preceding response reports
+`custom_branch_policies: true`; a `404` means the environment policy is not
+configured as required.
 
 ```bash
 gh secret list --repo VincentShipsIt/macsweep.dev --env nightly
