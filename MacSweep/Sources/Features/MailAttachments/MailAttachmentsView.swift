@@ -11,6 +11,24 @@ struct MailAttachmentsView: View {
     /// Derived from the current results, so it always reflects the live list.
     private var stats: MailStats? { MailStats.from(items: model.items) }
 
+    init() {}
+
+    /// Seeds the shared model for deterministic headless snapshots without
+    /// reading live Mail data.
+    init(
+        snapshotItems: [CleanupItem],
+        snapshotHasScanned: Bool = false,
+        snapshotError: String? = nil
+    ) {
+        _model = StateObject(
+            wrappedValue: ScanFeatureModel(
+                items: snapshotItems,
+                hasScanned: snapshotHasScanned,
+                errorMessage: snapshotError
+            )
+        )
+    }
+
     var body: some View {
         FeaturePageShell(
             title: "Mail Attachments",
@@ -32,22 +50,41 @@ struct MailAttachmentsView: View {
 
                 Group {
             if model.items.isEmpty {
-                ScanLandingView(
-                    icon: "envelope",
-                    title: "Scan for Mail Attachments",
-                    description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
-                    ctaTitle: "Scan Mail Attachments",
-                    benefits: [
-                        ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
-                        ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
-                    ],
-                    illustration: "paperclip",
-                    isScanning: model.isScanning,
-                    scanningMessage: "Scanning mail attachments",
-                    permissionWarning: appState.hasFullDiskAccess ? nil : .mail,
-                    action: { Task { await scanAttachments() } }
-                )
-                .transition(.scanCrossfade)
+                if model.hasScanned && !model.isScanning && model.errorMessage == nil {
+                    VStack(spacing: 0) {
+                        if !appState.hasFullDiskAccess {
+                            FullDiskAccessWarningBanner(scope: .mail)
+                                .padding(.horizontal)
+                                .padding(.top, 12)
+                        }
+
+                        EmptyResultState(
+                            icon: "checkmark.circle",
+                            title: "No mail attachments found",
+                            message: "No downloaded attachments matched the current size threshold.",
+                            actionTitle: "Scan Again",
+                            action: { Task { await scanAttachments() } }
+                        )
+                    }
+                    .transition(.scanCrossfade)
+                } else {
+                    ScanLandingView(
+                        icon: "envelope",
+                        title: "Scan for Mail Attachments",
+                        description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
+                        ctaTitle: "Scan Mail Attachments",
+                        benefits: [
+                            ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
+                            ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
+                        ],
+                        illustration: "paperclip",
+                        isScanning: model.isScanning,
+                        scanningMessage: "Scanning mail attachments",
+                        permissionWarning: appState.hasFullDiskAccess ? nil : .mail,
+                        action: { Task { await scanAttachments() } }
+                    )
+                    .transition(.scanCrossfade)
+                }
             } else {
                 Group {
                 if !appState.hasFullDiskAccess {
@@ -66,11 +103,18 @@ struct MailAttachmentsView: View {
                 .transition(.scanCrossfade)
             }
             }
-            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
-            .animated(.scanCrossfade, value: model.items.isEmpty)
+            // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
+            // no-ops under Reduce Motion.
+            .animated(.scanCrossfade, value: scanPhase)
             }
         }
         .onDisappear { model.cancelScan() }
+    }
+
+    private var scanPhase: ScanPhase {
+        if !model.items.isEmpty { return .results }
+        if model.hasScanned && !model.isScanning && model.errorMessage == nil { return .empty }
+        return .landing
     }
 
     // MARK: - Filter Bar
@@ -175,14 +219,16 @@ struct MailAttachmentsView: View {
     // MARK: - Actions
 
     private func scanAttachments() async {
-        // Scan failures were swallowed here originally (via `try?`); keep that by
-        // passing no error formatter, and start with nothing selected.
         let threshold = Int64(sizeThreshold * 1_048_576)
-        await model.scan(selectAllOnCompletion: false, onError: nil) {
-            var module = MailAttachmentsModule()
-            module.threshold = threshold
-            return try await module.scan()
-        }
+        await model.scan(
+            selectAllOnCompletion: false,
+            onError: { "Couldn't scan mail attachments: \($0.localizedDescription)" },
+            {
+                var module = MailAttachmentsModule()
+                module.threshold = threshold
+                return try await module.scan()
+            }
+        )
     }
 
     private func deleteSelected() async -> CleanupResult? {

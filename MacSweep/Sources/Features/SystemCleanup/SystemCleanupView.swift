@@ -5,6 +5,19 @@ struct SystemCleanupView: View {
     @EnvironmentObject var appState: AppState
     @State private var showingConfirmation = false
     @State private var searchText = ""
+    @State private var hasScanned = false
+
+    /// A deterministic stage override for the headless snapshot harness. The
+    /// production initializer always derives the stage from live scan state.
+    private let snapshotPhase: ScanPhase?
+
+    init() {
+        snapshotPhase = nil
+    }
+
+    init(snapshotPhase: ScanPhase) {
+        self.snapshotPhase = snapshotPhase
+    }
 
     var body: some View {
         FeaturePageShell(
@@ -12,7 +25,7 @@ struct SystemCleanupView: View {
             subtitle: "Clear caches, logs, and temporary files.",
             trailing: appState.scanResults.isEmpty ? nil : AnyView(
                 RescanButton(isScanning: appState.isScanning, usesNativeToolbarStyle: true) {
-                    Task { await appState.scan(modules: ["system-cache"]) }
+                    Task { await scanSystemJunk() }
                 }
             ),
             hidesChrome: appState.scanResults.isEmpty,
@@ -27,25 +40,50 @@ struct SystemCleanupView: View {
                     }
                 }
 
+                if let scanErrorMessage {
+                    MacSweepErrorBanner(message: scanErrorMessage) {
+                        dismissScanError()
+                    }
+                }
+
                 Group {
             if appState.scanResults.isEmpty {
-                ScanLandingView(
-                    icon: "sparkles",
-                    title: "Scan for System Junk",
-                    description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
-                    ctaTitle: "Scan System Junk",
-                    benefits: [
-                        ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
-                        ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
-                    ],
-                    illustration: "sparkles",
-                    isScanning: appState.isScanning,
-                    progress: appState.scanProgress,
-                    scanningMessage: appState.currentScanModule,
-                    permissionWarning: appState.hasFullDiskAccess ? nil : .systemData,
-                    action: { Task { await appState.scan(modules: ["system-cache"]) } }
-                )
-                .transition(.scanCrossfade)
+                if scanPhase == .empty {
+                    VStack(spacing: 0) {
+                        if !appState.hasFullDiskAccess {
+                            FullDiskAccessWarningBanner(scope: .systemData)
+                                .padding(.horizontal)
+                                .padding(.top, 12)
+                        }
+
+                        EmptyResultState(
+                            icon: "checkmark.circle",
+                            title: "No system junk found",
+                            message: "No cleanable caches, logs, or temporary files were found.",
+                            actionTitle: "Scan Again",
+                            action: { Task { await scanSystemJunk() } }
+                        )
+                    }
+                    .transition(.scanCrossfade)
+                } else {
+                    ScanLandingView(
+                        icon: "sparkles",
+                        title: "Scan for System Junk",
+                        description: "Find reclaimable caches, logs, and temporary files across your system. Nothing is removed until you review and confirm what to clean.",
+                        ctaTitle: "Scan System Junk",
+                        benefits: [
+                            ScanBenefit("speedometer", "Frees up disk space", "Removes reclaimable caches, logs, and leftover temporary files to give your Mac room to breathe."),
+                            ScanBenefit("checkmark.shield", "Safe by default", "Nothing is deleted until you review the results and confirm what to clean."),
+                        ],
+                        illustration: "sparkles",
+                        isScanning: appState.isScanning,
+                        progress: appState.scanProgress,
+                        scanningMessage: appState.currentScanModule,
+                        permissionWarning: appState.hasFullDiskAccess ? nil : .systemData,
+                        action: { Task { await scanSystemJunk() } }
+                    )
+                    .transition(.scanCrossfade)
+                }
             } else {
                 VStack(spacing: 0) {
                     if !appState.hasFullDiskAccess {
@@ -61,10 +99,25 @@ struct SystemCleanupView: View {
                 .transition(.scanCrossfade)
             }
             }
-            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
-            .animated(.scanCrossfade, value: appState.scanResults.isEmpty)
+            // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
+            // no-ops under Reduce Motion.
+            .animated(.scanCrossfade, value: scanPhase)
             }
         }
+    }
+
+    private var scanPhase: ScanPhase {
+        if let snapshotPhase { return snapshotPhase }
+        if !appState.scanResults.isEmpty { return .results }
+        if hasScanned && !appState.isScanning && scanErrorMessage == nil { return .empty }
+        return .landing
+    }
+
+    private var scanErrorMessage: String? {
+        if let failure = appState.scanFailures.first(where: { $0.moduleID == "system-cache" }) {
+            return "Couldn't scan System Junk: \(failure.conciseMessage)"
+        }
+        return appState.lastError
     }
 
     // MARK: - Results List
@@ -116,6 +169,18 @@ struct SystemCleanupView: View {
                 + "Protected paths are checked again immediately before execution.",
             onConfirm: { try? await appState.deleteSelected(confirmedLargeDeletion: true) }
         )
+    }
+
+    // MARK: - Actions
+
+    private func scanSystemJunk() async {
+        await appState.scan(modules: ["system-cache"])
+        hasScanned = scanErrorMessage == nil
+    }
+
+    private func dismissScanError() {
+        appState.lastError = nil
+        appState.scanFailures.removeAll { $0.moduleID == "system-cache" }
     }
 
     // MARK: - Filtered Results

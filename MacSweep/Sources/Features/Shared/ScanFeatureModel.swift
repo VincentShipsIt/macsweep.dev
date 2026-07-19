@@ -48,7 +48,8 @@ final class ScanFeatureModel: ObservableObject {
     init() {}
 
     /// Seeds result state directly, for the snapshot-rendering harness and Xcode
-    /// previews that render the populated / error layouts without a live scan.
+    /// previews that render populated, successful-empty, or error layouts without
+    /// a live scan.
     init(
         items: [CleanupItem],
         selectedItems: Set<CleanupItem.ID> = [],

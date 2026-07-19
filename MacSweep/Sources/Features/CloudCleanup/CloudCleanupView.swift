@@ -12,6 +12,24 @@ struct CloudCleanupView: View {
         return names.sorted()
     }
 
+    init() {}
+
+    /// Seeds the shared model for deterministic headless snapshots without
+    /// reading live cloud-provider data.
+    init(
+        snapshotItems: [CleanupItem],
+        snapshotHasScanned: Bool = false,
+        snapshotError: String? = nil
+    ) {
+        _model = StateObject(
+            wrappedValue: ScanFeatureModel(
+                items: snapshotItems,
+                hasScanned: snapshotHasScanned,
+                errorMessage: snapshotError
+            )
+        )
+    }
+
     var body: some View {
         FeaturePageShell(
             title: "Cloud Cleanup",
@@ -30,20 +48,31 @@ struct CloudCleanupView: View {
                 }
 
                 if model.items.isEmpty {
-                    ScanLandingView(
-                        icon: "icloud",
-                        title: "Scan Cloud Storage",
-                        description: "Find stale local cloud copies and oversized provider cache folders you can reclaim.",
-                        ctaTitle: "Scan Cloud Storage",
-                        benefits: [
-                            ScanBenefit("icloud.and.arrow.down", "Reclaims synced storage", "Evicts stale local copies of iCloud and provider files so they stay in the cloud, not on your disk."),
-                            ScanBenefit("externaldrive.badge.icloud", "Clears provider caches", "Removes oversized cloud cache folders left behind by sync clients while your files stay safe online."),
-                        ],
-                        illustration: "icloud.and.arrow.down",
-                        isScanning: model.isScanning,
-                        action: { Task { await scanCloudStorage() } }
-                    )
-                    .transition(.scanCrossfade)
+                    if model.hasScanned && !model.isScanning && model.errorMessage == nil {
+                        EmptyResultState(
+                            icon: "checkmark.circle",
+                            title: "No cloud storage to reclaim",
+                            message: "No stale local cloud copies or oversized provider caches were found.",
+                            actionTitle: "Scan Again",
+                            action: { Task { await scanCloudStorage() } }
+                        )
+                        .transition(.scanCrossfade)
+                    } else {
+                        ScanLandingView(
+                            icon: "icloud",
+                            title: "Scan Cloud Storage",
+                            description: "Find stale local cloud copies and oversized provider cache folders you can reclaim.",
+                            ctaTitle: "Scan Cloud Storage",
+                            benefits: [
+                                ScanBenefit("icloud.and.arrow.down", "Reclaims synced storage", "Evicts stale local copies of iCloud and provider files so they stay in the cloud, not on your disk."),
+                                ScanBenefit("externaldrive.badge.icloud", "Clears provider caches", "Removes oversized cloud cache folders left behind by sync clients while your files stay safe online."),
+                            ],
+                            illustration: "icloud.and.arrow.down",
+                            isScanning: model.isScanning,
+                            action: { Task { await scanCloudStorage() } }
+                        )
+                        .transition(.scanCrossfade)
+                    }
                 } else {
                     Group {
                     filterBar
@@ -57,10 +86,17 @@ struct CloudCleanupView: View {
                     .transition(.scanCrossfade)
                 }
             }
-            // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
-            .animated(.scanCrossfade, value: model.items.isEmpty)
+            // Crossfade every scan-stage swap (landing ⇄ empty ⇄ results);
+            // no-ops under Reduce Motion.
+            .animated(.scanCrossfade, value: scanPhase)
         }
         .onDisappear { model.cancelScan() }
+    }
+
+    private var scanPhase: ScanPhase {
+        if !model.items.isEmpty { return .results }
+        if model.hasScanned && !model.isScanning && model.errorMessage == nil { return .empty }
+        return .landing
     }
 
     private var filterBar: some View {

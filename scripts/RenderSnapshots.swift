@@ -63,8 +63,8 @@ struct SnapshotRenderer {
         }
 
         // Data-state variants: the loop above captures every feature's empty launch
-        // state; these extra passes capture the populated and error layouts of the
-        // three deletion-bearing flows, which only render once a scan has data.
+        // state; these extra passes capture populated, successful-empty, and error
+        // layouts that only render after a scan has completed.
         for (slug, view) in dataStateVariants(size: shellSize) {
             index += 1
             let name = String(format: "%02d-%@", index, slug)
@@ -185,6 +185,18 @@ struct SnapshotRenderer {
                 appState: AppState(initialFullDiskAccess: false)
             )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),
+            ("system-junk-empty", wrap(
+                SystemCleanupView(snapshotPhase: .empty),
+                appState: AppState(initialFullDiskAccess: false)
+            )),
+            ("mail-attachments-empty", wrap(
+                MailAttachmentsView(snapshotItems: [], snapshotHasScanned: true),
+                appState: AppState(initialFullDiskAccess: false)
+            )),
+            ("cloud-cleanup-empty", wrap(
+                CloudCleanupView(snapshotItems: [], snapshotHasScanned: true),
+                appState: AppState()
+            )),
             ("trash-bins-results", wrap(
                 TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
                 appState: AppState()
