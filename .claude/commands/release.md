@@ -18,13 +18,16 @@ MacSweep ships two Homebrew entries:
   - Secrets: `DEVELOPER_ID_P12_BASE64`,
     `DEVELOPER_ID_P12_PASSWORD`, `APPLE_API_PRIVATE_KEY_P8_BASE64`, and
     `SPARKLE_PRIVATE_ED_KEY`.
-  - Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, and
+  - Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`,
     `APPLE_API_ISSUER_ID`, and `SPARKLE_PUBLIC_ED_KEY`.
 - `DEVELOPER_ID_P12_BASE64` is a password-protected Developer ID Application
   certificate plus private key exported as `.p12` and then base64-encoded.
   `APPLE_API_PRIVATE_KEY_P8_BASE64` is a team App Store Connect API private key
   used only by `notarytool`, also base64-encoded. A Developer ID Installer
   certificate is not needed while MacSweep ships as a zip rather than a pkg.
+  `SPARKLE_PRIVATE_ED_KEY` is the matching base64 private seed exported by
+  Sparkle's `generate_keys` tool; its public half is stored in
+  `SPARKLE_PUBLIC_ED_KEY`.
 - The repo secret `TAP_GITHUB_TOKEN` exists (token with `contents: write` on
   `VincentShipsIt/homebrew-tap`) — `update-homebrew.yml` needs it to push the bump.
 - `Formula/macsweep.rb` and `Casks/macsweep.rb` live in
@@ -38,9 +41,9 @@ gh variable list --repo VincentShipsIt/macsweep.dev --env release
 ```
 
 The scheduled app channel uses a separate, master-only `nightly` environment
-without required reviewers. It mirrors the four signing secrets and four
-variables above; its operator checklist and read-only verification commands are
-documented in `README.md` under **Nightly app channel**.
+without required reviewers. Its canonical credential list, operator checklist,
+and read-only verification commands are documented in `README.md` under
+**Nightly app channel**.
 
 ## Steps
 

@@ -52,11 +52,24 @@ final class ScanFeatureModel: ObservableObject {
     init(
         items: [CleanupItem],
         selectedItems: Set<CleanupItem.ID> = [],
+        isScanning: Bool = false,
+        hasScanned: Bool = false,
         errorMessage: String? = nil
     ) {
         self.items = items
         self.selectedItems = selectedItems
+        self.isScanning = isScanning
+        self.hasScanned = hasScanned
         self.errorMessage = errorMessage
+    }
+
+    /// The shared landing/loading/result state projected for feature-page
+    /// transitions. Views with a distinct scanning arm can derive their own
+    /// phase, while the standard landing view renders `isScanning` internally.
+    var scanPhase: ScanPhase {
+        if !items.isEmpty { return .results }
+        if hasScanned && !isScanning && errorMessage == nil { return .empty }
+        return .landing
     }
 
     // MARK: - Scanning

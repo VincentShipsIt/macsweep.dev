@@ -100,6 +100,12 @@ struct AssistantProviderDetector {
 }
 
 actor AssistantConversationService {
+    private let providerProcess: AssistantProviderProcess
+
+    init(providerProcess: AssistantProviderProcess = AssistantProviderProcess()) {
+        self.providerProcess = providerProcess
+    }
+
     func plan(
         prompt: String,
         moduleCatalog: [AssistantModuleContext],
@@ -174,8 +180,9 @@ actor AssistantConversationService {
 
         switch provider {
         case .codex:
-            result = try await runProcess(
-                launchPath: "/usr/bin/env",
+            result = try await providerProcess.run(
+                provider: provider,
+                executable: "/usr/bin/env",
                 arguments: [
                     providerConfig.command,
                     "exec",
@@ -191,8 +198,9 @@ actor AssistantConversationService {
             )
             _ = result
         case .claude:
-            result = try await runProcess(
-                launchPath: "/usr/bin/env",
+            result = try await providerProcess.run(
+                provider: provider,
+                executable: "/usr/bin/env",
                 arguments: [
                     providerConfig.command,
                     "-p",
@@ -363,62 +371,6 @@ actor AssistantConversationService {
         let url = FileManager.default.temporaryDirectory.appending(path: "macsweep-assistant-schema-\(UUID().uuidString).json")
         try schemaString.write(to: url, atomically: true, encoding: .utf8)
         return url
-    }
-
-    /// Run an external CLI off the Swift cooperative thread pool.
-    ///
-    /// The assistant providers (codex/claude) can run for many seconds. Calling
-    /// `waitUntilExit()` directly on the cooperative pool would pin one of its
-    /// fixed threads for the whole run and, with concurrent calls, can starve or
-    /// deadlock the pool. We hop to a GCD background queue via a continuation, and
-    /// drain stdout/stderr on separate handles so a child that fills one pipe's
-    /// buffer can't block before exit.
-    private func runProcess(launchPath: String, arguments: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: launchPath)
-                process.arguments = arguments
-
-                let stdout = Pipe()
-                let stderr = Pipe()
-                process.standardOutput = stdout
-                process.standardError = stderr
-
-                do {
-                    try process.run()
-                } catch {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                // Drain stderr on a separate thread while we drain stdout here, so
-                // neither pipe's 64 KB buffer can fill and block the child before it
-                // exits (the classic two-pipe deadlock).
-                let stderrHandle = stderr.fileHandleForReading
-                let drainQueue = DispatchQueue(label: "macsweep.assistant.stderr-drain")
-                var errorData = Data()
-                drainQueue.async { errorData = stderrHandle.readDataToEndOfFile() }
-
-                let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                drainQueue.sync {}   // ensure stderr drain has completed
-
-                let output = String(data: outputData, encoding: .utf8) ?? ""
-                let error = String(data: errorData, encoding: .utf8) ?? ""
-
-                guard process.terminationStatus == 0 else {
-                    let provider = arguments.first.flatMap(AssistantProviderKind.init(rawValue:)) ?? .codex
-                    continuation.resume(throwing: AssistantConversationError.processFailed(
-                        provider: provider,
-                        message: error.isEmpty ? output : error
-                    ))
-                    return
-                }
-
-                continuation.resume(returning: output.trimmingCharacters(in: .whitespacesAndNewlines))
-            }
-        }
     }
 
     private func sanitizedRuleID(label: String) -> String {
