@@ -227,6 +227,10 @@ The `nightly` environment must mirror these `release` values:
 - Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
   `SPARKLE_PUBLIC_ED_KEY`.
 
+Copy the same four secret values from `release`; do not generate a second
+Developer ID certificate, App Store Connect key, or Sparkle key for this
+same-app prerelease channel.
+
 Nightly intentionally uses the same Sparkle keypair because it is a rolling
 prerelease of the same signed app and update trust root, not a separately
 installable channel. Its unattended path is constrained by the master-only
@@ -236,9 +240,7 @@ bundle identity, and appcast.
 
 Keep the environment free of required reviewers and restrict its deployment
 branch policy to `master`. Verify names and policy without printing secret
-values. The final endpoint exists only when the preceding response reports
-`deployment_branch_policy.custom_branch_policies: true`; a `404` means the
-environment policy is not configured as required.
+values:
 
 ```bash
 gh secret list --repo VincentShipsIt/macsweep.dev --env nightly
@@ -248,6 +250,10 @@ gh api repos/VincentShipsIt/macsweep.dev/environments/nightly \
 gh api repos/VincentShipsIt/macsweep.dev/environments/nightly/deployment-branch-policies \
   --jq '.branch_policies[] | [.name, .type]'
 ```
+
+Run the final endpoint only when the preceding environment response reports
+`deployment_branch_policy.custom_branch_policies: true`; a `404` from that
+final command means the policy is not configured as required.
 
 These checks are operator-owned and must be repeated after environment-policy
 changes. Do not give the signing workflow an administration token so it can

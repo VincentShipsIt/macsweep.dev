@@ -15,6 +15,8 @@ MacSweep ships two Homebrew entries:
 - The Apple Developer Program membership is active and the bundle identifier
   remains `dev.macsweep.app`.
 - A protected GitHub environment named `release` exists with these values:
+  `README.md` is the canonical credential contract; the list is mirrored here
+  so the release preflight remains executable.
   - Secrets: `DEVELOPER_ID_P12_BASE64`,
     `DEVELOPER_ID_P12_PASSWORD`, `APPLE_API_PRIVATE_KEY_P8_BASE64`, and
     `SPARKLE_PRIVATE_ED_KEY`.
