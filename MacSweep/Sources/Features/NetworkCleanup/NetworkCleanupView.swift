@@ -266,7 +266,7 @@ struct WiFiNetworksView: View {
         var failed: [String] = []
         for ssid in ssidsToRemove {
             do {
-                try WiFiNetworkManager.removeNetwork(ssid)
+                try await WiFiNetworkManager.removeNetwork(ssid)
             } catch {
                 failed.append(ssid)
             }

@@ -660,7 +660,7 @@ public actor MacSweepHeadlessService {
             throw HeadlessServiceError.wifiNetworkNotFound(ssid)
         }
         do {
-            try WiFiNetworkManager.removeNetwork(ssid)
+            try await WiFiNetworkManager.removeNetwork(ssid)
         } catch {
             throw HeadlessServiceError.networkOperationFailed(error.localizedDescription)
         }

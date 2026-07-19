@@ -53,7 +53,15 @@ struct NetworkModule: ScanModule {
 
 // MARK: - WiFi Network Management
 
+typealias WiFiCommandRunner = @Sendable (
+    _ executable: String,
+    _ arguments: [String],
+    _ timeout: TimeInterval
+) async throws -> ProcessResult
+
 struct WiFiNetworkManager {
+    static let removalTimeout: TimeInterval = 30
+
     /// Get the WiFi interface to use
     private static var wifiInterface: String {
         WiFiInterfaceManager.primaryInterface()
@@ -149,41 +157,48 @@ struct WiFiNetworkManager {
     }
 
     /// Remove a saved WiFi network
-    static func removeNetwork(_ ssid: String) throws {
-        try removeNetwork(ssid, interface: wifiInterface)
+    static func removeNetwork(_ ssid: String) async throws {
+        try await removeNetwork(ssid, interface: wifiInterface)
     }
 
     /// Remove a saved WiFi network from a specific interface
-    static func removeNetwork(_ ssid: String, interface: String) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        process.arguments = ["-removepreferredwirelessnetwork", interface, ssid]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
+    static func removeNetwork(
+        _ ssid: String,
+        interface: String,
+        commandRunner: WiFiCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) async throws {
+        do {
+            try await commandRunner(
+                "/usr/sbin/networksetup",
+                ["-removepreferredwirelessnetwork", interface, ssid],
+                Self.removalTimeout
+            ).checkedSuccess()
+        } catch {
             throw NetworkError.removeNetworkFailed(ssid)
         }
     }
 
     /// Remove multiple networks
-    static func removeNetworks(_ ssids: [String]) throws {
+    static func removeNetworks(_ ssids: [String]) async throws {
         for ssid in ssids {
-            try removeNetwork(ssid)
+            try await removeNetwork(ssid)
         }
     }
 
     /// Remove all saved networks except current and protected
-    static func removeAllExceptCurrent(protectedSSIDs: Set<String> = []) throws {
+    static func removeAllExceptCurrent(protectedSSIDs: Set<String> = []) async throws {
         let current = getCurrentSSID()
         let networks = savedNetworks()
 
         for network in networks {
             if network.ssid != current && !protectedSSIDs.contains(network.ssid) {
-                try? removeNetwork(network.ssid)
+                try? await removeNetwork(network.ssid)
             }
         }
     }
