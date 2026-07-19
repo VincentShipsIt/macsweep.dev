@@ -431,7 +431,7 @@ struct SafetySettingsView: View {
 
     var body: some View {
         Form {
-            Section("Deletion limit") {
+            Section {
                 Slider(value: $maxDeleteSizeGB, in: 1...50, step: 1) {
                     Text("Max delete size: \(Int(maxDeleteSizeGB)) GB")
                 }
@@ -439,6 +439,8 @@ struct SafetySettingsView: View {
                     Text("\(Int(maxDeleteSizeGB)) GB per cleanup")
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("Deletion limit")
             } footer: {
                 Text(
                     "MacSweep re-measures selected paths immediately before deletion "
