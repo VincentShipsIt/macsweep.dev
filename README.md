@@ -194,8 +194,14 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 The protected GitHub `release` environment must contain the Developer ID,
 notarization, and Sparkle credentials consumed by
-`.github/workflows/release.yml`. The complete credential contract lives in
-`.claude/commands/release.md`; the Sparkle-specific values are:
+`.github/workflows/release.yml`:
+
+- Secrets: `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`,
+  `APPLE_API_PRIVATE_KEY_P8_BASE64`, and `SPARKLE_PRIVATE_ED_KEY`.
+- Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
+  `SPARKLE_PUBLIC_ED_KEY`.
+
+The Sparkle-specific values are:
 
 - Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
   release builds.
@@ -220,6 +226,13 @@ The `nightly` environment must mirror these `release` values:
   `APPLE_API_PRIVATE_KEY_P8_BASE64`, and `SPARKLE_PRIVATE_ED_KEY`.
 - Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
   `SPARKLE_PUBLIC_ED_KEY`.
+
+Nightly intentionally uses the same Sparkle keypair because it is a rolling
+prerelease of the same signed app and update trust root, not a separately
+installable channel. Its unattended path is constrained by the master-only
+environment, protected-branch CI, and GitHub prerelease publication. A future
+independent nightly channel must use a separate keypair, embedded public key,
+bundle identity, and appcast.
 
 Keep the environment free of required reviewers and restrict its deployment
 branch policy to `master`. Verify names and policy without printing secret
