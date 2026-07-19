@@ -237,8 +237,8 @@ bundle identity, and appcast.
 Keep the environment free of required reviewers and restrict its deployment
 branch policy to `master`. Verify names and policy without printing secret
 values. The final endpoint exists only when the preceding response reports
-`custom_branch_policies: true`; a `404` means the environment policy is not
-configured as required.
+`deployment_branch_policy.custom_branch_policies: true`; a `404` means the
+environment policy is not configured as required.
 
 ```bash
 gh secret list --repo VincentShipsIt/macsweep.dev --env nightly
@@ -248,6 +248,10 @@ gh api repos/VincentShipsIt/macsweep.dev/environments/nightly \
 gh api repos/VincentShipsIt/macsweep.dev/environments/nightly/deployment-branch-policies \
   --jq '.branch_policies[] | [.name, .type]'
 ```
+
+These checks are operator-owned and must be repeated after environment-policy
+changes. Do not give the signing workflow an administration token so it can
+self-audit GitHub configuration.
 
 Do not move the signing secrets to repository scope as a shortcut: keeping them
 in the master-only environment prevents untrusted branches from reading
