@@ -114,10 +114,10 @@ struct SystemCleanupView: View {
     }
 
     private var scanErrorMessage: String? {
-        if let failure = appState.scanFailures.first(where: { $0.moduleID == "system-cache" }) {
-            return "Couldn't scan System Junk: \(failure.conciseMessage)"
+        guard let failure = appState.scanFailures.first(where: { $0.moduleID == "system-cache" }) else {
+            return nil
         }
-        return appState.lastError
+        return "Couldn't scan System Junk: \(failure.conciseMessage)"
     }
 
     // MARK: - Results List
@@ -179,7 +179,6 @@ struct SystemCleanupView: View {
     }
 
     private func dismissScanError() {
-        appState.lastError = nil
         appState.scanFailures.removeAll { $0.moduleID == "system-cache" }
     }
 
