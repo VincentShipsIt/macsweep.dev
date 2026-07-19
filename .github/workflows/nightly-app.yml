@@ -20,7 +20,8 @@ name: Nightly App Channel
 # Signing runs in the `nightly` environment: same secrets/variables as
 # `release`, but WITHOUT required reviewers (a reviewer gate would stall every
 # scheduled run). Restrict that environment to the master branch so only
-# master builds can read the signing keys.
+# master builds can read the signing keys. The operator checklist and read-only
+# verification commands live in README.md under "Nightly app channel".
 
 on:
   schedule:

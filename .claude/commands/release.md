@@ -16,10 +16,10 @@ MacSweep ships two Homebrew entries:
   remains `dev.macsweep.app`.
 - A protected GitHub environment named `release` exists with these values:
   - Secrets: `DEVELOPER_ID_P12_BASE64`,
-    `DEVELOPER_ID_P12_PASSWORD`, and
-    `APPLE_API_PRIVATE_KEY_P8_BASE64`.
+    `DEVELOPER_ID_P12_PASSWORD`, `APPLE_API_PRIVATE_KEY_P8_BASE64`, and
+    `SPARKLE_PRIVATE_ED_KEY`.
   - Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, and
-    `APPLE_API_ISSUER_ID`.
+    `APPLE_API_ISSUER_ID`, and `SPARKLE_PUBLIC_ED_KEY`.
 - `DEVELOPER_ID_P12_BASE64` is a password-protected Developer ID Application
   certificate plus private key exported as `.p12` and then base64-encoded.
   `APPLE_API_PRIVATE_KEY_P8_BASE64` is a team App Store Connect API private key
@@ -33,9 +33,14 @@ MacSweep ships two Homebrew entries:
 To verify configuration without exposing values:
 
 ```bash
-gh secret list --repo VincentShipsIt/macsweep --env release
-gh variable list --repo VincentShipsIt/macsweep --env release
+gh secret list --repo VincentShipsIt/macsweep.dev --env release
+gh variable list --repo VincentShipsIt/macsweep.dev --env release
 ```
+
+The scheduled app channel uses a separate, master-only `nightly` environment
+without required reviewers. It mirrors the four signing secrets and four
+variables above; its operator checklist and read-only verification commands are
+documented in `README.md` under **Nightly app channel**.
 
 ## Steps
 

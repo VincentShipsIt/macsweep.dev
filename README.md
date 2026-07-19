@@ -192,7 +192,9 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 ### Release signing for app updates
 
-The protected GitHub `release` environment must contain both Sparkle values:
+The protected GitHub `release` environment must contain the Developer ID,
+notarization, and Sparkle credentials consumed by
+`.github/workflows/release.yml`. The Sparkle-specific values are:
 
 - Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
   release builds.
@@ -204,6 +206,36 @@ On every version tag, the release workflow verifies the embedded public key,
 signs the notarized app ZIP, generates `appcast.xml`, and publishes both files
 to the GitHub release. `scripts/release.sh bump X.Y.Z` advances both the visible
 version and Sparkle's bundle build version.
+
+### Nightly app channel
+
+`.github/workflows/nightly-app.yml` publishes a rolling, signed prerelease from
+`master`. It uses a separate `nightly` environment because the protected
+`release` environment requires approval and would block scheduled builds.
+
+The `nightly` environment must mirror these `release` values:
+
+- Secrets: `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`,
+  `APPLE_API_PRIVATE_KEY_P8_BASE64`, and `SPARKLE_PRIVATE_ED_KEY`.
+- Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
+  `SPARKLE_PUBLIC_ED_KEY`.
+
+Keep the environment free of required reviewers and restrict its deployment
+branch policy to `master`. Verify names and policy without printing secret
+values:
+
+```bash
+gh secret list --repo VincentShipsIt/macsweep.dev --env nightly
+gh variable list --repo VincentShipsIt/macsweep.dev --env nightly
+gh api repos/VincentShipsIt/macsweep.dev/environments/nightly \
+  --jq '{protection_rules, deployment_branch_policy}'
+gh api repos/VincentShipsIt/macsweep.dev/environments/nightly/deployment-branch-policies \
+  --jq '.branch_policies[] | [.name, .type]'
+```
+
+Do not move the signing secrets to repository scope as a shortcut: keeping them
+in the master-only environment prevents untrusted branches from reading
+distribution credentials.
 
 ## Safety
 
