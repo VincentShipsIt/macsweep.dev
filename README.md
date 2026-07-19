@@ -192,7 +192,16 @@ a daily schedule (`.github/workflows/nightly.yml`).
 
 ### Release signing for app updates
 
-The protected GitHub `release` environment must contain both Sparkle values:
+The protected GitHub `release` environment must contain the Developer ID,
+notarization, and Sparkle credentials consumed by
+`.github/workflows/release.yml`:
+
+- Secrets: `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`,
+  `APPLE_API_PRIVATE_KEY_P8_BASE64`, and `SPARKLE_PRIVATE_ED_KEY`.
+- Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
+  `SPARKLE_PUBLIC_ED_KEY`.
+
+The Sparkle-specific values are:
 
 - Variable `SPARKLE_PUBLIC_ED_KEY`: the base64 Ed25519 public key embedded in
   release builds.
@@ -204,6 +213,55 @@ On every version tag, the release workflow verifies the embedded public key,
 signs the notarized app ZIP, generates `appcast.xml`, and publishes both files
 to the GitHub release. `scripts/release.sh bump X.Y.Z` advances both the visible
 version and Sparkle's bundle build version.
+
+### Nightly app channel
+
+`.github/workflows/nightly-app.yml` publishes a rolling, signed prerelease from
+`master`. It uses a separate `nightly` environment because the protected
+`release` environment requires approval and would block scheduled builds.
+
+The `nightly` environment must mirror these `release` values:
+
+- Secrets: `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`,
+  `APPLE_API_PRIVATE_KEY_P8_BASE64`, and `SPARKLE_PRIVATE_ED_KEY`.
+- Variables: `APPLE_TEAM_ID`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, and
+  `SPARKLE_PUBLIC_ED_KEY`.
+
+Copy the same four secret values from `release`; do not generate a second
+Developer ID certificate, App Store Connect key, or Sparkle key for this
+same-app prerelease channel.
+
+Nightly intentionally uses the same Sparkle keypair because it is a rolling
+prerelease of the same signed app and update trust root, not a separately
+installable channel. Its unattended path is constrained by the master-only
+environment, protected-branch CI, and GitHub prerelease publication. A future
+independent nightly channel must use a separate keypair, embedded public key,
+bundle identity, and appcast.
+
+Keep the environment free of required reviewers and restrict its deployment
+branch policy to `master`. Verify names and policy without printing secret
+values:
+
+```bash
+gh secret list --repo VincentShipsIt/macsweep.dev --env nightly
+gh variable list --repo VincentShipsIt/macsweep.dev --env nightly
+gh api repos/VincentShipsIt/macsweep.dev/environments/nightly \
+  --jq '{protection_rules, deployment_branch_policy}'
+gh api repos/VincentShipsIt/macsweep.dev/environments/nightly/deployment-branch-policies \
+  --jq '.branch_policies[] | [.name, .type]'
+```
+
+Run the final endpoint only when the preceding environment response reports
+`deployment_branch_policy.custom_branch_policies: true`; a `404` from that
+final command means the policy is not configured as required.
+
+These checks are operator-owned and must be repeated after environment-policy
+changes. Do not give the signing workflow an administration token so it can
+self-audit GitHub configuration.
+
+Do not move the signing secrets to repository scope as a shortcut: keeping them
+in the master-only environment prevents untrusted branches from reading
+distribution credentials.
 
 ## Safety
 
