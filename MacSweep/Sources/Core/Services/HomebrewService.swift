@@ -1,7 +1,15 @@
 import Foundation
 
+typealias HomebrewCommandRunner = @Sendable (
+    _ executable: String,
+    _ arguments: [String],
+    _ timeout: TimeInterval
+) async throws -> ProcessResult
+
 @MainActor
 class HomebrewService: ObservableObject {
+    static let commandTimeout: TimeInterval = 300
+
     @Published var packages: [BrewPackage] = []
     @Published var isLoading = false
     @Published var isUpgrading = false
@@ -12,6 +20,20 @@ class HomebrewService: ObservableObject {
     @Published var lastUpgradeSucceeded: Bool?
     @Published var error: String?
     @Published var isAnalyzingAI = false
+
+    private let commandRunner: HomebrewCommandRunner
+
+    init(
+        commandRunner: @escaping HomebrewCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) {
+        self.commandRunner = commandRunner
+    }
 
     // MARK: - Public API
 
@@ -25,7 +47,7 @@ class HomebrewService: ObservableObject {
             return
         }
 
-        let output = await Self.runBrew(brewPath(), ["outdated", "--json=v2"]).output
+        let output = await runBrew(brewPath(), ["outdated", "--json=v2"]).output
         guard let data = output.data(using: .utf8) else {
             error = "Failed to parse brew output"
             return
@@ -94,7 +116,7 @@ class HomebrewService: ObservableObject {
         for name in cleanNames {
             // Run brew directly with array args — a formula name is never spliced
             // into a shell string, so a malicious/unusual name can't inject.
-            let raw = await Self.runBrew(brewPath(), ["deps", name]).output
+            let raw = await runBrew(brewPath(), ["deps", name]).output
             let deps = raw.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -146,15 +168,15 @@ Only return the JSON array, no other text.
     /// prints, when present. Read-mostly: brew only deletes its own cached artifacts.
     func cleanup() async -> (success: Bool, reclaimedText: String?, log: String) {
         guard brewExists() else { return (false, nil, "brew_not_found") }
-        let (output, status) = await Self.runBrew(brewPath(), ["cleanup", "-s"])
+        let result = await runBrew(brewPath(), ["cleanup", "-s"])
         // Brew emits e.g. "==> This operation has freed approximately 1.2GB of disk space."
-        let reclaimed = output
+        let reclaimed = result.output
             .components(separatedBy: .newlines)
             .first { $0.lowercased().contains("freed approximately") }?
             .trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "==> ", with: "")
         // Success reflects brew's real exit status, not merely that brew exists.
-        return (status == 0, reclaimed, output)
+        return (result.didSucceed, reclaimed, Self.commandLog(result))
     }
 
     /// Top-level formulae — installed packages that are NOT a dependency of any other
@@ -162,7 +184,7 @@ Only return the JSON array, no other text.
     /// wanted; everything else is a pulled-in dependency.
     func leaves() async -> [String] {
         guard brewExists() else { return [] }
-        let output = await Self.runBrew(brewPath(), ["leaves"]).output
+        let output = await runBrew(brewPath(), ["leaves"]).output
         return output.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -178,10 +200,10 @@ Only return the JSON array, no other text.
     /// the headless layer can map the absence to the right exit code.
     func selfUpgrade() async -> (success: Bool, log: String) {
         guard brewExists() else { return (false, "brew_not_found") }
-        let (output, status) = await Self.runBrew(brewPath(), ["upgrade", "vincentshipsit/tap/macsweep"])
+        let result = await runBrew(brewPath(), ["upgrade", "vincentshipsit/tap/macsweep"])
         // Success reflects brew's real exit status — a failed upgrade must not
         // report applied:true to the headless/CLI layer.
-        return (status == 0, output)
+        return (result.didSucceed, Self.commandLog(result))
     }
 
     // MARK: - Private
@@ -293,36 +315,45 @@ Only return the JSON array, no other text.
         HomebrewPaths.brewPath ?? "/usr/local/bin/brew"
     }
 
-    /// Run the brew binary DIRECTLY (no `/bin/bash -c`), off the MainActor.
+}
+
+extension HomebrewService {
+    /// Run a non-streaming brew command through the shared argv-only runner.
     ///
-    /// Passing arguments as an array means a package/formula name is never spliced
-    /// into a shell string, eliminating the injection vector entirely. Running on a
-    /// background queue via a continuation keeps `waitUntilExit()` off the MainActor
-    /// so brew operations don't freeze the UI. stdout and stderr share one pipe
-    /// (equivalent to the previous `2>&1`); it's drained before the reap so a
-    /// chatty command can't fill the buffer and deadlock.
-    nonisolated private static func runBrew(
+    /// The live `runUpgrade(packageNames:)` path stays separate because it
+    /// incrementally appends output to the visible upgrade log. This method is
+    /// internal so tests can verify the command boundary without invoking brew.
+    func runBrew(
         _ brewPath: String,
-        _ arguments: [String]
-    ) async -> (output: String, status: Int32) {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: brewPath)
-                process.arguments = arguments
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
-                do {
-                    try process.run()
-                } catch {
-                    continuation.resume(returning: ("", 1))
-                    return
-                }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                continuation.resume(returning: (String(data: data, encoding: .utf8) ?? "", process.terminationStatus))
-            }
+        _ arguments: [String],
+        timeout: TimeInterval = HomebrewService.commandTimeout
+    ) async -> ProcessResult {
+        do {
+            return try await commandRunner(brewPath, arguments, timeout)
+        } catch ProcessRunnerError.timedOut(_, let partialResult) {
+            let timeoutMessage = "Homebrew command timed out after \(timeout) seconds"
+            let diagnostic = partialResult.error.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProcessResult(
+                status: 124,
+                output: partialResult.output,
+                error: diagnostic.isEmpty ? timeoutMessage : "\(diagnostic)\n\(timeoutMessage)",
+                outputWasValidUTF8: partialResult.outputWasValidUTF8
+            )
+        } catch {
+            return ProcessResult(
+                status: 1,
+                output: "",
+                error: String(describing: error)
+            )
         }
+    }
+
+    /// Parsing callers consume stdout only; user-facing command logs retain
+    /// Homebrew's progress and diagnostics from stderr without corrupting JSON.
+    static func commandLog(_ result: ProcessResult) -> String {
+        guard !result.output.isEmpty else { return result.error }
+        guard !result.error.isEmpty else { return result.output }
+        let separator = result.output.hasSuffix("\n") || result.error.hasPrefix("\n") ? "" : "\n"
+        return result.output + separator + result.error
     }
 }
