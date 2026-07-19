@@ -1,5 +1,11 @@
 import Foundation
 
+typealias LoginItemCommandRunner = @Sendable (
+    _ executable: String,
+    _ arguments: [String],
+    _ timeout: TimeInterval
+) async throws -> ProcessResult
+
 /// Read-only enumeration of macOS login items, launch agents, and launch
 /// daemons for the headless/CLI surface.
 ///
@@ -8,14 +14,30 @@ import Foundation
 /// CLIKit). It intentionally omits all mutation (enable/disable/delete) and
 /// AI analysis — the CLI surfaces enumeration only.
 actor LoginItemEnumerator {
+    private let isRoot: @Sendable () -> Bool
+    private let commandRunner: LoginItemCommandRunner
     private let userLaunchAgents = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/LaunchAgents")
     private let systemLaunchAgents = URL(fileURLWithPath: "/Library/LaunchAgents")
     private let systemLaunchDaemons = URL(fileURLWithPath: "/Library/LaunchDaemons")
 
+    init(
+        isRoot: @escaping @Sendable () -> Bool = { geteuid() == 0 },
+        commandRunner: @escaping LoginItemCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) {
+        self.isRoot = isRoot
+        self.commandRunner = commandRunner
+    }
+
     func enumerate() async -> [HeadlessLoginItem] {
         var collected: [HeadlessLoginItem] = []
-        collected += appServiceItems()
+        collected += await appServiceItems()
         collected += launchItems(at: userLaunchAgents, kind: .launchAgent)
         collected += launchItems(at: systemLaunchAgents, kind: .launchAgent)
         collected += launchItems(at: systemLaunchDaemons, kind: .launchDaemon)
@@ -24,35 +46,28 @@ actor LoginItemEnumerator {
 
     // MARK: - SMAppService (sfltool dumpbtm)
 
-    private func appServiceItems() -> [HeadlessLoginItem] {
+    /// Kept internal so focused tests can exercise the subprocess boundary
+    /// without enumerating the host's real launch-agent directories.
+    func appServiceItems() async -> [HeadlessLoginItem] {
         // `sfltool dumpbtm` requires root on macOS 13+. Run without privileges
         // it produces no output and never exits — it would hang the caller.
         // Skip it unless we're root; launch agents/daemons below still
         // enumerate fine for unprivileged callers.
-        guard geteuid() == 0 else { return [] }
+        guard isRoot() else { return [] }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sfltool")
-        process.arguments = ["dumpbtm"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
+        // ProcessRunner concurrently drains stdout/stderr and bounds the entire
+        // lifecycle, including descendants retaining a pipe descriptor. Keep
+        // this read best-effort: a failed or timed-out root-only probe must not
+        // prevent launch-agent/daemon enumeration.
+        guard let result = try? await commandRunner(
+            "/usr/bin/sfltool",
+            ["dumpbtm"],
+            10
+        ), result.didSucceed else {
             return []
         }
 
-        // Read the pipe to EOF BEFORE waiting for exit. A child that fills the
-        // pipe buffer blocks on write until it is drained; waiting first would
-        // deadlock on large dumps.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        return parseSfltoolOutput(output)
+        return parseSfltoolOutput(result.output)
     }
 
     /// `internal` (not `private`) so the pure `sfltool dumpbtm` text parser can be

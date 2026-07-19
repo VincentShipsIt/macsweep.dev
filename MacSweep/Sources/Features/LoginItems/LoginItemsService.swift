@@ -55,31 +55,19 @@ final class LoginItemsService: ObservableObject {
         // fine for unprivileged callers. (Matches LoginItemEnumerator.)
         guard geteuid() == 0 else { return [] }
 
-        return await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/sfltool")
-            process.arguments = ["dumpbtm"]
+        // ProcessRunner launches off the cooperative pool, drains stdout/stderr
+        // concurrently, and enforces a watchdog. Keep this optional source
+        // best-effort so launch-agent/daemon enumeration still succeeds when
+        // the root-only tool fails, exits nonzero, or times out.
+        guard let result = try? await ProcessRunner.run(
+            executable: "/usr/bin/sfltool",
+            arguments: ["dumpbtm"],
+            timeout: 10
+        ), result.didSucceed else {
+            return []
+        }
 
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = Pipe()
-
-            do {
-                try process.run()
-            } catch {
-                return []
-            }
-
-            // Drain BEFORE waiting: sfltool dumpbtm can exceed the 64 KB pipe
-            // buffer, which would deadlock a wait-then-read ordering.
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return [] }
-
-            return await MainActor.run {
-                self.parseSfltoolOutput(output)
-            }
-        }.value
+        return parseSfltoolOutput(result.output)
     }
 
     private func parseSfltoolOutput(_ output: String) -> [LoginItem] {
