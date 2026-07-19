@@ -389,58 +389,56 @@ struct DockerInfo {
         totalSize.formattedFileSize
     }
 
-    static func current() async -> DockerInfo {
+    static func current(
+        dockerPath: @Sendable () -> String? = { DockerCLI.path },
+        commandRunner: DockerCommandRunner = { executable, arguments in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: 30
+            )
+        }
+    ) async -> DockerInfo {
         var info = DockerInfo()
 
         // Check if Docker is installed
-        guard let dockerPath = DockerCLI.path else { return info }
+        guard let executable = dockerPath() else { return info }
         info.isInstalled = true
 
-        // Check if Docker is running
-        let pingProcess = Process()
-        pingProcess.executableURL = URL(fileURLWithPath: dockerPath)
-        pingProcess.arguments = ["info"]
-        pingProcess.standardOutput = FileHandle.nullDevice
-        pingProcess.standardError = FileHandle.nullDevice
-
-        do {
-            try pingProcess.run()
-            pingProcess.waitUntilExit()
-            info.isRunning = pingProcess.terminationStatus == 0
-        } catch {
-            info.isRunning = false
-        }
-
-        guard info.isRunning else { return info }
+        // The daemon probe is best-effort. ProcessRunner bounds a wedged Docker
+        // daemon and drains both pipes; any launch, timeout, or exit failure
+        // preserves the existing "installed but not running" result.
+        guard let ping = try? await commandRunner(executable, ["info"]),
+              ping.didSucceed else { return info }
+        info.isRunning = true
 
         // Get counts
-        info.containers = await getDockerCount("container", "ls", "-aq")
-        info.images = await getDockerCount("image", "ls", "-q")
-        info.volumes = await getDockerCount("volume", "ls", "-q")
+        info.containers = await getDockerCount(
+            ["container", "ls", "-aq"],
+            executable: executable,
+            commandRunner: commandRunner
+        )
+        info.images = await getDockerCount(
+            ["image", "ls", "-q"],
+            executable: executable,
+            commandRunner: commandRunner
+        )
+        info.volumes = await getDockerCount(
+            ["volume", "ls", "-q"],
+            executable: executable,
+            commandRunner: commandRunner
+        )
 
         return info
     }
 
-    private static func getDockerCount(_ args: String...) async -> Int {
-        guard let dockerPath = DockerCLI.path else { return 0 }
-
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: dockerPath)
-        process.arguments = Array(args)
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
-            return output.split(separator: "\n").count
-        } catch {
-            return 0
-        }
+    private static func getDockerCount(
+        _ arguments: [String],
+        executable: String,
+        commandRunner: DockerCommandRunner
+    ) async -> Int {
+        guard let result = try? await commandRunner(executable, arguments),
+              result.didSucceed else { return 0 }
+        return result.output.split(separator: "\n").count
     }
 }
