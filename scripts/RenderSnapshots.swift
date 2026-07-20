@@ -197,7 +197,7 @@ struct SnapshotRenderer {
                 CloudCleanupView(snapshotItems: [], snapshotHasScanned: true),
                 appState: AppState()
             )),
-            privacyResultsVariant(),
+            privacyResultsVariant(size: size),
             ("trash-bins-results", wrap(
                 TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
                 appState: AppState()
@@ -458,15 +458,17 @@ struct SnapshotRenderer {
     }
 
     @MainActor
-    private static func privacyResultsVariant() -> (String, AnyView) {
+    private static func privacyResultsVariant(size: CGSize) -> (String, AnyView) {
         (
             "privacy-results",
-            wrap(
+            AnyView(
                 PrivacyView(
                     snapshotItems: samplePrivacyItems(),
                     snapshotExpandedCategories: ["Saved State - Example"]
-                ),
-                appState: AppState(initialFullDiskAccess: true)
+                )
+                .environmentObject(AppState(initialFullDiskAccess: true))
+                .environment(\.colorScheme, .dark)
+                .frame(width: size.width, height: size.height)
             )
         )
     }
