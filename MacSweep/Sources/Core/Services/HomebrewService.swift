@@ -10,7 +10,7 @@ typealias HomebrewStreamingCommandRunner = @Sendable (
     _ executable: String,
     _ arguments: [String],
     _ timeout: TimeInterval,
-    _ onOutput: ProcessOutputHandler
+    _ onOutput: @escaping ProcessOutputHandler
 ) async throws -> ProcessResult
 
 @MainActor
