@@ -1,6 +1,16 @@
 import Foundation
 import Darwin
 
+enum ProcessOutputStream: Sendable {
+    case standardOutput
+    case standardError
+}
+
+typealias ProcessOutputHandler = @Sendable (
+    _ stream: ProcessOutputStream,
+    _ chunk: Data
+) -> Void
+
 /// Result of a completed subprocess, with stdout and stderr captured separately.
 ///
 /// Keeping the two streams apart lets callers parse stdout without stderr noise —
@@ -78,6 +88,14 @@ enum ProcessRunner {
     private static let drainPollMilliseconds: Int32 = 20
     private static let maximumTimeout: TimeInterval = 31_536_000
 
+    private struct RunOptions {
+        let currentDirectory: URL?
+        let timeout: TimeInterval
+        let timeoutCancellationFile: String?
+        let cooperativeTimeoutGrace: TimeInterval
+        let onOutput: ProcessOutputHandler?
+    }
+
     /// Runs `executable` with `arguments` and returns its captured output.
     ///
     /// Existing call sites and successful/nonzero result behavior remain source
@@ -92,7 +110,6 @@ enum ProcessRunner {
     /// preempt the child—it completes at the configured process timeout. stdin is
     /// inherited for noninteractive commands, but terminal reads are unsupported
     /// because the child runs in a background process group and may receive SIGTTIN.
-    ///
     /// - Throws: `ProcessRunnerError.launchFailed` if the process can't start, or
     ///   `.timedOut` if the full process/output lifecycle outlives `timeout`. A
     ///   completed process that exits non-zero is returned as a `ProcessResult`
@@ -105,9 +122,55 @@ enum ProcessRunner {
         timeoutCancellationFile: String? = nil,
         cooperativeTimeoutGrace: TimeInterval = 0
     ) async throws -> ProcessResult {
-        guard timeout.isFinite, timeout >= 0, timeout <= maximumTimeout,
-              cooperativeTimeoutGrace.isFinite, cooperativeTimeoutGrace >= 0,
-              cooperativeTimeoutGrace <= maximumTimeout
+        try await execute(
+            executable: executable,
+            arguments: arguments,
+            options: RunOptions(
+                currentDirectory: currentDirectory,
+                timeout: timeout,
+                timeoutCancellationFile: timeoutCancellationFile,
+                cooperativeTimeoutGrace: cooperativeTimeoutGrace,
+                onOutput: nil
+            )
+        )
+    }
+
+    /// Runs a bounded process while reporting incremental stdout and stderr.
+    ///
+    /// `onOutput` is called from the two drain queues and may therefore be invoked
+    /// concurrently. Handlers must return promptly; the full captured result remains
+    /// authoritative even when callers also consume incremental chunks.
+    static func runStreaming(
+        executable: String,
+        arguments: [String] = [],
+        currentDirectory: URL? = nil,
+        timeout: TimeInterval = 10,
+        onOutput: @escaping ProcessOutputHandler
+    ) async throws -> ProcessResult {
+        try await execute(
+            executable: executable,
+            arguments: arguments,
+            options: RunOptions(
+                currentDirectory: currentDirectory,
+                timeout: timeout,
+                timeoutCancellationFile: nil,
+                cooperativeTimeoutGrace: 0,
+                onOutput: onOutput
+            )
+        )
+    }
+
+    private static func execute(
+        executable: String,
+        arguments: [String],
+        options: RunOptions
+    ) async throws -> ProcessResult {
+        guard options.timeout.isFinite,
+              options.timeout >= 0,
+              options.timeout <= maximumTimeout,
+              options.cooperativeTimeoutGrace.isFinite,
+              options.cooperativeTimeoutGrace >= 0,
+              options.cooperativeTimeoutGrace <= maximumTimeout
         else {
             throw ProcessRunnerError.launchFailed(
                 "Timeout values must be finite and between 0 and \(maximumTimeout) seconds"
@@ -120,10 +183,7 @@ enum ProcessRunner {
                     continuation.resume(returning: try runSynchronously(
                         executable: executable,
                         arguments: arguments,
-                        currentDirectory: currentDirectory,
-                        timeout: timeout,
-                        timeoutCancellationFile: timeoutCancellationFile,
-                        cooperativeTimeoutGrace: cooperativeTimeoutGrace
+                        options: options
                     ))
                 } catch {
                     continuation.resume(throwing: error)
@@ -135,10 +195,7 @@ enum ProcessRunner {
     private static func runSynchronously(
         executable: String,
         arguments: [String],
-        currentDirectory: URL?,
-        timeout: TimeInterval,
-        timeoutCancellationFile: String?,
-        cooperativeTimeoutGrace: TimeInterval
+        options: RunOptions
     ) throws -> ProcessResult {
         var stdoutPipe = try makePipe()
         var stderrPipe: PipeDescriptors
@@ -193,7 +250,7 @@ enum ProcessRunner {
                 operation: "close child pipe descriptor"
             )
         }
-        if let currentDirectory {
+        if let currentDirectory = options.currentDirectory {
             let directoryStatus = currentDirectory.path.withCString {
                 posix_spawn_file_actions_addchdir(&fileActions, $0)
             }
@@ -253,21 +310,29 @@ enum ProcessRunner {
         let stdoutRead = stdoutPipe.read
         stdoutPipe.read = -1
         startDrain(
-            descriptor: stdoutRead,
-            buffer: stdoutBuffer,
+            target: DrainTarget(
+                descriptor: stdoutRead,
+                stream: .standardOutput,
+                buffer: stdoutBuffer
+            ),
             cancellation: drainCancellation,
-            group: drains
+            group: drains,
+            onOutput: options.onOutput
         )
         let stderrRead = stderrPipe.read
         stderrPipe.read = -1
         startDrain(
-            descriptor: stderrRead,
-            buffer: stderrBuffer,
+            target: DrainTarget(
+                descriptor: stderrRead,
+                stream: .standardError,
+                buffer: stderrBuffer
+            ),
             cancellation: drainCancellation,
-            group: drains
+            group: drains,
+            onOutput: options.onOutput
         )
 
-        let lifecycleDeadline = DispatchTime.now() + timeout
+        let lifecycleDeadline = DispatchTime.now() + options.timeout
         if drains.wait(timeout: lifecycleDeadline) == .success,
            let rawStatus = waitForChild(childPID, until: lifecycleDeadline) {
             let stdout = stdoutBuffer.decodedUTF8
@@ -283,7 +348,7 @@ enum ProcessRunner {
         // Timeout covers both the direct process and pipe EOF. The leader is not
         // reaped before this point, keeping its PID/PGID reserved while inherited
         // descriptors may still be open in descendants.
-        if let timeoutCancellationFile {
+        if let timeoutCancellationFile = options.timeoutCancellationFile {
             // PrivilegedRunner's pre-created keepalive lives on the local temp
             // volume. Removing it is the only cooperative callback supported here;
             // arbitrary caller code could block and weaken the lifecycle bound.
@@ -293,8 +358,8 @@ enum ProcessRunner {
         // PrivilegedRunner uses this bounded window for its root-side supervisor
         // to observe cancellation, terminate the elevated command group, and flush
         // securely captured partial output before the unprivileged wrapper dies.
-        if cooperativeTimeoutGrace > 0 {
-            let cooperativeDeadline = DispatchTime.now() + cooperativeTimeoutGrace
+        if options.cooperativeTimeoutGrace > 0 {
+            let cooperativeDeadline = DispatchTime.now() + options.cooperativeTimeoutGrace
             if drains.wait(timeout: cooperativeDeadline) == .success,
                let rawStatus = waitForChild(childPID, until: cooperativeDeadline) {
                 let stdout = stdoutBuffer.decodedUTF8
@@ -305,7 +370,7 @@ enum ProcessRunner {
                     error: stderr.string,
                     outputWasValidUTF8: stdout.wasValid
                 )
-                throw ProcessRunnerError.timedOut(after: timeout, partialResult: partial)
+                throw ProcessRunnerError.timedOut(after: options.timeout, partialResult: partial)
             }
         }
 
@@ -343,12 +408,18 @@ enum ProcessRunner {
             error: stderr.string,
             outputWasValidUTF8: stdout.wasValid
         )
-        throw ProcessRunnerError.timedOut(after: timeout, partialResult: partial)
+        throw ProcessRunnerError.timedOut(after: options.timeout, partialResult: partial)
     }
 
     private struct PipeDescriptors {
         var read: Int32
         var write: Int32
+    }
+
+    private struct DrainTarget {
+        let descriptor: Int32
+        let stream: ProcessOutputStream
+        let buffer: LockedBuffer
     }
 
     private final class LockedBuffer: @unchecked Sendable {
@@ -465,15 +536,15 @@ enum ProcessRunner {
     }
 
     private static func startDrain(
-        descriptor: Int32,
-        buffer: LockedBuffer,
+        target: DrainTarget,
         cancellation: CancellationFlag,
-        group: DispatchGroup
+        group: DispatchGroup,
+        onOutput: ProcessOutputHandler?
     ) {
         group.enter()
         DispatchQueue.global(qos: .utility).async {
             defer {
-                closeDescriptor(descriptor)
+                closeDescriptor(target.descriptor)
                 group.leave()
             }
 
@@ -484,10 +555,12 @@ enum ProcessRunner {
                 // this check the post-timeout worker would append forever.
                 if cancellation.isCancelled { return }
                 let count = bytes.withUnsafeMutableBytes { rawBuffer in
-                    Darwin.read(descriptor, rawBuffer.baseAddress!, rawBuffer.count)
+                    Darwin.read(target.descriptor, rawBuffer.baseAddress!, rawBuffer.count)
                 }
                 if count > 0 {
-                    buffer.append(Data(bytes.prefix(Int(count))))
+                    let chunk = Data(bytes.prefix(Int(count)))
+                    target.buffer.append(chunk)
+                    onOutput?(target.stream, chunk)
                     continue
                 }
                 if count == 0 { return }
@@ -495,7 +568,7 @@ enum ProcessRunner {
                 if errno != EAGAIN && errno != EWOULDBLOCK { return }
 
                 var pollDescriptor = pollfd(
-                    fd: descriptor,
+                    fd: target.descriptor,
                     events: Int16(POLLIN | POLLHUP | POLLERR),
                     revents: 0
                 )
