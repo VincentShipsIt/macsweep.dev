@@ -20,6 +20,9 @@ jobs:
       - name: Toolchain
         run: swift --version
 
+      - name: Validate release preflight
+        run: zsh ./scripts/release-test.sh
+
       # Build the release CLI product — this is the exact artifact the Homebrew
       # formula builds, so CI fails the same way a `brew install` would.
       - name: Build release CLI (SPM)
