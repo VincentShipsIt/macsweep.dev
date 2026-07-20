@@ -7,6 +7,7 @@ struct PrivacyView: View {
     @State private var hasScanned = false
     @State private var privacyItems: [CleanupItem] = []
     @State private var selectedCategories: Set<String> = []
+    @State private var expandedCategories: Set<String> = []
     @State private var showingConfirmation = false
 
     // Quick actions state
@@ -15,29 +16,73 @@ struct PrivacyView: View {
     @State private var clearingRecents = false
     @State private var errorMessage: String?
 
+    /// Deterministic result data for the headless snapshot harness. Production
+    /// navigation uses the no-argument initializer and live scan state.
+    private struct SnapshotState {
+        let items: [CleanupItem]
+        let hasScanned: Bool
+        let errorMessage: String?
+        let expandedCategories: Set<String>
+    }
+
+    private let snapshot: SnapshotState?
+
+    init() {
+        snapshot = nil
+    }
+
+    init(
+        snapshotItems: [CleanupItem],
+        snapshotHasScanned: Bool = true,
+        snapshotError: String? = nil,
+        snapshotExpandedCategories: Set<String>? = nil
+    ) {
+        snapshot = SnapshotState(
+            items: snapshotItems,
+            hasScanned: snapshotHasScanned,
+            errorMessage: snapshotError,
+            expandedCategories: snapshotExpandedCategories ?? Set(snapshotItems.map(\.moduleName))
+        )
+    }
+
     var body: some View {
         FeaturePageShell(
             title: "Privacy",
             subtitle: "Remove traces of your recent activity.",
-            trailing: (hasScanned && !isScanning) ? AnyView(
-                RescanButton(isScanning: isScanning, usesNativeToolbarStyle: true) { Task { await scanPrivacy() } }
+            trailing: (displayHasScanned && !displayIsScanning) ? AnyView(
+                RescanButton(
+                    isScanning: displayIsScanning,
+                    usesNativeToolbarStyle: true
+                ) {
+                    Task { await scanPrivacy() }
+                }
             ) : nil,
-            hidesChrome: isScanning || !hasScanned,
-            scrolls: isScanning || !hasScanned
+            hidesChrome: displayIsScanning || !displayHasScanned,
+            scrolls: displayIsScanning || !displayHasScanned
         ) {
             Group {
-                if isScanning || !hasScanned {
+                if displayIsScanning || !displayHasScanned {
                     ScanLandingView(
                         icon: "hand.raised",
                         title: "Ready to Scan",
                         description: "Find browser, app, and system traces of your recent activity that you can clear.",
                         ctaTitle: "Scan Privacy Traces",
                         benefits: [
-                            ScanBenefit("eye.slash", "Erases your digital footprint", "Clears recent-document lists, saved app state, and download history so your activity doesn't linger."),
-                            ScanBenefit("checkmark.shield", "You stay in control", "Every trace is grouped for review, and nothing is cleared until you select it and confirm."),
+                            ScanBenefit(
+                                "eye.slash",
+                                "Erases your digital footprint",
+                                "Clears recent-document lists, saved app state, "
+                                    + "and download history so your activity doesn't linger."
+                            ),
+                            ScanBenefit(
+                                "checkmark.shield",
+                                "You stay in control",
+                                "Every trace is grouped for review, and nothing is cleared "
+                                    + "until you select it and confirm."
+                            )
                         ],
                         illustration: "hand.raised.fingers.spread",
-                        isScanning: isScanning,
+                        isScanning: displayIsScanning,
                         scanningMessage: "Scanning privacy traces",
                         permissionWarning: appState.hasFullDiskAccess ? nil : .safari,
                         action: { Task { await scanPrivacy() } }
@@ -51,13 +96,13 @@ struct PrivacyView: View {
                                 FullDiskAccessWarningBanner(scope: .safari)
                             }
 
-                            if let errorMessage {
-                                MacSweepErrorBanner(message: errorMessage) {
+                            if let displayErrorMessage {
+                                MacSweepErrorBanner(message: displayErrorMessage) {
                                     self.errorMessage = nil
                                 }
                             }
 
-                            if privacyItems.isEmpty {
+                            if displayItems.isEmpty {
                                 noPrivacyItemsView
                             } else {
                                 privacyItemsSection
@@ -73,7 +118,7 @@ struct PrivacyView: View {
                 }
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
-            .animated(.scanCrossfade, value: isScanning || !hasScanned)
+            .animated(.scanCrossfade, value: displayIsScanning || !displayHasScanned)
         }
     }
 
@@ -129,24 +174,32 @@ struct PrivacyView: View {
 
                 Spacer()
 
-                Text("\(privacyItems.count) items • \(totalSize)")
+                Text("\(displayItems.count) items • \(totalSize)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             // Group by category
-            let grouped = Dictionary(grouping: privacyItems, by: { $0.moduleName })
+            let grouped = Dictionary(grouping: displayItems, by: { $0.moduleName })
 
             ForEach(Array(grouped.keys.sorted()), id: \.self) { category in
                 PrivacyCategoryCard(
                     category: category,
                     items: grouped[category] ?? [],
                     isSelected: selectedCategories.contains(category),
-                    onToggle: {
+                    isExpanded: displayExpandedCategories.contains(category),
+                    onSelectionToggle: {
                         if selectedCategories.contains(category) {
                             selectedCategories.remove(category)
                         } else {
                             selectedCategories.insert(category)
+                        }
+                    },
+                    onExpansionToggle: {
+                        if expandedCategories.contains(category) {
+                            expandedCategories.remove(category)
+                        } else {
+                            expandedCategories.insert(category)
                         }
                     }
                 )
@@ -171,8 +224,8 @@ struct PrivacyView: View {
         .cleanupReview(
             isPresented: $showingConfirmation,
             items: selectedPrivacyItems,
-            disposition: .permanent,
-            note: "Only the selected privacy categories are cleared. "
+            disposition: .trash,
+            note: "Only the selected privacy categories are moved to Trash. "
                 + "Browsing data may be recreated by the relevant apps.",
             onConfirm: { await cleanSelected() }
         )
@@ -187,8 +240,11 @@ struct PrivacyView: View {
         )
     }
 
-    // MARK: - Actions
+}
 
+// MARK: - Actions
+
+private extension PrivacyView {
     private func scanPrivacy() async {
         guard !isScanning else { return }
         isScanning = true
@@ -277,129 +333,42 @@ struct PrivacyView: View {
         if let actionError { errorMessage = actionError }
     }
 
-    // MARK: - Computed
+}
 
+// MARK: - Computed
+
+private extension PrivacyView {
     private var totalSize: String {
-        privacyItems.formattedTotalSize()
+        displayItems.formattedTotalSize()
     }
 
     private var selectedSize: String {
-        privacyItems
+        displayItems
             .filter { selectedCategories.contains($0.moduleName) }
             .formattedTotalSize()
     }
 
     private var selectedPrivacyItems: [CleanupItem] {
-        privacyItems.filter { selectedCategories.contains($0.moduleName) }
+        displayItems.filter { selectedCategories.contains($0.moduleName) }
+    }
+
+    private var displayItems: [CleanupItem] {
+        snapshot?.items ?? privacyItems
+    }
+
+    private var displayIsScanning: Bool {
+        snapshot == nil && isScanning
+    }
+
+    private var displayHasScanned: Bool {
+        snapshot?.hasScanned ?? hasScanned
+    }
+
+    private var displayErrorMessage: String? {
+        snapshot?.errorMessage ?? errorMessage
+    }
+
+    private var displayExpandedCategories: Set<String> {
+        snapshot?.expandedCategories ?? expandedCategories
     }
 }
-
-// MARK: - Quick Action Card
-
-struct QuickActionCard: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let isLoading: Bool
-    let action: () async -> Void
-
-    var body: some View {
-        Button {
-            Task {
-                await action()
-            }
-        } label: {
-            VStack(spacing: 12) {
-                if isLoading {
-                    ProgressView()
-                        .frame(width: 32, height: 32)
-                } else {
-                    Image(systemName: icon)
-                        .font(.title)
-                        .foregroundStyle(color)
-                }
-
-                Text(title)
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-            .macSweepCard(radius: 12)
-        }
-        .buttonStyle(.plain)
-        .disabled(isLoading)
-    }
-}
-
-// MARK: - Privacy Category Card
-
-struct PrivacyCategoryCard: View {
-    let category: String
-    let items: [CleanupItem]
-    let isSelected: Bool
-    let onToggle: () -> Void
-
-    private var totalSize: Int64 {
-        items.reduce(0) { $0 + $1.size }
-    }
-
-    private var icon: String {
-        if category.contains("Recent Documents") { return "doc.text" }
-        if category.contains("Recent Applications") { return "app.badge" }
-        if category.contains("Saved State") { return "square.stack.3d.up" }
-        if category.contains("Download") || category.contains("Quarantine") { return "arrow.down.circle" }
-        if category.contains("Server") { return "server.rack" }
-        if category.contains("Host") { return "network" }
-        return "hand.raised"
-    }
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 16) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? MacSweepTheme.selection : .secondary)
-                    .font(.title2)
-
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(MacSweepTheme.accentPurple)
-                    .frame(width: 32)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(category)
-                        .font(.headline)
-
-                    Text("\(items.count) items")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(totalSize.formattedFileSize)
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius)
-                    .fill(isSelected ? MacSweepTheme.selectionFill : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: MacSweepTheme.mediumRadius)
-                    .stroke(isSelected ? MacSweepTheme.selection : MacSweepTheme.cardStroke, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-#if !SWIFT_PACKAGE
-#Preview {
-    PrivacyView()
-        .environmentObject(AppState())
-        .frame(width: 600, height: 700)
-}
-
-#endif
