@@ -1040,12 +1040,12 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
-                Link("MacSweep website", destination: URL(string: "https://macsweep.dev")!)
+                Link("MacSweep website", destination: MacSweepLinks.website)
 
                 Divider()
                     .frame(height: 12)
 
-                Link("View on GitHub", destination: URL(string: "https://github.com/VincentShipsIt/macsweep")!)
+                Link("View on GitHub", destination: MacSweepLinks.repository)
             }
                 .font(.caption)
         }

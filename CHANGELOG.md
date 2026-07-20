@@ -166,10 +166,10 @@ Initial public release — a CLI-first native macOS system cleaner.
 - **Homebrew distribution** — build-from-source formula, no Apple Developer account
   or code signing required.
 
-[Unreleased]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.8...HEAD
-[1.0.8]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.7...v1.0.8
-[1.0.6]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.5...v1.0.6
-[1.0.5]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.4...v1.0.5
-[1.0.2]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/VincentShipsIt/macsweep/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/VincentShipsIt/macsweep/releases/tag/v1.0.0
+[Unreleased]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.7...v1.0.8
+[1.0.6]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.5...v1.0.6
+[1.0.5]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.4...v1.0.5
+[1.0.2]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/VincentShipsIt/macsweep.dev/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/VincentShipsIt/macsweep.dev/releases/tag/v1.0.0

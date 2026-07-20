@@ -65,7 +65,7 @@ Choose the artifact that matches how you want to use MacSweep:
 | Install | Includes | Use when |
 | --- | --- | --- |
 | Homebrew cask | Signed and notarized `MacSweep.app` plus the `macsweep` CLI formula | You want the recommended desktop install with automatic Homebrew upgrades |
-| [Latest `MacSweep.dmg`](https://github.com/VincentShipsIt/macsweep/releases/latest/download/MacSweep.dmg) | Signed and notarized native app | You want the GUI without installing the CLI |
+| [Latest `MacSweep.dmg`](https://github.com/VincentShipsIt/macsweep.dev/releases/latest/download/MacSweep.dmg) | Signed and notarized native app | You want the GUI without installing the CLI |
 | Homebrew formula | Headless `macsweep` CLI only | You use MacSweep from a terminal or automation |
 | Source checkout | Local CLI build; Xcode project for the app | You are developing or auditing MacSweep |
 
@@ -166,8 +166,8 @@ prompt you to install them.
 ### Build from Source
 
 ```bash
-git clone https://github.com/VincentShipsIt/macsweep.git
-cd macsweep/MacSweep
+git clone https://github.com/VincentShipsIt/macsweep.dev.git
+cd macsweep.dev/MacSweep
 swift build -c release --product macsweep
 ```
 
