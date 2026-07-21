@@ -111,6 +111,11 @@ enum Feature: String, CaseIterable, Identifiable {
     }
 }
 
+/// Shared expansion targets for the Dashboard and Menu Bar detail surfaces.
+enum WidgetType: String, CaseIterable {
+    case storage, memory, battery, cpu, network, devices, system
+}
+
 enum DeveloperModePreferences {
     static let enabledKey = "developerModeEnabled"
 }

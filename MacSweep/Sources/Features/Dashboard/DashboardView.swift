@@ -1,11 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Widget types for popover expansion
-enum WidgetType: String, CaseIterable {
-    case storage, memory, battery, cpu, network, devices, system
-}
-
 /// Main dashboard view in the native, list-driven house style used by Inbox.
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
