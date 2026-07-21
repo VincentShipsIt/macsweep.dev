@@ -72,16 +72,3 @@ extension AnyTransition {
         .opacity.combined(with: .scale(scale: 0.98))
     }
 }
-
-/// Which stage of the scan loop a feature page is showing. Feature pages with
-/// more than a plain landing⇄results swap (a distinct "nothing found" state, or
-/// a separate scanning arm) compute this and drive `.animated(.scanCrossfade,
-/// value:)` with it, so *every* arm change crossfades — a bare `items.isEmpty`
-/// boolean would miss e.g. landing→empty when a scan finds nothing. Simple
-/// two-state pages can drive the crossfade with their own boolean instead.
-enum ScanPhase: Equatable {
-    case landing
-    case scanning
-    case empty
-    case results
-}

@@ -1,4 +1,15 @@
-import SwiftUI
+import Combine
+import Foundation
+
+/// Which stage of the scan loop a feature page is showing. Feature pages with
+/// more than a plain landing/results swap compute this and drive their motion
+/// from it so every state change is represented explicitly.
+enum ScanPhase: Equatable {
+    case landing
+    case scanning
+    case empty
+    case results
+}
 
 /// Shared scan/selection/cleanup state machine for the feature views.
 ///
@@ -15,6 +26,8 @@ import SwiftUI
 /// can inject state through `StateObject(wrappedValue:)`.
 @MainActor
 final class ScanFeatureModel: ObservableObject {
+    typealias CleanupOperation = ([CleanupItem]) async throws -> CleanupResult
+
     /// True while a scan is running. Rescan buttons disable on this.
     @Published var isScanning = false
 
@@ -44,8 +57,15 @@ final class ScanFeatureModel: ObservableObject {
     /// newest one instead of overwriting `isScanning`/`items`.
     private var scanGeneration = 0
 
+    /// Optional test seam for cleanup result reconciliation. Production callers
+    /// keep using `ScanEngine`; focused tests can return deterministic results
+    /// without deleting or moving files on the host.
+    private let cleanupOperation: CleanupOperation?
+
     /// Production initializer — empty until the first scan.
-    init() {}
+    init() {
+        cleanupOperation = nil
+    }
 
     /// Seeds result state directly, for the snapshot-rendering harness and Xcode
     /// previews that render populated, successful-empty, or error layouts without
@@ -57,11 +77,18 @@ final class ScanFeatureModel: ObservableObject {
         hasScanned: Bool = false,
         errorMessage: String? = nil
     ) {
+        cleanupOperation = nil
         self.items = items
         self.selectedItems = selectedItems
         self.isScanning = isScanning
         self.hasScanned = hasScanned
         self.errorMessage = errorMessage
+    }
+
+    /// Test initializer for deterministic cleanup outcomes. Scan and selection
+    /// behavior remains identical to the production initializer.
+    init(cleanupOperation: @escaping CleanupOperation) {
+        self.cleanupOperation = cleanupOperation
     }
 
     /// The shared landing/loading/result state projected for feature-page
@@ -184,10 +211,18 @@ final class ScanFeatureModel: ObservableObject {
         _ itemsToClean: [CleanupItem],
         failureMessage: (Error) -> String
     ) async -> CleanupResult? {
-        let engine = ScanEngine()
         let result: CleanupResult
         do {
-            result = try await engine.clean(items: itemsToClean, dryRun: false, confirmedLargeDeletion: true)
+            if let cleanupOperation {
+                result = try await cleanupOperation(itemsToClean)
+            } else {
+                let engine = ScanEngine()
+                result = try await engine.clean(
+                    items: itemsToClean,
+                    dryRun: false,
+                    confirmedLargeDeletion: true
+                )
+            }
         } catch {
             errorMessage = failureMessage(error)
             return nil
