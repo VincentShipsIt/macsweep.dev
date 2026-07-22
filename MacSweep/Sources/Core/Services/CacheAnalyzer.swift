@@ -16,6 +16,7 @@ typealias CacheAnalyzerCommandRunner = @Sendable (
 /// the Keychain only when no local provider succeeds. No state is mutated and
 /// nothing is deleted — this is read-only reconnaissance.
 struct CacheAnalyzer {
+    private static let fastScanTimeout: TimeInterval = 300
     private static let providerTimeout: TimeInterval = 600
 
     private enum ProviderAttempt {
@@ -155,12 +156,24 @@ struct CacheAnalyzer {
         findArguments.append(contentsOf: [")", "-type", "d", "-prune", "-print0"])
 
         return await Task.detached(priority: .userInitiated) {
-            let result = Self.pipeline([
-                (executable: "/usr/bin/find", arguments: findArguments),
-                (executable: "/usr/bin/xargs", arguments: ["-0", "du", "-sk"]),
-                (executable: "/usr/bin/sort", arguments: ["-rn"])
-            ])
-            return Self.parseFastScanOutput(result)
+            let result = try? await ProcessRunner.runPipeline(
+                stages: [
+                    ProcessPipelineStage(
+                        executable: "/usr/bin/find",
+                        arguments: findArguments
+                    ),
+                    ProcessPipelineStage(
+                        executable: "/usr/bin/xargs",
+                        arguments: ["-0", "du", "-sk"]
+                    ),
+                    ProcessPipelineStage(
+                        executable: "/usr/bin/sort",
+                        arguments: ["-rn"]
+                    )
+                ],
+                timeout: Self.fastScanTimeout
+            )
+            return Self.parseFastScanOutput(result?.output ?? "")
         }.value
     }
 
@@ -228,12 +241,21 @@ struct CacheAnalyzer {
                 .map { $0 + "/" }   // trailing slash matches the `*/` the shell produced
             guard !directories.isEmpty else { return "" }
 
-            let output = Self.pipeline([
-                (executable: "/usr/bin/du", arguments: ["-sh"] + directories),
-                (executable: "/usr/bin/sort", arguments: ["-rh"])
-            ])
+            let output = try? await ProcessRunner.runPipeline(
+                stages: [
+                    ProcessPipelineStage(
+                        executable: "/usr/bin/du",
+                        arguments: ["-sh"] + directories
+                    ),
+                    ProcessPipelineStage(
+                        executable: "/usr/bin/sort",
+                        arguments: ["-rh"]
+                    )
+                ],
+                timeout: Self.fastScanTimeout
+            )
             // `head -50`
-            return output
+            return (output?.output ?? "")
                 .split(separator: "\n", omittingEmptySubsequences: false)
                 .prefix(50)
                 .joined(separator: "\n")
@@ -484,45 +506,6 @@ struct CacheAnalyzer {
             : result.error.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = "\(provider) scan \(context)"
         return message.isEmpty ? summary : "\(summary): \(message)"
-    }
-
-    /// Runs a sequence of argv stages connected by pipes
-    /// (`stage[i]` stdout → `stage[i+1]` stdin) and returns the tail stage's
-    /// stdout. Argv-only — no `/bin/bash -c` — so a path can never be
-    /// reinterpreted as shell syntax (spaces, quotes, `$(...)`). Each stage's
-    /// stderr is discarded, matching the `2>/dev/null` the shell pipeline used.
-    private static func pipeline(_ stages: [(executable: String, arguments: [String])]) -> String {
-        guard !stages.isEmpty else { return "" }
-
-        var processes: [Process] = []
-        var upstream: Pipe?
-        let finalOutput = Pipe()
-
-        for (index, stage) in stages.enumerated() {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: stage.executable)
-            process.arguments = stage.arguments
-            process.standardError = FileHandle.nullDevice
-            if let upstream { process.standardInput = upstream }
-            let output = index == stages.count - 1 ? finalOutput : Pipe()
-            process.standardOutput = output
-            upstream = output
-            processes.append(process)
-        }
-
-        do {
-            for process in processes { try process.run() }
-        } catch {
-            for process in processes where process.isRunning { process.terminate() }
-            return ""
-        }
-
-        // Drain the tail pipe before reaping. Intermediate pipes are drained by
-        // the next stage; the final stage can't wedge on a full 64 KB buffer
-        // while we read here.
-        let data = finalOutput.fileHandleForReading.readDataToEndOfFile()
-        for process in processes { process.waitUntilExit() }
-        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private static var aiSchemaString: String {
