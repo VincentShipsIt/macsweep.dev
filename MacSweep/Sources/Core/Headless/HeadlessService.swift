@@ -636,11 +636,10 @@ public actor MacSweepHeadlessService {
     // MARK: - Network: WiFi
 
     /// Saved (preferred) WiFi networks plus the currently-connected SSID.
-    /// Backed by `WiFiNetworkManager` (synchronous `networksetup` calls); safe to
-    /// run directly on the actor since it touches no @MainActor state.
+    /// Backed by `WiFiNetworkManager`'s bounded asynchronous `networksetup` call.
     public func wifiNetworks() async -> HeadlessWiFiReport {
         let current = WiFiNetworkManager.getCurrentSSID()
-        let saved = WiFiNetworkManager.savedNetworks()
+        let saved = await WiFiNetworkManager.savedNetworks()
         let networks = saved.map {
             HeadlessWiFiNetwork(ssid: $0.ssid, isConnected: $0.isCurrentlyConnected)
         }
@@ -655,7 +654,7 @@ public actor MacSweepHeadlessService {
     /// when no preferred network matches; maps an underlying removal failure to
     /// `networkOperationFailed`.
     public func removeWiFiNetwork(ssid: String) async throws -> HeadlessWiFiRemoveResult {
-        let saved = WiFiNetworkManager.savedNetworks()
+        let saved = await WiFiNetworkManager.savedNetworks()
         guard saved.contains(where: { $0.ssid == ssid }) else {
             throw HeadlessServiceError.wifiNetworkNotFound(ssid)
         }

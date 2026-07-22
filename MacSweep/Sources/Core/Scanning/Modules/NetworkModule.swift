@@ -60,6 +60,7 @@ typealias WiFiCommandRunner = @Sendable (
 ) async throws -> ProcessResult
 
 struct WiFiNetworkManager {
+    static let listingTimeout: TimeInterval = 30
     static let removalTimeout: TimeInterval = 30
 
     /// Get the WiFi interface to use
@@ -68,53 +69,47 @@ struct WiFiNetworkManager {
     }
 
     /// Get list of saved WiFi networks on the primary interface.
-    /// Delegates to `savedNetworks(interface:)` so there is a single
-    /// implementation of the drain-then-reap subprocess handling.
-    static func savedNetworks() -> [SavedWiFiNetwork] {
-        savedNetworks(interface: wifiInterface)
+    /// Delegates to `savedNetworks(interface:)` so the bounded subprocess and
+    /// parsing behavior have a single implementation.
+    static func savedNetworks() async -> [SavedWiFiNetwork] {
+        await savedNetworks(interface: wifiInterface)
     }
 
     /// Get list of saved WiFi networks for a specific interface
-    static func savedNetworks(interface: String) -> [SavedWiFiNetwork] {
-        var networks: [SavedWiFiNetwork] = []
-
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
-        process.arguments = ["-listpreferredwirelessnetworks", interface]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            // Drain the pipe before reaping: reading first guarantees the child
-            // can't wedge on a full pipe buffer while we block in waitUntilExit.
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return [] }
-
-            let lines = output.split(separator: "\n").dropFirst()
-            for line in lines {
-                let name = line.trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty {
-                    networks.append(SavedWiFiNetwork(
-                        ssid: name,
-                        isCurrentlyConnected: false
-                    ))
-                }
-            }
-        } catch {
-            // Ignore
+    static func savedNetworks(
+        interface: String,
+        currentSSIDProvider: @Sendable () -> String? = { getCurrentSSID() },
+        commandRunner: WiFiCommandRunner = { executable, arguments, timeout in
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+        }
+    ) async -> [SavedWiFiNetwork] {
+        guard let result = try? await commandRunner(
+            "/usr/sbin/networksetup",
+            ["-listpreferredwirelessnetworks", interface],
+            Self.listingTimeout
+        ), result.didSucceed, result.outputWasValidUTF8 else {
+            return []
         }
 
-        if let currentSSID = getCurrentSSID() {
-            for i in networks.indices {
-                if networks[i].ssid == currentSSID {
-                    networks[i].isCurrentlyConnected = true
-                    break
-                }
+        var networks = result.output
+            .split(separator: "\n")
+            .dropFirst()
+            .compactMap { line in
+                let name = line.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return nil }
+                return SavedWiFiNetwork(
+                    ssid: name,
+                    isCurrentlyConnected: false
+                )
             }
+
+        if let currentSSID = currentSSIDProvider(),
+           let currentIndex = networks.firstIndex(where: { $0.ssid == currentSSID }) {
+            networks[currentIndex].isCurrentlyConnected = true
         }
 
         return networks
@@ -194,7 +189,7 @@ struct WiFiNetworkManager {
     /// Remove all saved networks except current and protected
     static func removeAllExceptCurrent(protectedSSIDs: Set<String> = []) async throws {
         let current = getCurrentSSID()
-        let networks = savedNetworks()
+        let networks = await savedNetworks()
 
         for network in networks {
             if network.ssid != current && !protectedSSIDs.contains(network.ssid) {
@@ -488,7 +483,7 @@ struct NetworkCleanupSummary {
         var summary = NetworkCleanupSummary()
 
         // Count saved WiFi networks
-        summary.savedNetworks = WiFiNetworkManager.savedNetworks().count
+        summary.savedNetworks = await WiFiNetworkManager.savedNetworks().count
 
         // Count SSH known hosts
         summary.knownHosts = SSHKnownHostsManager.getKnownHosts().count
