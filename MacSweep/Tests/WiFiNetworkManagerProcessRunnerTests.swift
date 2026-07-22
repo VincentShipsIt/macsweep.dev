@@ -60,7 +60,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
 
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en7",
-            currentSSIDProvider: { "Office Wi-Fi" },
+            currentSSID: "Office Wi-Fi",
             commandRunner: { executable, arguments, timeout in
                 try await recorder.run(
                     executable: executable,
@@ -85,7 +85,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingNonzeroExitFailsClosedWithoutTrustingOutput() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { "Must Not Surface" },
+            currentSSID: "Must Not Surface",
             commandRunner: { _, _, _ in
                 ProcessResult(
                     status: 1,
@@ -101,7 +101,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingWithoutCurrentNetworkLeavesEveryEntryDisconnected() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { nil },
+            currentSSID: nil,
             commandRunner: { _, _, _ in
                 ProcessResult(
                     status: 0,
@@ -118,7 +118,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingHeaderWithoutNetworksReturnsEmpty() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { "Office" },
+            currentSSID: "Office",
             commandRunner: { _, _, _ in
                 ProcessResult(
                     status: 0,
@@ -134,7 +134,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingLaunchFailureFailsClosed() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { nil },
+            currentSSID: nil,
             commandRunner: { _, _, _ in
                 throw ProcessRunnerError.launchFailed("fixture")
             }
@@ -146,7 +146,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingTimeoutFailsClosedWithoutTrustingPartialOutput() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { nil },
+            currentSSID: nil,
             commandRunner: { _, _, _ in
                 throw ProcessRunnerError.timedOut(
                     after: WiFiNetworkManager.listingTimeout,
@@ -165,7 +165,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
     @Test func listingInvalidUTF8FailsClosed() async {
         let networks = await WiFiNetworkManager.savedNetworks(
             interface: "en0",
-            currentSSIDProvider: { nil },
+            currentSSID: nil,
             commandRunner: { _, _, _ in
                 ProcessResult(
                     status: 0,

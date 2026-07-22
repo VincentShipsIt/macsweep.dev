@@ -238,7 +238,7 @@ struct WiFiNetworksView: View {
         defer { isLoading = false }
 
         currentSSID = WiFiNetworkManager.getCurrentSSID()
-        networks = await WiFiNetworkManager.savedNetworks()
+        networks = await WiFiNetworkManager.savedNetworks(currentSSID: currentSSID)
     }
 
     private func toggleProtection(_ network: SavedWiFiNetwork) {

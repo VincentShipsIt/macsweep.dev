@@ -71,14 +71,16 @@ struct WiFiNetworkManager {
     /// Get list of saved WiFi networks on the primary interface.
     /// Delegates to `savedNetworks(interface:)` so the bounded subprocess and
     /// parsing behavior have a single implementation.
-    static func savedNetworks() async -> [SavedWiFiNetwork] {
-        await savedNetworks(interface: wifiInterface)
+    static func savedNetworks(
+        currentSSID: String? = getCurrentSSID()
+    ) async -> [SavedWiFiNetwork] {
+        await savedNetworks(interface: wifiInterface, currentSSID: currentSSID)
     }
 
     /// Get list of saved WiFi networks for a specific interface
     static func savedNetworks(
         interface: String,
-        currentSSIDProvider: @Sendable () -> String? = { getCurrentSSID() },
+        currentSSID: String?,
         commandRunner: WiFiCommandRunner = { executable, arguments, timeout in
             try await ProcessRunner.run(
                 executable: executable,
@@ -107,7 +109,7 @@ struct WiFiNetworkManager {
                 )
             }
 
-        if let currentSSID = currentSSIDProvider(),
+        if let currentSSID,
            let currentIndex = networks.firstIndex(where: { $0.ssid == currentSSID }) {
             networks[currentIndex].isCurrentlyConnected = true
         }
@@ -189,10 +191,10 @@ struct WiFiNetworkManager {
     /// Remove all saved networks except current and protected
     static func removeAllExceptCurrent(protectedSSIDs: Set<String> = []) async throws {
         let current = getCurrentSSID()
-        let networks = await savedNetworks()
+        let networks = await savedNetworks(currentSSID: current)
 
         for network in networks {
-            if network.ssid != current && !protectedSSIDs.contains(network.ssid) {
+            if !network.isCurrentlyConnected && !protectedSSIDs.contains(network.ssid) {
                 try? await removeNetwork(network.ssid)
             }
         }

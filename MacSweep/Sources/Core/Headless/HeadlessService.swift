@@ -639,7 +639,7 @@ public actor MacSweepHeadlessService {
     /// Backed by `WiFiNetworkManager`'s bounded asynchronous `networksetup` call.
     public func wifiNetworks() async -> HeadlessWiFiReport {
         let current = WiFiNetworkManager.getCurrentSSID()
-        let saved = await WiFiNetworkManager.savedNetworks()
+        let saved = await WiFiNetworkManager.savedNetworks(currentSSID: current)
         let networks = saved.map {
             HeadlessWiFiNetwork(ssid: $0.ssid, isConnected: $0.isCurrentlyConnected)
         }
