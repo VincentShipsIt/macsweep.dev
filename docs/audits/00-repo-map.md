@@ -2,7 +2,7 @@
 
 Date: 2026-07-02
 Auditor: Claude Code (repo-map session; evidence-first, no code changes)
-Repo: `github.com/VincentShipsIt/macsweep`, branch snapshot at `2505479` (`release: bump version to 1.0.7`)
+Repo: `github.com/VincentShipsIt/macsweep.dev`, branch snapshot at `2505479` (`release: bump version to 1.0.7`)
 
 Scope note: the brief said "monorepo or group of monorepos." **This is neither** — it is a single-product repository: one macOS application with a companion CLI, built from one shared Swift codebase. There are no workspaces, no `package.json`, no JS/TS toolchain, no multiple deployable services. Everything below reflects that reality.
 

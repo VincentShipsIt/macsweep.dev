@@ -57,11 +57,11 @@ jobs:
           TAG="$RELEASE_TAG"
           curl -fsSL \
             --connect-timeout 15 --max-time 120 --retry 3 \
-            "https://github.com/VincentShipsIt/macsweep/releases/download/${TAG}/macsweep-${TAG}.tar.gz.sha256" \
+            "https://github.com/VincentShipsIt/macsweep.dev/releases/download/${TAG}/macsweep-${TAG}.tar.gz.sha256" \
             -o source-sha256.txt
           curl -fsSL \
             --connect-timeout 15 --max-time 120 --retry 3 \
-            "https://github.com/VincentShipsIt/macsweep/releases/download/${TAG}/macsweep-${TAG}-macos.zip.sha256" \
+            "https://github.com/VincentShipsIt/macsweep.dev/releases/download/${TAG}/macsweep-${TAG}-macos.zip.sha256" \
             -o app-sha256.txt
           # Validate the asset is a bare 64-hex SHA256 before trusting it. On a 404 or
           # redirect-to-error, curl -f fails the step; this guards the case where a 200
@@ -123,8 +123,8 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA256}"
 
-            url "https://github.com/VincentShipsIt/macsweep/releases/download/v#{version}/macsweep-v#{version}-macos.zip",
-                verified: "github.com/VincentShipsIt/macsweep/"
+            url "https://github.com/VincentShipsIt/macsweep.dev/releases/download/v#{version}/macsweep-v#{version}-macos.zip",
+                verified: "github.com/VincentShipsIt/macsweep.dev/"
             name "MacSweep"
             desc "Native system cleaner"
             homepage "https://macsweep.dev/"
@@ -146,7 +146,7 @@ jobs:
           grep -q "version \"${VERSION}\"" "$C" || { echo "::error::cask version was not updated"; exit 1; }
           grep -q "sha256 \"${SHA256}\"" "$C" || { echo "::error::cask sha256 was not updated"; exit 1; }
           grep -q 'macsweep-v#{version}-macos.zip' "$C" || { echo "::error::cask url does not reference the app zip"; exit 1; }
-          grep -q 'verified: "github.com/VincentShipsIt/macsweep/"' "$C" || { echo "::error::cask url verification host is missing"; exit 1; }
+          grep -q 'verified: "github.com/VincentShipsIt/macsweep.dev/"' "$C" || { echo "::error::cask url verification host is missing"; exit 1; }
           grep -q '^[[:space:]]*auto_updates true' "$C" || { echo "::error::cask does not declare Sparkle auto-updates"; exit 1; }
           grep -q 'depends_on formula: "vincentshipsit/tap/macsweep"' "$C" || { echo "::error::cask does not depend on the CLI formula"; exit 1; }
           grep -q 'app "MacSweep.app"' "$C" || { echo "::error::cask does not install MacSweep.app"; exit 1; }

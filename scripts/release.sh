@@ -112,7 +112,7 @@ cmd_bump() {
 cmd_sha() {
   local v="${1:-$(swift_version)}"
   [[ "$v" =~ $SEMVER_RE ]] || die "version must be X.Y.Z, got '$v'"
-  local url="https://github.com/VincentShipsIt/macsweep/archive/refs/tags/v$v.tar.gz"
+  local url="https://github.com/VincentShipsIt/macsweep.dev/archive/refs/tags/v$v.tar.gz"
   print -u2 "fetching $url ..."
   local sha
   sha="$(curl -fsSL "$url" | shasum -a 256 | awk '{print $1}')" \

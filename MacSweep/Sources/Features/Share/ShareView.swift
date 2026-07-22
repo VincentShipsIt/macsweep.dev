@@ -375,7 +375,10 @@ private struct CleanupPerformanceShareCard: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            CleanupShareFooterPill(icon: "chevron.left.forwardslash.chevron.right", text: "github.com/VincentShipsIt/macsweep")
+            CleanupShareFooterPill(
+                icon: "globe",
+                text: MacSweepLinks.websiteDisplayName
+            )
             CleanupShareFooterPill(icon: "terminal", text: "brew install --cask vincentshipsit/tap/macsweep")
         }
     }
