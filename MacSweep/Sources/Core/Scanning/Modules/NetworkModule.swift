@@ -95,7 +95,7 @@ struct WiFiNetworkManager {
             return []
         }
 
-        var networks = result.output
+        var networks: [SavedWiFiNetwork] = result.output
             .split(separator: "\n")
             .dropFirst()
             .compactMap { line in
