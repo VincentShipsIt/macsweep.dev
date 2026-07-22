@@ -70,6 +70,10 @@ cmd_check() {
   print "  bundle build          ${build//$'\n'/, }"
 
   local ok=1
+  if [[ ! "$swift" =~ $SEMVER_RE ]]; then
+    print -u2 "  ✗ MacSweepVersion.swift ($swift) is not X.Y.Z — run: scripts/release.sh bump X.Y.Z"
+    ok=0
+  fi
   # pbx must be exactly one distinct value AND equal to the SSoT.
   if [[ "$(print -r -- "$pbx" | wc -l | tr -d ' ')" != "1" || "$pbx" != "$swift" ]]; then
     print -u2 "  ✗ pbxproj MARKETING_VERSION ($pbx) != MacSweepVersion.swift ($swift) — run: scripts/release.sh bump $swift"
