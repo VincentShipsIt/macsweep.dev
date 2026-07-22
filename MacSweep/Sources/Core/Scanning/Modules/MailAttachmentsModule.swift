@@ -7,6 +7,10 @@ struct MailAttachmentsModule: ScanModule {
     let description = "Find downloaded email attachments"
     let icon = "envelope"
 
+    static let cleanupReviewReason =
+        "MacSweep moves only the downloaded local attachment copy to Trash. "
+        + "The email remains, and the attachment can be downloaded again."
+
     /// Minimum file size to report (1MB default)
     var threshold: Int64 = 1_048_576
 
@@ -208,6 +212,29 @@ struct MailAttachmentsModule: ScanModule {
         await cleanItems(items, dryRun: dryRun) { item, _ in
             try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
+    }
+}
+
+/// Presentation-ready evidence for an individual Mail Attachments result.
+///
+/// Keeping fallback policy in Core makes missing filesystem metadata
+/// deterministic and directly testable without instantiating a SwiftUI view.
+struct MailAttachmentEvidence: Equatable, Sendable {
+    enum Modification: Equatable, Sendable {
+        case date(Date)
+        case unavailable
+    }
+
+    let path: String
+    let formattedSize: String
+    let modification: Modification
+    let reviewReason: String
+
+    init(item: CleanupItem) {
+        path = item.path.path
+        formattedSize = item.formattedSize
+        modification = item.lastModified.map(Modification.date) ?? .unavailable
+        reviewReason = MailAttachmentsModule.cleanupReviewReason
     }
 }
 
