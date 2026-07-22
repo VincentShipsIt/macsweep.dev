@@ -6,6 +6,13 @@ typealias HomebrewCommandRunner = @Sendable (
     _ timeout: TimeInterval
 ) async throws -> ProcessResult
 
+typealias HomebrewStreamingCommandRunner = @Sendable (
+    _ executable: String,
+    _ arguments: [String],
+    _ timeout: TimeInterval,
+    _ onOutput: @escaping ProcessOutputHandler
+) async throws -> ProcessResult
+
 @MainActor
 class HomebrewService: ObservableObject {
     static let commandTimeout: TimeInterval = 300
@@ -22,8 +29,17 @@ class HomebrewService: ObservableObject {
     @Published var isAnalyzingAI = false
 
     private let commandRunner: HomebrewCommandRunner
+    private let streamingCommandRunner: HomebrewStreamingCommandRunner
 
     init(
+        streamingCommandRunner: @escaping HomebrewStreamingCommandRunner = { executable, arguments, timeout, onOutput in
+            try await ProcessRunner.runStreaming(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout,
+                onOutput: onOutput
+            )
+        },
         commandRunner: @escaping HomebrewCommandRunner = { executable, arguments, timeout in
             try await ProcessRunner.run(
                 executable: executable,
@@ -32,6 +48,7 @@ class HomebrewService: ObservableObject {
             )
         }
     ) {
+        self.streamingCommandRunner = streamingCommandRunner
         self.commandRunner = commandRunner
     }
 
@@ -217,53 +234,52 @@ Only return the JSON array, no other text.
         // Pass each package name as a separate argument to the brew binary — no
         // shell, so names can never inject. Empty list = upgrade everything.
         let arguments = ["upgrade"] + packageNames
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: brewPath())
-        process.arguments = arguments
-        upgradeLog = "Running: \(([brewPath()] + arguments).joined(separator: " "))\n\n"
+        let executable = brewPath()
+        upgradeLog = "Running: \(([executable] + arguments).joined(separator: " "))\n\n"
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        let handle = pipe.fileHandleForReading
-        handle.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if let line = String(data: data, encoding: .utf8), !line.isEmpty {
-                Task { @MainActor [weak self] in
-                    self?.upgradeLog += line
-                }
+        let (outputStream, outputContinuation) = AsyncStream.makeStream(of: String.self)
+        let outputConsumer = Task { @MainActor [weak self] in
+            for await chunk in outputStream {
+                self?.upgradeLog += chunk
             }
         }
 
-        // Await termination via a continuation so the MainActor thread is not
-        // blocked for the (potentially minutes-long) upgrade. terminationHandler
-        // is set BEFORE run() so a fast exit can't be missed; the catch path
-        // resumes with nil since the handler won't fire if launch failed.
-        let status: Int32? = await withCheckedContinuation { continuation in
-            process.terminationHandler = { proc in
-                continuation.resume(returning: proc.terminationStatus)
-            }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(returning: nil)
-            }
+        let decoder = StreamingUTF8Decoder()
+        let onOutput: ProcessOutputHandler = { stream, data in
+            let chunk = decoder.decode(data, from: stream)
+            guard !chunk.isEmpty else { return }
+            outputContinuation.yield(chunk)
         }
-        handle.readabilityHandler = nil
 
-        if let status {
-            // Record the real exit status so the headless layer can report a
-            // failed upgrade rather than hardcoding success.
-            lastUpgradeSucceeded = status == 0
-            upgradeLog += status == 0
-                ? "\n✅ Done (exit code: \(status))"
-                : "\n❌ Error (exit code: \(status))"
-        } else {
+        let completionMessage: String
+        do {
+            let result = try await streamingCommandRunner(
+                executable,
+                arguments,
+                Self.commandTimeout,
+                onOutput
+            )
+            lastUpgradeSucceeded = result.didSucceed
+            completionMessage = result.didSucceed
+                ? "\n✅ Done (exit code: \(result.status))"
+                : "\n❌ Error (exit code: \(result.status))"
+        } catch ProcessRunnerError.timedOut(let timeout, _) {
             lastUpgradeSucceeded = false
-            upgradeLog += "\n❌ Error: failed to launch brew"
+            completionMessage = "\n❌ Error: Homebrew upgrade timed out after \(timeout) seconds"
+        } catch ProcessRunnerError.launchFailed(let reason) {
+            lastUpgradeSucceeded = false
+            completionMessage = "\n❌ Error: failed to launch brew: \(reason)"
+        } catch {
+            lastUpgradeSucceeded = false
+            completionMessage = "\n❌ Error: \(error.localizedDescription)"
         }
+
+        for chunk in decoder.finish() {
+            outputContinuation.yield(chunk)
+        }
+        outputContinuation.finish()
+        await outputConsumer.value
+        upgradeLog += completionMessage
 
         // Refresh package list
         await checkOutdated()
