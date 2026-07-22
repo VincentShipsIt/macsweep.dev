@@ -292,24 +292,6 @@ struct BrowserCleanupView: View {
     }
 }
 
-// MARK: - Browser Scan Result
-
-struct BrowserScanResult: Identifiable {
-    let id: UUID
-    let browserName: String
-    let browserIcon: String
-    let isRunning: Bool
-    let items: [CleanupItem]
-
-    var totalSize: Int64 {
-        items.totalSize()
-    }
-
-    var formattedSize: String {
-        items.formattedTotalSize()
-    }
-}
-
 // MARK: - Browser Result Card
 
 struct BrowserResultCard: View {
