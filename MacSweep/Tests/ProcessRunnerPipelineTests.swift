@@ -78,24 +78,30 @@ struct ProcessRunnerPipelineTests {
         #expect(result.output.split(separator: "\n").count == 5000)
     }
 
-    @Test func nonzeroStageThrowsDeterministicStatus() async {
+    @Test func nonzeroStageThrowsWithCapturedTailOutput() async throws {
+        let scriptURL = try makeExecutable("""
+        #!/bin/sh
+        printf partial-output
+        exit 7
+        """)
+        defer { try? FileManager.default.removeItem(at: scriptURL) }
+
         do {
             _ = try await ProcessRunner.runPipeline(
                 stages: [
-                    ProcessPipelineStage(executable: "/usr/bin/false"),
+                    ProcessPipelineStage(executable: scriptURL.path),
                     ProcessPipelineStage(executable: "/bin/cat")
                 ]
             )
             Issue.record("Expected the failed first stage to be rejected")
-        } catch let error as ProcessRunnerError {
-            guard case .nonZeroExit(let status, let stderr) = error else {
-                Issue.record("Expected nonZeroExit, got \(error)")
-                return
-            }
-            #expect(status == 1)
-            #expect(stderr == "Pipeline stage 1 exited with status 1")
+        } catch let error as ProcessPipelineStageError {
+            #expect(error.stageNumber == 1)
+            #expect(error.status == 7)
+            #expect(error.partialResult.status == 7)
+            #expect(error.partialResult.output == "partial-output")
+            #expect(error.partialResult.error == "Pipeline stage 1 exited with status 7")
         } catch {
-            Issue.record("Expected ProcessRunnerError, got \(error)")
+            Issue.record("Expected ProcessPipelineStageError, got \(error)")
         }
     }
 

@@ -156,7 +156,7 @@ struct CacheAnalyzer {
         findArguments.append(contentsOf: [")", "-type", "d", "-prune", "-print0"])
 
         return await Task.detached(priority: .userInitiated) {
-            let result = try? await ProcessRunner.runPipeline(
+            let output = await Self.bestEffortPipelineOutput(
                 stages: [
                     ProcessPipelineStage(
                         executable: "/usr/bin/find",
@@ -164,7 +164,7 @@ struct CacheAnalyzer {
                     ),
                     ProcessPipelineStage(
                         executable: "/usr/bin/xargs",
-                        arguments: ["-0", "du", "-sk"]
+                        arguments: ["-0", "/usr/bin/du", "-sk"]
                     ),
                     ProcessPipelineStage(
                         executable: "/usr/bin/sort",
@@ -173,7 +173,7 @@ struct CacheAnalyzer {
                 ],
                 timeout: Self.fastScanTimeout
             )
-            return Self.parseFastScanOutput(result?.output ?? "")
+            return Self.parseFastScanOutput(output)
         }.value
     }
 
@@ -241,7 +241,7 @@ struct CacheAnalyzer {
                 .map { $0 + "/" }   // trailing slash matches the `*/` the shell produced
             guard !directories.isEmpty else { return "" }
 
-            let output = try? await ProcessRunner.runPipeline(
+            let output = await Self.bestEffortPipelineOutput(
                 stages: [
                     ProcessPipelineStage(
                         executable: "/usr/bin/du",
@@ -255,11 +255,27 @@ struct CacheAnalyzer {
                 timeout: Self.fastScanTimeout
             )
             // `head -50`
-            return (output?.output ?? "")
+            return output
                 .split(separator: "\n", omittingEmptySubsequences: false)
                 .prefix(50)
                 .joined(separator: "\n")
         }.value
+    }
+
+    private static func bestEffortPipelineOutput(
+        stages: [ProcessPipelineStage],
+        timeout: TimeInterval
+    ) async -> String {
+        do {
+            return try await ProcessRunner.runPipeline(
+                stages: stages,
+                timeout: timeout
+            ).output
+        } catch let error as ProcessPipelineStageError {
+            return error.partialResult.output
+        } catch {
+            return ""
+        }
     }
 
     private func makeAIPrompt(dirList: String) -> String {

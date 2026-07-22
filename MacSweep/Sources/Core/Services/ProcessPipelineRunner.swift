@@ -305,9 +305,16 @@ enum ProcessPipelineRunner {
             guard let rawStatus = statuses[pid] else { continue }
             let status = terminationStatus(from: rawStatus)
             if status != 0 {
-                throw ProcessRunnerError.nonZeroExit(
+                let message = "Pipeline stage \(index + 1) exited with status \(status)"
+                throw ProcessPipelineStageError(
+                    stageNumber: index + 1,
                     status: status,
-                    stderr: "Pipeline stage \(index + 1) exited with status \(status)"
+                    partialResult: ProcessResult(
+                        status: status,
+                        output: output.string,
+                        error: message,
+                        outputWasValidUTF8: output.wasValid
+                    )
                 )
             }
         }

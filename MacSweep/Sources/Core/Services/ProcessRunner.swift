@@ -27,6 +27,17 @@ struct ProcessPipelineStage: Sendable, Equatable {
     }
 }
 
+/// A completed pipeline stage failed after the tail output was captured.
+struct ProcessPipelineStageError: Error, Sendable, CustomStringConvertible {
+    let stageNumber: Int
+    let status: Int32
+    let partialResult: ProcessResult
+
+    var description: String {
+        "Pipeline stage \(stageNumber) exited with status \(status)"
+    }
+}
+
 /// Result of a completed subprocess, with stdout and stderr captured separately.
 ///
 /// Keeping the two streams apart lets callers parse stdout without stderr noise —
@@ -74,8 +85,7 @@ enum ProcessRunnerError: Error, Sendable, CustomStringConvertible {
     /// The process lifecycle exceeded `timeout`. Output captured before the hard
     /// deadline is retained for diagnostics instead of being discarded.
     case timedOut(after: TimeInterval, partialResult: ProcessResult)
-    /// Thrown by `ProcessResult.checkedSuccess()` and `runPipeline` when a stage
-    /// exits non-zero.
+    /// Thrown by `ProcessResult.checkedSuccess()` when a process exits non-zero.
     case nonZeroExit(status: Int32, stderr: String)
 
     var description: String {
@@ -183,7 +193,8 @@ enum ProcessRunner {
     /// All stages share one isolated process group and one monotonic timeout.
     /// Stderr is discarded to match the read-only discovery pipelines this API
     /// replaces. A launch failure or timeout terminates and reaps every started
-    /// stage; a completed nonzero stage throws `ProcessRunnerError.nonZeroExit`.
+    /// stage; a completed nonzero stage throws `ProcessPipelineStageError` with
+    /// the captured tail output.
     static func runPipeline(
         stages: [ProcessPipelineStage],
         timeout: TimeInterval = 10,
