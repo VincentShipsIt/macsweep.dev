@@ -12,7 +12,8 @@ struct MailAttachmentsModuleEvidenceTests {
             type: .file,
             module: "mail-attachments",
             moduleName: "Apple Mail - Documents",
-            lastModified: expectedDate
+            lastModified: expectedDate,
+            cleanupReviewReason: "Protected by user rule"
         )
         let missingMetadata = CleanupItem(
             id: UUID(),
@@ -29,7 +30,7 @@ struct MailAttachmentsModuleEvidenceTests {
         #expect(datedEvidence.path == dated.path.path)
         #expect(datedEvidence.formattedSize == dated.formattedSize)
         #expect(datedEvidence.modification == .date(expectedDate))
-        #expect(datedEvidence.reviewReason == MailAttachmentsModule.cleanupReviewReason)
+        #expect(datedEvidence.reviewReason == "Protected by user rule")
         #expect(fallbackEvidence.path == missingMetadata.path.path)
         #expect(fallbackEvidence.formattedSize == missingMetadata.formattedSize)
         #expect(fallbackEvidence.modification == .unavailable)

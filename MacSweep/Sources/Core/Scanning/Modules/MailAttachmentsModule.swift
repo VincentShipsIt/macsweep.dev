@@ -234,7 +234,7 @@ struct MailAttachmentEvidence: Equatable, Sendable {
         path = item.path.path
         formattedSize = item.formattedSize
         modification = item.lastModified.map(Modification.date) ?? .unavailable
-        reviewReason = MailAttachmentsModule.cleanupReviewReason
+        reviewReason = item.cleanupReviewReason ?? MailAttachmentsModule.cleanupReviewReason
     }
 }
 
