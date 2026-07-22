@@ -8,6 +8,9 @@ struct PrivacyModule: ScanModule {
     let description = "Clear browsing history, recent documents, and traces"
     let icon = "hand.raised"
 
+    static let cleanupReviewReason =
+        "Contains personal activity data. Review before clearing; MacSweep moves it to Trash."
+
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
 
@@ -22,6 +25,30 @@ struct PrivacyModule: ScanModule {
         return items.sorted { $0.size > $1.size }
     }
 
+    /// Builds a privacy finding with the evidence the review UI needs.
+    ///
+    /// Both file and directory scanners use this path so privacy artifacts
+    /// consistently carry their modification date and explicit review-only
+    /// rationale.
+    func makeCleanupItem(
+        at url: URL,
+        size: Int64,
+        type: CleanupItem.ItemType,
+        moduleName: String
+    ) -> CleanupItem {
+        let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+        return CleanupItem(
+            id: UUID(),
+            path: url,
+            size: size,
+            type: type,
+            module: id,
+            moduleName: moduleName,
+            lastModified: resourceValues?.contentModificationDate,
+            cleanupReviewReason: Self.cleanupReviewReason
+        )
+    }
+
     /// Build a `CleanupItem` for a single privacy artifact file if it exists.
     /// Centralizes the exists → size → CleanupItem block the per-category scans
     /// repeated inline. `ScanModule.scanCacheDirectory` is deliberately not
@@ -30,12 +57,10 @@ struct PrivacyModule: ScanModule {
     private func scanSingleFile(_ url: URL, moduleName: String) async -> CleanupItem? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let size = (try? await DiskAnalyzer.size(of: url)) ?? 0
-        return CleanupItem(
-            id: UUID(),
-            path: url,
+        return makeCleanupItem(
+            at: url,
             size: size,
             type: .file,
-            module: id,
             moduleName: moduleName
         )
     }
@@ -48,21 +73,30 @@ struct PrivacyModule: ScanModule {
 
         // Recent documents plist
         let recentDocs = home
-            .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentDocuments.sfl2")
+            .appending(
+                path: "Library/Application Support/com.apple.sharedfilelist/"
+                    + "com.apple.LSSharedFileList.RecentDocuments.sfl2"
+            )
         if let item = await scanSingleFile(recentDocs, moduleName: "Recent Documents") {
             items.append(item)
         }
 
         // Recent applications
         let recentApps = home
-            .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentApplications.sfl2")
+            .appending(
+                path: "Library/Application Support/com.apple.sharedfilelist/"
+                    + "com.apple.LSSharedFileList.RecentApplications.sfl2"
+            )
         if let item = await scanSingleFile(recentApps, moduleName: "Recent Applications") {
             items.append(item)
         }
 
         // Finder recents
         let finderRecents = home
-            .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentHosts.sfl2")
+            .appending(
+                path: "Library/Application Support/com.apple.sharedfilelist/"
+                    + "com.apple.LSSharedFileList.RecentHosts.sfl2"
+            )
         if let item = await scanSingleFile(finderRecents, moduleName: "Recent Hosts") {
             items.append(item)
         }
@@ -91,12 +125,10 @@ struct PrivacyModule: ScanModule {
 
             let appName = stateDir.lastPathComponent.replacingOccurrences(of: ".savedState", with: "")
 
-            items.append(CleanupItem(
-                id: UUID(),
-                path: stateDir,
+            items.append(makeCleanupItem(
+                at: stateDir,
                 size: size,
                 type: .directory,
-                module: id,
                 moduleName: "Saved State - \(appName)"
             ))
         }
@@ -108,7 +140,10 @@ struct PrivacyModule: ScanModule {
 
     private func scanRecentServers() async -> [CleanupItem] {
         let recentServers = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.RecentServers.sfl2")
+            .appending(
+                path: "Library/Application Support/com.apple.sharedfilelist/"
+                    + "com.apple.LSSharedFileList.RecentServers.sfl2"
+            )
 
         guard let item = await scanSingleFile(recentServers, moduleName: "Recent Servers") else { return [] }
         return [item]
@@ -121,7 +156,10 @@ struct PrivacyModule: ScanModule {
         let safariDownloads = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Safari/Downloads.plist")
 
-        guard let item = await scanSingleFile(safariDownloads, moduleName: "Safari Downloads History") else { return [] }
+        guard let item = await scanSingleFile(
+            safariDownloads,
+            moduleName: "Safari Downloads History"
+        ) else { return [] }
         return [item]
     }
 
@@ -131,7 +169,10 @@ struct PrivacyModule: ScanModule {
         let quarantine = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2")
 
-        guard let item = await scanSingleFile(quarantine, moduleName: "Download History (Quarantine)") else { return [] }
+        guard let item = await scanSingleFile(
+            quarantine,
+            moduleName: "Download History (Quarantine)"
+        ) else { return [] }
         return [item]
     }
 
@@ -150,6 +191,30 @@ struct PrivacyModule: ScanModule {
         await cleanItems(items, dryRun: dryRun) { item, _ in
             try CleanupFileRemover.recoverable(item.path, module: item.module)
         }
+    }
+}
+
+/// Presentation-ready evidence for an individual Privacy result.
+///
+/// Keeping the fallback policy in Core makes the populated-results UI
+/// deterministic and lets focused SwiftPM tests cover missing filesystem
+/// metadata without instantiating a SwiftUI view.
+struct PrivacyItemEvidence: Equatable, Sendable {
+    enum Modification: Equatable, Sendable {
+        case date(Date)
+        case unavailable
+    }
+
+    let path: String
+    let formattedSize: String
+    let modification: Modification
+    let reviewReason: String
+
+    init(item: CleanupItem) {
+        path = item.path.path
+        formattedSize = item.formattedSize
+        modification = item.lastModified.map(Modification.date) ?? .unavailable
+        reviewReason = item.cleanupReviewReason ?? PrivacyModule.cleanupReviewReason
     }
 }
 

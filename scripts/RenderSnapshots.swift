@@ -197,6 +197,7 @@ struct SnapshotRenderer {
                 CloudCleanupView(snapshotItems: [], snapshotHasScanned: true),
                 appState: AppState()
             )),
+            privacyResultsVariant(size: size),
             ("trash-bins-results", wrap(
                 TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
                 appState: AppState()
@@ -409,6 +410,67 @@ struct SnapshotRenderer {
             item("/Volumes/Backup/.Trashes/501/nightly.sparsebundle", 4_300_000_000, "Backup (External)", 26),
             item("/Volumes/Backup/.Trashes/501/logs.tar", 96_000_000, "Backup (External)", 41),
         ]
+    }
+
+    /// Populated Privacy groups with both dated and unavailable metadata. The
+    /// long Saved Application State path verifies evidence remains readable
+    /// without truncating the exact artifact location.
+    @MainActor
+    static func samplePrivacyItems() -> [CleanupItem] {
+        [
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath:
+                    "/Users/you/Library/Application Support/com.apple.sharedfilelist/"
+                        + "com.apple.LSSharedFileList.RecentDocuments.sfl2"
+                ),
+                size: 86_000,
+                type: .file,
+                module: "privacy",
+                moduleName: "Recent Documents",
+                lastModified: daysAgo(2),
+                cleanupReviewReason: PrivacyModule.cleanupReviewReason
+            ),
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath:
+                    "/Users/you/Library/Saved Application State/"
+                        + "com.example.very-long-application-identifier.savedState"
+                ),
+                size: 4_200_000,
+                type: .directory,
+                module: "privacy",
+                moduleName: "Saved State - Example",
+                lastModified: nil,
+                cleanupReviewReason: PrivacyModule.cleanupReviewReason
+            ),
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/Library/Safari/Downloads.plist"),
+                size: 24_000,
+                type: .file,
+                module: "privacy",
+                moduleName: "Safari Downloads History",
+                lastModified: daysAgo(8),
+                cleanupReviewReason: PrivacyModule.cleanupReviewReason
+            )
+        ]
+    }
+
+    @MainActor
+    private static func privacyResultsVariant(size: CGSize) -> (String, AnyView) {
+        (
+            "privacy-results",
+            AnyView(
+                PrivacyView(
+                    snapshotItems: samplePrivacyItems(),
+                    snapshotExpandedCategories: ["Saved State - Example"]
+                )
+                .environmentObject(AppState(initialFullDiskAccess: true))
+                .environment(\.colorScheme, .dark)
+                .frame(width: size.width, height: size.height)
+            )
+        )
     }
 
     /// Three installed apps with their per-app leftovers for the Uninstaller
