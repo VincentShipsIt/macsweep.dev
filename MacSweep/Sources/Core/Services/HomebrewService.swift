@@ -244,10 +244,10 @@ Only return the JSON array, no other text.
             }
         }
 
-        let onOutput: ProcessOutputHandler = { _, data in
-            guard let chunk = String(data: data, encoding: .utf8), !chunk.isEmpty else {
-                return
-            }
+        let decoder = StreamingUTF8Decoder()
+        let onOutput: ProcessOutputHandler = { stream, data in
+            let chunk = decoder.decode(data, from: stream)
+            guard !chunk.isEmpty else { return }
             outputContinuation.yield(chunk)
         }
 
@@ -274,6 +274,9 @@ Only return the JSON array, no other text.
             completionMessage = "\n❌ Error: \(error.localizedDescription)"
         }
 
+        for chunk in decoder.finish() {
+            outputContinuation.yield(chunk)
+        }
         outputContinuation.finish()
         await outputConsumer.value
         upgradeLog += completionMessage

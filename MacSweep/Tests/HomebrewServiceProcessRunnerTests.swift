@@ -102,8 +102,8 @@ struct HomebrewServiceProcessRunnerTests {
                 error: "Pouring package\n"
             )),
             chunks: [
-                (.standardOutput, "Downloading package\n"),
-                (.standardError, "Pouring package\n")
+                (.standardOutput, Data("Downloading package\n".utf8)),
+                (.standardError, Data("Pouring package\n".utf8))
             ]
         )
         let service = makeStreamingService(recorder: recorder)
@@ -130,7 +130,7 @@ struct HomebrewServiceProcessRunnerTests {
                 output: "",
                 error: "upgrade failed\n"
             )),
-            chunks: [(.standardError, "upgrade failed\n")]
+            chunks: [(.standardError, Data("upgrade failed\n".utf8))]
         )
         let service = makeStreamingService(recorder: recorder)
 
@@ -162,8 +162,8 @@ struct HomebrewServiceProcessRunnerTests {
         let recorder = HomebrewStreamingCommandRecorder(
             response: .error(.timedOut(after: 300, partialResult: partialResult)),
             chunks: [
-                (.standardOutput, partialResult.output),
-                (.standardError, partialResult.error)
+                (.standardOutput, Data(partialResult.output.utf8)),
+                (.standardError, Data(partialResult.error.utf8))
             ]
         )
         let service = makeStreamingService(recorder: recorder)
@@ -174,6 +174,39 @@ struct HomebrewServiceProcessRunnerTests {
         #expect(service.upgradeLog.contains("partial stderr\n"))
         #expect(service.upgradeLog.hasSuffix("Homebrew upgrade timed out after 300.0 seconds"))
         #expect(service.lastUpgradeSucceeded == false)
+    }
+
+    @Test func streamedUpgradePreservesUTF8SplitAcrossPipeReads() async {
+        let recorder = HomebrewStreamingCommandRecorder(
+            response: .result(ProcessResult(status: 0, output: "", error: "")),
+            chunks: [
+                (.standardOutput, Data([0x63, 0x61, 0x66, 0xC3])),
+                (.standardOutput, Data([0xA9, 0x0A])),
+                (.standardError, Data([0xE2, 0x98])),
+                (.standardError, Data([0x95, 0xEF, 0xB8])),
+                (.standardError, Data([0x8F, 0x0A]))
+            ]
+        )
+        let service = makeStreamingService(recorder: recorder)
+
+        await service.upgradeAll()
+
+        #expect(service.upgradeLog.contains("café\n"))
+        #expect(service.upgradeLog.contains("☕️\n"))
+        #expect(!service.upgradeLog.contains("�"))
+    }
+
+    @Test func streamedUpgradeFlushesIncompleteUTF8AtEndOfOutput() async {
+        let recorder = HomebrewStreamingCommandRecorder(
+            response: .result(ProcessResult(status: 0, output: "", error: "")),
+            chunks: [(.standardOutput, Data([0xE2, 0x82]))]
+        )
+        let service = makeStreamingService(recorder: recorder)
+
+        await service.upgradeAll()
+
+        #expect(service.upgradeLog.contains("�"))
+        #expect(service.upgradeLog.hasSuffix("✅ Done (exit code: 0)"))
     }
 
     private func makeService(response: HomebrewCommandResponse) -> HomebrewService {
@@ -266,12 +299,12 @@ private enum HomebrewStreamingCommandResponse: Sendable {
 
 private actor HomebrewStreamingCommandRecorder {
     private let response: HomebrewStreamingCommandResponse
-    private let chunks: [(ProcessOutputStream, String)]
+    private let chunks: [(ProcessOutputStream, Data)]
     private var invocations: [HomebrewStreamingCommandInvocation] = []
 
     init(
         response: HomebrewStreamingCommandResponse,
-        chunks: [(ProcessOutputStream, String)] = []
+        chunks: [(ProcessOutputStream, Data)] = []
     ) {
         self.response = response
         self.chunks = chunks
@@ -289,7 +322,7 @@ private actor HomebrewStreamingCommandRecorder {
             timeout: timeout
         ))
         for (stream, chunk) in chunks {
-            onOutput(stream, Data(chunk.utf8))
+            onOutput(stream, chunk)
         }
 
         switch response {
