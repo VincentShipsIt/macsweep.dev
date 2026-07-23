@@ -36,7 +36,11 @@ struct MailAttachmentsView: View {
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) {
+                RescanButton(
+                    isScanning: model.isScanning,
+                    isDisabled: !appState.hasFullDiskAccess,
+                    usesNativeToolbarStyle: true
+                ) {
                     Task { await scanAttachments() }
                 }
             ),
@@ -69,10 +73,10 @@ struct MailAttachmentsView: View {
                                 : "Apple Mail scan incomplete",
                             message: appState.hasFullDiskAccess
                                 ? "No downloaded attachments matched the current size threshold."
-                                : "Grant Full Disk Access to verify Apple Mail. "
-                                    + "Other supported mail apps were still scanned.",
+                                : "Grant Full Disk Access before scanning all supported mail apps.",
                             iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
                             actionTitle: "Scan Again",
+                            actionDisabled: !appState.hasFullDiskAccess,
                             action: { Task { await scanAttachments() } }
                         )
                     }
@@ -127,6 +131,10 @@ struct MailAttachmentsView: View {
             // no-ops under Reduce Motion.
             .animated(.scanCrossfade, value: scanPhase)
             }
+        }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            model.showingConfirmation = false
         }
     }
 
@@ -213,6 +221,7 @@ struct MailAttachmentsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     // MARK: - Footer
@@ -223,9 +232,10 @@ struct MailAttachmentsView: View {
             summary: "Will free \(selectedSize)",
             onSelectAll: { model.selectAll(filteredAttachments) },
             actionTitle: "Move to Trash",
-            actionDisabled: model.selectedItems.isEmpty,
+            actionDisabled: model.selectedItems.isEmpty || !appState.hasFullDiskAccess,
             onAction: { model.showingConfirmation = true }
         )
+        .disabled(!appState.hasFullDiskAccess)
         .cleanupReview(
             isPresented: $model.showingConfirmation,
             items: selectedAttachments,
@@ -238,6 +248,11 @@ struct MailAttachmentsView: View {
     // MARK: - Actions
 
     private func scanAttachments() async {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.mail.actionBlockedMessage
+            return
+        }
+
         let threshold = Int64(sizeThreshold * 1_048_576)
         await model.scan(
             selectAllOnCompletion: false,
@@ -251,6 +266,11 @@ struct MailAttachmentsView: View {
     }
 
     private func deleteSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.mail.actionBlockedMessage
+            return nil
+        }
+
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // `stats` recomputes automatically from the pruned list.

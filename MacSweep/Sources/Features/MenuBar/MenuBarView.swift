@@ -286,6 +286,7 @@ struct MenuBarView: View {
                 subtitle: appState.isScanning ? "\(Int(appState.scanProgress * 100))% complete" : "Run one-click cleanup",
                 accentColor: .purple,
                 actionLabel: appState.isScanning ? nil : "Scan",
+                actionDisabled: !appState.hasFullDiskAccess,
                 action: {
                     Task {
                         await appState.quickScan()
@@ -399,6 +400,7 @@ struct SystemStatCard: View {
     var valueColor: Color = .primary
     var accentColor: Color = .blue
     var actionLabel: String? = nil
+    var actionDisabled = false
     var action: (() -> Void)? = nil
     var onTap: (() -> Void)? = nil
 
@@ -461,6 +463,7 @@ struct SystemStatCard: View {
                 .font(.caption2)
                 .glassButton()
                 .controlSize(.small)
+                .disabled(actionDisabled)
                 .frame(height: MenuBarStatCardLayout.footerHeight, alignment: .leading)
         } else {
             Color.clear

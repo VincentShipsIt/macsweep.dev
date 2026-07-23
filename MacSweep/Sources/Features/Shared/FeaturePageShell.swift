@@ -176,7 +176,12 @@ struct ScanLandingView: View {
                             .frame(maxWidth: 620)
                     }
 
-                    CircularScanButton(accessibilityLabel: ctaTitle, action: action)
+                    CircularScanButton(
+                        accessibilityLabel: ctaTitle,
+                        isEnabled: permissionWarning == nil,
+                        disabledReason: permissionWarning?.actionBlockedMessage,
+                        action: action
+                    )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(40)
@@ -193,6 +198,8 @@ struct ScanLandingView: View {
 struct CircularScanButton: View {
     var title: String = "Scan"
     var accessibilityLabel: String = "Start scan"
+    var isEnabled = true
+    var disabledReason: String?
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
@@ -218,10 +225,19 @@ struct CircularScanButton: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .keyboardShortcut("r", modifiers: .command)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Scans only. You can review results before anything is removed.")
-        .help("\(accessibilityLabel) (Command-R)")
+        .accessibilityHint(
+            isEnabled
+                ? "Scans only. You can review results before anything is removed."
+                : (disabledReason ?? "Required permission is missing.")
+        )
+        .help(
+            isEnabled
+                ? "\(accessibilityLabel) (Command-R)"
+                : (disabledReason ?? "Required permission is missing.")
+        )
         .onHover { isHovering = $0 }
     }
 }

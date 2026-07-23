@@ -50,6 +50,7 @@ struct PrivacyView: View {
             trailing: (displayHasScanned && !displayIsScanning) ? AnyView(
                 RescanButton(
                     isScanning: displayIsScanning,
+                    isDisabled: !appState.hasFullDiskAccess,
                     usesNativeToolbarStyle: true
                 ) {
                     Task { await scanPrivacy() }
@@ -117,6 +118,10 @@ struct PrivacyView: View {
             }
             // Crossfade the landing ⇄ results swap (no-ops under Reduce Motion).
             .animated(.scanCrossfade, value: displayIsScanning || !displayHasScanned)
+        }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            model.showingConfirmation = false
         }
     }
 
@@ -227,6 +232,7 @@ struct PrivacyView: View {
                 + "Browsing data may be recreated by the relevant apps.",
             onConfirm: { await cleanSelected() }
         )
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     private var noPrivacyItemsView: some View {
@@ -243,7 +249,12 @@ struct PrivacyView: View {
 // MARK: - Actions
 
 private extension PrivacyView {
-    private func scanPrivacy() async {
+    private func scanPrivacy(requiresFullDiskAccess: Bool = true) async {
+        if requiresFullDiskAccess, !appState.hasFullDiskAccess {
+            model.errorMessage = FullDiskAccessScope.safari.actionBlockedMessage
+            return
+        }
+
         selectedCategories = []
         await model.scan(
             selectAllOnCompletion: false,
@@ -254,6 +265,11 @@ private extension PrivacyView {
     }
 
     private func cleanSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.safari.actionBlockedMessage
+            return nil
+        }
+
         let itemsToClean = selectedPrivacyItems
 
         // Route through ScanEngine so the full safety pipeline (per-item
@@ -317,7 +333,7 @@ private extension PrivacyView {
         }
 
         // Refresh items (scanPrivacy clears the model error, so restore after)
-        await scanPrivacy()
+        await scanPrivacy(requiresFullDiskAccess: false)
         if let actionError { model.errorMessage = actionError }
     }
 

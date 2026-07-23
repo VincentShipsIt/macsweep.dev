@@ -57,7 +57,7 @@ struct TrashBinsView: View {
                 } label: {
                     Label("Empty All Trash", systemImage: "trash.slash")
                 }
-                .disabled(model.items.isEmpty || model.isScanning)
+                .disabled(model.items.isEmpty || model.isScanning || !appState.hasFullDiskAccess)
                 .cleanupReview(
                     isPresented: $showingEmptyAllConfirmation,
                     items: model.items,
@@ -111,6 +111,11 @@ struct TrashBinsView: View {
                     }
                 } else {
                     Group {
+                    if !appState.hasFullDiskAccess {
+                        FullDiskAccessWarningBanner(scope: .trash)
+                            .padding(.horizontal)
+                            .padding(.top, 12)
+                    }
                     trashList
                     footer
                     }
@@ -124,6 +129,11 @@ struct TrashBinsView: View {
         }
         .task {
             if !disableAutoLoad { await loadTrashSummary() }
+        }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            model.showingConfirmation = false
+            showingEmptyAllConfirmation = false
         }
     }
 
@@ -154,6 +164,7 @@ struct TrashBinsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     // MARK: - Footer
@@ -164,9 +175,10 @@ struct TrashBinsView: View {
             summary: "Will permanently delete \(selectedSize)",
             onSelectAll: { model.selectAll(model.items) },
             actionTitle: "Delete Selected",
-            actionDisabled: model.selectedItems.isEmpty,
+            actionDisabled: model.selectedItems.isEmpty || !appState.hasFullDiskAccess,
             onAction: { model.showingConfirmation = true }
         )
+        .disabled(!appState.hasFullDiskAccess)
         .cleanupReview(
             isPresented: $model.showingConfirmation,
             items: selectedTrashItems,
@@ -191,6 +203,7 @@ struct TrashBinsView: View {
                 : "Grant Full Disk Access so MacSweep can verify what is currently in Trash.",
             iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
             actionTitle: "Scan Again",
+            actionDisabled: !appState.hasFullDiskAccess,
             action: { Task { await scanTrash() } }
         )
     }
@@ -198,6 +211,11 @@ struct TrashBinsView: View {
     // MARK: - Actions
 
     private func loadTrashSummary() async {
+        guard appState.hasFullDiskAccess else {
+            trashSummary = nil
+            return
+        }
+
         trashSummary = await TrashSummary.current()
 
         // Auto-scan if there are items
@@ -207,6 +225,10 @@ struct TrashBinsView: View {
     }
 
     private func scanTrash() async {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return
+        }
         guard !model.isScanning else { return }
 
         // Trash starts with nothing selected — the user opts into what to delete —
@@ -225,6 +247,11 @@ struct TrashBinsView: View {
     }
 
     private func deleteSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return nil
+        }
+
         let itemsToDelete = selectedTrashItems
         var deletionError: String?
         var cleanupResult: CleanupResult?
@@ -258,6 +285,10 @@ struct TrashBinsView: View {
     }
 
     private func emptyAllTrash() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return nil
+        }
         guard !model.isScanning else { return nil }
 
         // Finder-driven bulk empty, not a scan: drive the shared flags directly.

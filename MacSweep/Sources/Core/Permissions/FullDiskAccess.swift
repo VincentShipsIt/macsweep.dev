@@ -11,7 +11,7 @@ enum FullDiskAccessScope {
     var title: String {
         switch self {
         case .smartCare:
-            return "Full Disk Access improves Smart Care"
+            return "Full Disk Access is required for Smart Care"
         case .systemData:
             return "Full Disk Access is required for system data"
         case .mail:
@@ -26,16 +26,35 @@ enum FullDiskAccessScope {
     var detail: String {
         switch self {
         case .smartCare:
-            return "Without access, Smart Care cannot fully inspect Apple Mail, Safari, or protected system data, so totals may be incomplete."
+            return "Smart Care stays disabled until it can inspect Apple Mail, Safari, "
+                + "and protected system data without returning partial results."
         case .systemData:
-            return "Without access, protected system caches and logs are skipped, so an empty or smaller result may be incomplete."
+            return "Without access, protected system caches and logs are skipped, "
+                + "so an empty or smaller result may be incomplete."
         case .mail:
-            return "Without access, Apple Mail attachments are skipped. Attachments from other supported mail apps may still appear."
+            return "Mail attachment scanning and cleanup stay disabled until Apple Mail "
+                + "and other supported mail sources can be checked together."
         case .trash:
             return "Without access, macOS blocks MacSweep from listing your Trash, "
                 + "so an empty result cannot be verified."
         case .safari:
-            return "Without access, Safari history and website data are skipped. Data from other supported browsers may still appear."
+            return "Privacy scanning and cleanup stay disabled until Safari history "
+                + "and website data can be checked without returning partial results."
+        }
+    }
+
+    var actionBlockedMessage: String {
+        switch self {
+        case .smartCare:
+            return "Grant Full Disk Access before running Smart Care."
+        case .systemData:
+            return "Grant Full Disk Access before scanning or cleaning system data."
+        case .mail:
+            return "Grant Full Disk Access before scanning or cleaning Mail attachments."
+        case .trash:
+            return "Grant Full Disk Access before scanning or emptying Trash bins."
+        case .safari:
+            return "Grant Full Disk Access before scanning or cleaning Safari data."
         }
     }
 }
@@ -44,12 +63,6 @@ enum FullDiskAccessScope {
 struct FullDiskAccess {
     /// Check if the app has Full Disk Access
     static var hasAccess: Bool {
-        #if DEBUG
-        // Keep development relaunches passive. The explicit "Grant Access"
-        // button still opens System Settings, but simply refreshing the debug app
-        // should not probe protected locations and risk another TCC prompt.
-        return false
-        #else
         // Try to read a protected file that requires FDA
         let testPaths = [
             FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Safari/History.db"),
@@ -57,20 +70,17 @@ struct FullDiskAccess {
             URL(fileURLWithPath: "/Library/Application Support/com.apple.TCC/TCC.db")
         ]
 
-        for path in testPaths {
-            if FileManager.default.isReadableFile(atPath: path.path) {
-                return true
-            }
+        for path in testPaths where FileManager.default.isReadableFile(atPath: path.path) {
+            return true
         }
 
         // Alternative check: try to list contents of protected directory
         let protectedDir = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Safari")
-        if let _ = try? FileManager.default.contentsOfDirectory(atPath: protectedDir.path) {
+        if (try? FileManager.default.contentsOfDirectory(atPath: protectedDir.path)) != nil {
             return true
         }
 
         return false
-        #endif
     }
 
     /// Open System Preferences to the Full Disk Access pane

@@ -78,6 +78,11 @@ final class AppState: ObservableObject {
     }
 
     func quickScan() async {
+        guard hasFullDiskAccess else {
+            lastError = FullDiskAccessScope.smartCare.actionBlockedMessage
+            return
+        }
+
         await startScan(scope: ScanScope(
             modules: SmartCareDefaults.moduleIDs,
             assistantTargets: assistant.enabledTargets
@@ -85,6 +90,11 @@ final class AppState: ObservableObject {
     }
 
     func scan(modules: [String]? = nil) async {
+        if modules == nil, !hasFullDiskAccess {
+            lastError = FullDiskAccessScope.smartCare.actionBlockedMessage
+            return
+        }
+
         await startScan(scope: ScanScope(
             modules: modules,
             assistantTargets: modules == nil ? assistant.enabledTargets : []
@@ -92,6 +102,11 @@ final class AppState: ObservableObject {
     }
 
     func retryLastScan() async {
+        guard hasFullDiskAccess else {
+            lastError = FullDiskAccessScope.smartCare.actionBlockedMessage
+            return
+        }
+
         guard let lastScanScope else {
             await quickScan()
             return

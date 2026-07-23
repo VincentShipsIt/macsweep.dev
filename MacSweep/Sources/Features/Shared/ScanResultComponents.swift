@@ -369,6 +369,7 @@ extension View {
 struct RescanButton: View {
     var title: String = "Rescan"
     let isScanning: Bool
+    var isDisabled = false
     var usesNativeToolbarStyle = false
     let action: () -> Void
 
@@ -386,7 +387,7 @@ struct RescanButton: View {
             Label(title, systemImage: "arrow.clockwise")
         }
         .controlSize(.small)
-        .disabled(isScanning)
+        .disabled(isScanning || isDisabled)
     }
 }
 
@@ -402,6 +403,7 @@ struct EmptyResultState: View {
     var iconColor: Color = MacSweepTheme.accent
     var fillsSpace: Bool = true
     var actionTitle: String? = nil
+    var actionDisabled = false
     var action: (() -> Void)? = nil
 
     var body: some View {
@@ -425,6 +427,7 @@ struct EmptyResultState: View {
                     Label(actionTitle, systemImage: "arrow.clockwise")
                 }
                 .glassButton()
+                .disabled(actionDisabled)
                 .padding(.top, 4)
             }
         }

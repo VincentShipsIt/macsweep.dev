@@ -22,4 +22,17 @@ struct FullDiskAccessScopeTests {
         #expect(detail.contains("Safari"))
         #expect(detail.contains("system data"))
     }
+
+    @Test("Blocked actions explain how to recover")
+    func blockedActionsExplainRecovery() {
+        for scope in [
+            FullDiskAccessScope.smartCare,
+            .systemData,
+            .mail,
+            .trash,
+            .safari
+        ] {
+            #expect(scope.actionBlockedMessage.contains("Grant Full Disk Access"))
+        }
+    }
 }

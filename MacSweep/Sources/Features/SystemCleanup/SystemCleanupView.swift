@@ -24,7 +24,11 @@ struct SystemCleanupView: View {
             title: "System Junk",
             subtitle: "Clear caches, logs, and temporary files.",
             trailing: appState.scanResults.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: appState.isScanning, usesNativeToolbarStyle: true) {
+                RescanButton(
+                    isScanning: appState.isScanning,
+                    isDisabled: !appState.hasFullDiskAccess,
+                    usesNativeToolbarStyle: true
+                ) {
                     Task { await scanSystemJunk() }
                 }
             ),
@@ -57,10 +61,18 @@ struct SystemCleanupView: View {
                         }
 
                         EmptyResultState(
-                            icon: "checkmark.circle",
-                            title: "No system junk found",
-                            message: "No cleanable caches, logs, or temporary files were found.",
+                            icon: appState.hasFullDiskAccess
+                                ? "checkmark.circle"
+                                : "exclamationmark.shield",
+                            title: appState.hasFullDiskAccess
+                                ? "No system junk found"
+                                : "System Junk scan incomplete",
+                            message: appState.hasFullDiskAccess
+                                ? "No cleanable caches, logs, or temporary files were found."
+                                : "Grant Full Disk Access so MacSweep can verify protected system data.",
+                            iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
                             actionTitle: "Scan Again",
+                            actionDisabled: !appState.hasFullDiskAccess,
                             action: { Task { await scanSystemJunk() } }
                         )
                     }
@@ -103,6 +115,10 @@ struct SystemCleanupView: View {
             // no-ops under Reduce Motion.
             .animated(.scanCrossfade, value: scanPhase)
             }
+        }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            showingConfirmation = false
         }
     }
 
@@ -147,6 +163,7 @@ struct SystemCleanupView: View {
             .listStyle(.inset)
             .macSweepListSurface()
         }
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     // MARK: - Footer
@@ -158,24 +175,39 @@ struct SystemCleanupView: View {
             summary: "Will free \(appState.selectedSize.formattedFileSize)",
             onSelectAll: { appState.selectAll() },
             actionTitle: "Clean",
-            actionDisabled: appState.selectedItems.isEmpty,
+            actionDisabled: appState.selectedItems.isEmpty || !appState.hasFullDiskAccess,
             onAction: { showingConfirmation = true }
         )
+        .disabled(!appState.hasFullDiskAccess)
         .cleanupReview(
             isPresented: $showingConfirmation,
             items: selectedResults,
             disposition: .mixed,
             note: "System caches use their module's declared Trash-first or permanent-cache action. "
                 + "Protected paths are checked again immediately before execution.",
-            onConfirm: { try? await appState.deleteSelected(confirmedLargeDeletion: true) }
+            onConfirm: { await cleanSelected() }
         )
     }
 
     // MARK: - Actions
 
     private func scanSystemJunk() async {
+        guard appState.hasFullDiskAccess else {
+            appState.lastDeletionError = FullDiskAccessScope.systemData.actionBlockedMessage
+            return
+        }
+
         await appState.scan(modules: ["system-cache"])
         hasScanned = scanErrorMessage == nil
+    }
+
+    private func cleanSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            appState.lastDeletionError = FullDiskAccessScope.systemData.actionBlockedMessage
+            return nil
+        }
+
+        return try? await appState.deleteSelected(confirmedLargeDeletion: true)
     }
 
     private func dismissScanError() {
