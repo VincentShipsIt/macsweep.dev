@@ -1,0 +1,47 @@
+import Foundation
+import Testing
+@testable import MacSweepCore
+
+struct MailAttachmentsModuleEvidenceTests {
+    @Test func presentationEvidencePreservesMetadataAndSuppliesFallbacks() {
+        let expectedDate = Date(timeIntervalSince1970: 1_730_000_000)
+        let dated = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/Users/example/Library/Mail Downloads/report.pdf"),
+            size: 2048,
+            type: .file,
+            module: "mail-attachments",
+            moduleName: "Apple Mail - Documents",
+            lastModified: expectedDate,
+            cleanupReviewReason: "Protected by user rule"
+        )
+        let missingMetadata = CleanupItem(
+            id: UUID(),
+            path: URL(fileURLWithPath: "/Users/example/Library/Mail Downloads/archive.zip"),
+            size: 4096,
+            type: .file,
+            module: "mail-attachments",
+            moduleName: "Apple Mail - Archives"
+        )
+
+        let datedEvidence = CleanupResultEvidence(
+            item: dated,
+            modificationDate: dated.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
+        let fallbackEvidence = CleanupResultEvidence(
+            item: missingMetadata,
+            modificationDate: missingMetadata.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
+
+        #expect(datedEvidence.path == dated.path.path)
+        #expect(datedEvidence.formattedSize == dated.formattedSize)
+        #expect(datedEvidence.modification == .date(expectedDate))
+        #expect(datedEvidence.reviewReason == "Protected by user rule")
+        #expect(fallbackEvidence.path == missingMetadata.path.path)
+        #expect(fallbackEvidence.formattedSize == missingMetadata.formattedSize)
+        #expect(fallbackEvidence.modification == .unavailable)
+        #expect(fallbackEvidence.reviewReason == MailAttachmentsModule.cleanupReviewReason)
+    }
+}

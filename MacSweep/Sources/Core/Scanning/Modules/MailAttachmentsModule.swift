@@ -7,6 +7,10 @@ struct MailAttachmentsModule: ScanModule {
     let description = "Find downloaded email attachments"
     let icon = "envelope"
 
+    static let cleanupReviewReason =
+        "MacSweep moves only the downloaded local attachment copy to Trash. "
+        + "The email remains, and the attachment can be downloaded again."
+
     /// Minimum file size to report (1MB default)
     var threshold: Int64 = 1_048_576
 

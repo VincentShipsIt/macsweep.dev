@@ -279,14 +279,23 @@ struct AttachmentRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(
+            item: item,
+            modificationDate: item.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
+    }
+
     var body: some View {
+        let evidence = evidence
         SelectableItemRow(isSelected: isSelected) {
             // File icon
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.path.path))
                 .resizable()
                 .frame(width: 32, height: 32)
         } content: {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(item.displayName)
                     .lineLimit(1)
 
@@ -299,15 +308,24 @@ struct AttachmentRow: View {
                     let type = item.moduleName.split(separator: " - ").last.map(String.init) ?? ""
                     TagBadge(type, tint: typeColor(type))
 
-                    if let date = item.lastModified {
-                        Text(date, style: .date)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
                 }
+
+                CleanupModificationEvidenceLabel(modification: evidence.modification)
+
+                Text(evidence.path)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(evidence.reviewReason, systemImage: "trash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } trailing: {
-            Text(item.formattedSize)
+            Text(evidence.formattedSize)
                 .font(.headline)
 
             // Quick Look
@@ -318,6 +336,7 @@ struct AttachmentRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Show \(item.displayName) in Finder")
         }
     }
 

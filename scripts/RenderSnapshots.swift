@@ -193,6 +193,10 @@ struct SnapshotRenderer {
                 MailAttachmentsView(snapshotItems: [], snapshotHasScanned: true),
                 appState: AppState(initialFullDiskAccess: false)
             )),
+            ("mail-attachments-results", wrap(
+                MailAttachmentsView(snapshotItems: sampleMailAttachmentItems(), snapshotHasScanned: true),
+                appState: AppState(initialFullDiskAccess: true)
+            )),
             ("cloud-cleanup-empty", wrap(
                 CloudCleanupView(snapshotItems: [], snapshotHasScanned: true),
                 appState: AppState()
@@ -361,6 +365,41 @@ struct SnapshotRenderer {
             item("Homebrew/downloads", 980_000_000, "Developer Cache", 9),
             item("com.apple.appstore", 312_000_000, "System Cache", 14),
             item("CrashReporter/diagnostics", 94_000_000, "System Logs", 21),
+        ]
+    }
+
+    /// Populated Mail Attachments rows with dated and unavailable metadata. The
+    /// long Outlook path verifies the exact location remains readable and
+    /// selectable instead of being silently truncated.
+    @MainActor
+    static func sampleMailAttachmentItems() -> [CleanupItem] {
+        [
+            CleanupItem(
+                id: UUID(),
+                path: URL(
+                    fileURLWithPath:
+                        "/Users/you/Library/Group Containers/UBF8T346G9.Office/Outlook/"
+                        + "Outlook 15 Profiles/Main Profile/Data/Attachments/"
+                        + "quarterly-planning-review-final.pdf"
+                ),
+                size: 8_400_000,
+                type: .file,
+                module: "mail-attachments",
+                moduleName: "Microsoft Outlook - Documents",
+                lastModified: nil
+            ),
+            CleanupItem(
+                id: UUID(),
+                path: URL(
+                    fileURLWithPath:
+                        "/Users/you/Library/Mail Downloads/product-demo.mov"
+                ),
+                size: 42_000_000,
+                type: .file,
+                module: "mail-attachments",
+                moduleName: "Apple Mail - Videos",
+                lastModified: daysAgo(12)
+            )
         ]
     }
 
