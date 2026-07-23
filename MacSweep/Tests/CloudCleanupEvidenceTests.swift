@@ -13,7 +13,11 @@ struct CloudCleanupEvidenceTests {
             contentModificationDate: modificationDate
         )
 
-        let evidence = CloudCleanupEvidence(item: item)
+        let evidence = CleanupResultEvidence(
+            item: item,
+            modificationDate: item.contentModificationDate,
+            defaultReviewReason: CloudCleanupModule.defaultCleanupReviewReason(for: item)
+        )
 
         #expect(evidence.path == item.path.path)
         #expect(evidence.formattedSize == item.formattedSize)
@@ -30,7 +34,11 @@ struct CloudCleanupEvidenceTests {
             lastModified: activityDate
         )
 
-        let evidence = CloudCleanupEvidence(item: item)
+        let evidence = CleanupResultEvidence(
+            item: item,
+            modificationDate: item.contentModificationDate,
+            defaultReviewReason: CloudCleanupModule.defaultCleanupReviewReason(for: item)
+        )
 
         #expect(evidence.path == item.path.path)
         #expect(evidence.formattedSize == item.formattedSize)
@@ -46,7 +54,11 @@ struct CloudCleanupEvidenceTests {
             cleanupReviewReason: "Review this cache before reclaiming it."
         )
 
-        let evidence = CloudCleanupEvidence(item: item)
+        let evidence = CleanupResultEvidence(
+            item: item,
+            modificationDate: item.contentModificationDate,
+            defaultReviewReason: CloudCleanupModule.defaultCleanupReviewReason(for: item)
+        )
 
         #expect(evidence.reviewReason == "Review this cache before reclaiming it.")
     }

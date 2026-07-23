@@ -357,6 +357,34 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Presentation-ready metadata shared by populated cleanup result rows.
+///
+/// Modules supply the timestamp and fallback rationale because those remain
+/// domain-specific, while path, size, custom-reason precedence, and the
+/// unavailable-date contract stay consistent across every cleanup surface.
+struct CleanupResultEvidence: Equatable, Sendable {
+    enum Modification: Equatable, Sendable {
+        case date(Date)
+        case unavailable
+    }
+
+    let path: String
+    let formattedSize: String
+    let modification: Modification
+    let reviewReason: String
+
+    init(
+        item: CleanupItem,
+        modificationDate: Date?,
+        defaultReviewReason: String
+    ) {
+        path = item.path.path
+        formattedSize = item.formattedSize
+        modification = modificationDate.map(Modification.date) ?? .unavailable
+        reviewReason = item.cleanupReviewReason ?? defaultReviewReason
+    }
+}
+
 /// A review-only cluster of related personal files with exactly one protected
 /// keeper. Feature pages may change the keeper, but cleanup selection must
 /// always exclude it so a group can never be emptied accidentally.

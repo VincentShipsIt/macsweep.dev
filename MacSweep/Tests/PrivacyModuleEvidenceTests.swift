@@ -65,8 +65,16 @@ final class PrivacyModuleEvidenceTests {
             moduleName: "Recent Documents"
         )
 
-        let datedEvidence = PrivacyItemEvidence(item: dated)
-        let fallbackEvidence = PrivacyItemEvidence(item: missingMetadata)
+        let datedEvidence = CleanupResultEvidence(
+            item: dated,
+            modificationDate: dated.lastModified,
+            defaultReviewReason: PrivacyModule.cleanupReviewReason
+        )
+        let fallbackEvidence = CleanupResultEvidence(
+            item: missingMetadata,
+            modificationDate: missingMetadata.lastModified,
+            defaultReviewReason: PrivacyModule.cleanupReviewReason
+        )
 
         #expect(datedEvidence.path == dated.path.path)
         #expect(datedEvidence.formattedSize == dated.formattedSize)

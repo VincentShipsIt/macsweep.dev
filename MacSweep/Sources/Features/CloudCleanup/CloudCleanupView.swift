@@ -212,8 +212,12 @@ private struct CloudCleanupRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
-    private var evidence: CloudCleanupEvidence {
-        CloudCleanupEvidence(item: item)
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(
+            item: item,
+            modificationDate: item.contentModificationDate,
+            defaultReviewReason: CloudCleanupModule.defaultCleanupReviewReason(for: item)
+        )
     }
 
     var body: some View {
@@ -230,7 +234,10 @@ private struct CloudCleanupRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                modificationEvidence
+                CleanupModificationEvidenceLabel(
+                    modification: evidence.modification,
+                    showsModifiedPrefix: true
+                )
 
                 Text(evidence.path)
                     .font(.caption2)
@@ -259,28 +266,6 @@ private struct CloudCleanupRow: View {
         }
     }
 
-    private var modificationEvidence: some View {
-        Group {
-            switch evidence.modification {
-            case .date(let date):
-                Label {
-                    HStack(spacing: 4) {
-                        Text("Modified")
-                        Text(date, style: .date)
-                    }
-                } icon: {
-                    Image(systemName: "calendar")
-                }
-            case .unavailable:
-                Label(
-                    "Modified date unavailable",
-                    systemImage: "calendar.badge.exclamationmark"
-                )
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.tertiary)
-    }
 }
 
 #if !SWIFT_PACKAGE
