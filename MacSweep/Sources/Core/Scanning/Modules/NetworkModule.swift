@@ -70,9 +70,11 @@ struct WiFiNetworkManager {
 
     /// Get list of saved WiFi networks on the primary interface.
     /// Delegates to `savedNetworks(interface:)` so the bounded subprocess and
-    /// parsing behavior have a single implementation.
+    /// parsing behavior have a single implementation. Callers that need the
+    /// connected marker pass their already-captured SSID explicitly; count and
+    /// lookup callers avoid an otherwise-unused CoreWLAN query.
     static func savedNetworks(
-        currentSSID: String? = getCurrentSSID()
+        currentSSID: String? = nil
     ) async -> [SavedWiFiNetwork] {
         await savedNetworks(interface: wifiInterface, currentSSID: currentSSID)
     }
