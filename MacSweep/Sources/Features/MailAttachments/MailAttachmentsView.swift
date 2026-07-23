@@ -36,7 +36,9 @@ struct MailAttachmentsView: View {
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanAttachments() } }
+                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) {
+                    Task { await scanAttachments() }
+                }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -61,9 +63,15 @@ struct MailAttachmentsView: View {
                         }
 
                         EmptyResultState(
-                            icon: "checkmark.circle",
-                            title: "No mail attachments found",
-                            message: "No downloaded attachments matched the current size threshold.",
+                            icon: appState.hasFullDiskAccess ? "checkmark.circle" : "exclamationmark.shield",
+                            title: appState.hasFullDiskAccess
+                                ? "No mail attachments found"
+                                : "Apple Mail scan incomplete",
+                            message: appState.hasFullDiskAccess
+                                ? "No downloaded attachments matched the current size threshold."
+                                : "Grant Full Disk Access to verify Apple Mail. "
+                                    + "Other supported mail apps were still scanned.",
+                            iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
                             actionTitle: "Scan Again",
                             action: { Task { await scanAttachments() } }
                         )
@@ -76,8 +84,18 @@ struct MailAttachmentsView: View {
                         description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
                         ctaTitle: "Scan Mail Attachments",
                         benefits: [
-                            ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
-                            ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
+                            ScanBenefit(
+                                "tray.full",
+                                "Recovers buried space",
+                                "Surfaces large attachments downloaded across Apple Mail, Outlook, "
+                                    + "Spark, and Thunderbird so you can clear the heaviest ones first."
+                            ),
+                            ScanBenefit(
+                                "envelope.badge.shield.half.filled",
+                                "Your emails stay intact",
+                                "Only the cached attachment files are removed. "
+                                    + "The original messages remain untouched and can re-download on demand."
+                            )
                         ],
                         illustration: "paperclip",
                         isScanning: model.isScanning,

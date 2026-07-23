@@ -5,6 +5,7 @@ enum FullDiskAccessScope {
     case smartCare
     case systemData
     case mail
+    case trash
     case safari
 
     var title: String {
@@ -15,6 +16,8 @@ enum FullDiskAccessScope {
             return "Full Disk Access is required for system data"
         case .mail:
             return "Full Disk Access is required for Apple Mail"
+        case .trash:
+            return "Full Disk Access is required for Trash"
         case .safari:
             return "Full Disk Access is required for Safari"
         }
@@ -28,6 +31,9 @@ enum FullDiskAccessScope {
             return "Without access, protected system caches and logs are skipped, so an empty or smaller result may be incomplete."
         case .mail:
             return "Without access, Apple Mail attachments are skipped. Attachments from other supported mail apps may still appear."
+        case .trash:
+            return "Without access, macOS blocks MacSweep from listing your Trash, "
+                + "so an empty result cannot be verified."
         case .safari:
             return "Without access, Safari history and website data are skipped. Data from other supported browsers may still appear."
         }

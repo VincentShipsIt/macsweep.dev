@@ -7,6 +7,8 @@ struct FullDiskAccessScopeTests {
     func scopedWarningsAreSpecific() {
         #expect(FullDiskAccessScope.mail.title.contains("Apple Mail"))
         #expect(FullDiskAccessScope.mail.detail.contains("skipped"))
+        #expect(FullDiskAccessScope.trash.title.contains("Trash"))
+        #expect(FullDiskAccessScope.trash.detail.contains("cannot be verified"))
         #expect(FullDiskAccessScope.safari.title.contains("Safari"))
         #expect(FullDiskAccessScope.safari.detail.contains("other supported browsers"))
         #expect(FullDiskAccessScope.systemData.title.contains("system data"))

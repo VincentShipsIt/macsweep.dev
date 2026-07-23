@@ -13,19 +13,17 @@ struct TrashBinsModule: ScanModule {
 
         // User's main Trash
         let userTrash = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".Trash")
-        if let trashItems = await scanTrashBin(at: userTrash, name: "User Trash") {
-            items.append(contentsOf: trashItems)
-        }
+        items.append(contentsOf: try await scanTrashBin(at: userTrash, name: "User Trash"))
 
         // Volume trash bins (external drives, etc.)
-        let volumeTrashItems = await scanVolumeTrashBins()
+        let volumeTrashItems = try await scanVolumeTrashBins()
         items.append(contentsOf: volumeTrashItems)
 
         return items.sorted { $0.size > $1.size }
     }
 
-    private func scanTrashBin(at url: URL, name: String) async -> [CleanupItem]? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    func scanTrashBin(at url: URL, name: String) async throws -> [CleanupItem] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
 
         var items: [CleanupItem] = []
 
@@ -34,11 +32,11 @@ struct TrashBinsModule: ScanModule {
         // them understates the reported size and leaves them behind on cleanup, so
         // the Trash looks only partially emptied. SafetyChecker still gates each
         // path by component.
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        let contents = try FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .contentModificationDateKey],
             options: []
-        ) else { return nil }
+        )
 
         for itemURL in contents {
             let size = (try? await DiskAnalyzer.size(of: itemURL)) ?? 0
@@ -58,7 +56,7 @@ struct TrashBinsModule: ScanModule {
         return items
     }
 
-    private func scanVolumeTrashBins() async -> [CleanupItem] {
+    private func scanVolumeTrashBins() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
 
         // Get mounted volumes
@@ -76,15 +74,17 @@ struct TrashBinsModule: ScanModule {
             guard FileManager.default.fileExists(atPath: trashPath.path) else { continue }
 
             // Get volume name
-            let volumeName = (try? volumeURL.resourceValues(forKeys: [.volumeNameKey]))?.volumeName ?? volumeURL.lastPathComponent
+            let volumeName = (try? volumeURL.resourceValues(forKeys: [.volumeNameKey]))?.volumeName
+                ?? volumeURL.lastPathComponent
 
             // Look for user-specific trash folder (named by UID)
             let uid = getuid()
             let userTrashPath = trashPath.appending(path: "\(uid)")
 
-            if let trashItems = await scanTrashBin(at: userTrashPath, name: "\(volumeName) Trash") {
-                items.append(contentsOf: trashItems)
-            }
+            items.append(contentsOf: try await scanTrashBin(
+                at: userTrashPath,
+                name: "\(volumeName) Trash"
+            ))
         }
 
         return items

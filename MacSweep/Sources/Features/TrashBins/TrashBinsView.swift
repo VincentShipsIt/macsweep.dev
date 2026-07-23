@@ -88,12 +88,23 @@ struct TrashBinsView: View {
                             description: "Find what's sitting in your trash bins across all volumes before emptying.",
                             ctaTitle: "Scan Trash Bins",
                             benefits: [
-                                ScanBenefit("externaldrive.badge.xmark", "Every bin in one place", "Gathers what's sitting in trash across all your volumes and drives so nothing is forgotten."),
-                                ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
+                                ScanBenefit(
+                                    "externaldrive.badge.xmark",
+                                    "Every bin in one place",
+                                    "Gathers what's sitting in trash across all your volumes and drives "
+                                        + "so nothing is forgotten."
+                                ),
+                                ScanBenefit(
+                                    "arrow.uturn.backward",
+                                    "Reclaim before you delete",
+                                    "Review each item and put anything back to its original spot "
+                                        + "until you confirm it's gone for good."
+                                )
                             ],
                             illustration: "trash",
                             isScanning: model.isScanning,
                             scanningMessage: "Scanning trash bins",
+                            permissionWarning: appState.hasFullDiskAccess ? nil : .trash,
                             action: { Task { await scanTrash() } }
                         )
                         .transition(.scanCrossfade)
@@ -164,11 +175,21 @@ struct TrashBinsView: View {
         )
     }
 
+    @ViewBuilder
     private var emptyTrashState: some View {
+        if !appState.hasFullDiskAccess {
+            FullDiskAccessWarningBanner(scope: .trash)
+                .padding(.horizontal)
+                .padding(.top, 12)
+        }
+
         EmptyResultState(
-            icon: "checkmark.circle",
-            title: "Trash bins are empty",
-            message: "No cleanable items were found in your Trash bins.",
+            icon: appState.hasFullDiskAccess ? "checkmark.circle" : "exclamationmark.shield",
+            title: appState.hasFullDiskAccess ? "Trash bins are empty" : "Trash scan incomplete",
+            message: appState.hasFullDiskAccess
+                ? "No cleanable items were found in your Trash bins."
+                : "Grant Full Disk Access so MacSweep can verify what is currently in Trash.",
+            iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
             actionTitle: "Scan Again",
             action: { Task { await scanTrash() } }
         )
