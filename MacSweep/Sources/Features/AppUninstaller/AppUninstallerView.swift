@@ -12,16 +12,10 @@ struct AppUninstallerView: View {
     @State private var showingCleanOrphansConfirmation = false
     @State private var isCleaningOrphans = false
     @State private var errorMessage: String?
-    @State private var sortOrder: SortOrder = .name
+    @State private var sortOrder: AppUninstallerSortOrder = .name
     // Follow-up: adopt the shared `animated(_:value:)` reduce-motion helper from
     // App/Motion.swift once the "Animate scan lifecycle" work merges it in.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    enum SortOrder: String, CaseIterable {
-        case name = "Name"
-        case size = "Size"
-        case lastUsed = "Last Used"
-    }
 
     /// When true, the auto-load `.task` is skipped so injected snapshot data isn't
     /// immediately overwritten by a real disk scan. Always false in production.
@@ -103,7 +97,7 @@ struct AppUninstallerView: View {
 
                 // Sort
                 Picker("Sort by", selection: $sortOrder) {
-                    ForEach(SortOrder.allCases, id: \.self) { order in
+                    ForEach(AppUninstallerSortOrder.allCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -308,27 +302,7 @@ struct AppUninstallerView: View {
     // MARK: - Computed
 
     private var filteredApps: [InstalledApp] {
-        var result = apps
-
-        // Filter by search
-        if !searchText.isEmpty {
-            result = result.filter {
-                $0.name.localizedCaseInsensitiveContains(searchText) ||
-                $0.id.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-
-        // Sort
-        switch sortOrder {
-        case .name:
-            result.sort { $0.name.localizedCompare($1.name) == .orderedAscending }
-        case .size:
-            result.sort { $0.totalSize > $1.totalSize }
-        case .lastUsed:
-            result.sort { ($0.lastUsed ?? .distantPast) > ($1.lastUsed ?? .distantPast) }
-        }
-
-        return result
+        apps.appList(matching: searchText, sortedBy: sortOrder)
     }
 
     private var orphanCleanupItems: [CleanupItem] {
