@@ -74,7 +74,8 @@ struct CloudCleanupModule: ScanModule {
                     type: .file,
                     module: id,
                     moduleName: "\(provider) Local Copy",
-                    lastModified: activityDate
+                    lastModified: activityDate,
+                    contentModificationDate: values?.contentModificationDate
                 ))
 
                 if items.count >= maxResults {
@@ -169,7 +170,7 @@ struct CloudCleanupEvidence: Equatable, Sendable {
     init(item: CleanupItem) {
         path = item.path.path
         formattedSize = item.formattedSize
-        modification = item.lastModified.map(Modification.date) ?? .unavailable
+        modification = item.contentModificationDate.map(Modification.date) ?? .unavailable
         reviewReason = item.cleanupReviewReason ?? Self.defaultReviewReason(for: item)
     }
 

@@ -381,7 +381,8 @@ struct SnapshotRenderer {
                 type: .file,
                 module: "cloud-cleanup",
                 moduleName: "iCloud Local Copy",
-                lastModified: daysAgo(45)
+                lastModified: daysAgo(45),
+                contentModificationDate: daysAgo(50)
             ),
             CleanupItem(
                 id: UUID(),
