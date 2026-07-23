@@ -10,13 +10,7 @@ struct OptimizationView: View {
     @State private var showingQuitConfirmation = false
     @State private var isFreezingRAM = false
     @State private var ramResult: MaintenanceResult?
-    @State private var sortOrder: ProcessSortOrder = .memory
-
-    enum ProcessSortOrder: String, CaseIterable {
-        case memory = "Memory"
-        case cpu = "CPU"
-        case name = "Name"
-    }
+    @State private var sortOrder: RunningProcessSortOrder = .memory
 
     var body: some View {
         FeaturePageShell(
@@ -79,7 +73,7 @@ struct OptimizationView: View {
                 Spacer()
 
                 Picker("Sort by", selection: $sortOrder) {
-                    ForEach(ProcessSortOrder.allCases, id: \.self) { order in
+                    ForEach(RunningProcessSortOrder.allCases, id: \.self) { order in
                         Text(order.rawValue).tag(order)
                     }
                 }
@@ -233,14 +227,7 @@ struct OptimizationView: View {
     // MARK: - Computed
 
     private var sortedProcesses: [RunningProcess] {
-        switch sortOrder {
-        case .memory:
-            return processMonitor.processes.sorted { $0.memoryMB > $1.memoryMB }
-        case .cpu:
-            return processMonitor.processes.sorted { $0.cpuPercent > $1.cpuPercent }
-        case .name:
-            return processMonitor.processes.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-        }
+        processMonitor.processes.sorted(using: sortOrder)
     }
 
 }
