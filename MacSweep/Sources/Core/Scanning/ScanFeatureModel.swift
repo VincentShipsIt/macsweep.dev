@@ -41,6 +41,12 @@ final class ScanFeatureModel: ObservableObject {
     /// The user's selection within `items`.
     @Published var selectedItems: Set<CleanupItem.ID> = []
 
+    /// Review groups and keeper choices used by the duplicate-file and
+    /// similar-photo pages. They live with the scan session so navigating away
+    /// during a scan cannot detach the results from their review metadata.
+    @Published var reviewGroups: [FileReviewGroup] = []
+    @Published var keeperIDs: [FileReviewGroup.ID: CleanupItem.ID] = [:]
+
     /// Drives the pre-deletion confirmation dialog.
     @Published var showingConfirmation = false
 
@@ -235,4 +241,23 @@ final class ScanFeatureModel: ObservableObject {
         errorMessage = result.failureSummaryMessage
         return result
     }
+}
+
+/// App-lifetime scan sessions for feature pages whose views are recreated when
+/// sidebar navigation changes. A page reconnects to the same model when the
+/// user returns, so an in-flight scan keeps running and completed results remain
+/// available instead of falling back to onboarding.
+@MainActor
+final class FeatureScanSessions {
+    static let shared = FeatureScanSessions()
+
+    let mailAttachments = ScanFeatureModel()
+    let trashBins = ScanFeatureModel()
+    let cloudCleanup = ScanFeatureModel()
+    let privacy = ScanFeatureModel()
+    let largeFiles = ScanFeatureModel()
+    let duplicateFiles = ScanFeatureModel()
+    let similarPhotos = ScanFeatureModel()
+
+    private init() {}
 }

@@ -7,7 +7,7 @@ struct TrashBinsView: View {
     /// Shared scan/selection/cleanup state machine — replaces the hand-rolled
     /// `isScanning`/`trashItems`/`selectedItems`/`showingConfirmation`/`hasScanned`/
     /// `errorMessage` cluster this view used to declare inline.
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
 
     /// Trash-specific state that isn't part of the shared scan machine: the
     /// live bin summary (refreshed alongside every scan) and the "empty all"
@@ -22,6 +22,7 @@ struct TrashBinsView: View {
 
     /// Default production initializer — auto-scans on appear when Trash isn't empty.
     init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.trashBins)
         disableAutoLoad = false
     }
 
@@ -56,7 +57,7 @@ struct TrashBinsView: View {
                 } label: {
                     Label("Empty All Trash", systemImage: "trash.slash")
                 }
-                .disabled(model.items.isEmpty || model.isScanning)
+                .disabled(model.items.isEmpty || model.isScanning || !appState.hasFullDiskAccess)
                 .cleanupReview(
                     isPresented: $showingEmptyAllConfirmation,
                     items: model.items,
@@ -87,18 +88,34 @@ struct TrashBinsView: View {
                             description: "Find what's sitting in your trash bins across all volumes before emptying.",
                             ctaTitle: "Scan Trash Bins",
                             benefits: [
-                                ScanBenefit("externaldrive.badge.xmark", "Every bin in one place", "Gathers what's sitting in trash across all your volumes and drives so nothing is forgotten."),
-                                ScanBenefit("arrow.uturn.backward", "Reclaim before you delete", "Review each item and put anything back to its original spot until you confirm it's gone for good."),
+                                ScanBenefit(
+                                    "externaldrive.badge.xmark",
+                                    "Every bin in one place",
+                                    "Gathers what's sitting in trash across all your volumes and drives "
+                                        + "so nothing is forgotten."
+                                ),
+                                ScanBenefit(
+                                    "arrow.uturn.backward",
+                                    "Reclaim before you delete",
+                                    "Review each item and put anything back to its original spot "
+                                        + "until you confirm it's gone for good."
+                                )
                             ],
                             illustration: "trash",
                             isScanning: model.isScanning,
                             scanningMessage: "Scanning trash bins",
+                            permissionWarning: appState.hasFullDiskAccess ? nil : .trash,
                             action: { Task { await scanTrash() } }
                         )
                         .transition(.scanCrossfade)
                     }
                 } else {
                     Group {
+                    if !appState.hasFullDiskAccess {
+                        FullDiskAccessWarningBanner(scope: .trash)
+                            .padding(.horizontal)
+                            .padding(.top, 12)
+                    }
                     trashList
                     footer
                     }
@@ -113,7 +130,11 @@ struct TrashBinsView: View {
         .task {
             if !disableAutoLoad { await loadTrashSummary() }
         }
-        .onDisappear { model.cancelScan() }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            model.showingConfirmation = false
+            showingEmptyAllConfirmation = false
+        }
     }
 
     // MARK: - Trash List
@@ -143,6 +164,7 @@ struct TrashBinsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     // MARK: - Footer
@@ -153,9 +175,10 @@ struct TrashBinsView: View {
             summary: "Will permanently delete \(selectedSize)",
             onSelectAll: { model.selectAll(model.items) },
             actionTitle: "Delete Selected",
-            actionDisabled: model.selectedItems.isEmpty,
+            actionDisabled: model.selectedItems.isEmpty || !appState.hasFullDiskAccess,
             onAction: { model.showingConfirmation = true }
         )
+        .disabled(!appState.hasFullDiskAccess)
         .cleanupReview(
             isPresented: $model.showingConfirmation,
             items: selectedTrashItems,
@@ -164,12 +187,23 @@ struct TrashBinsView: View {
         )
     }
 
+    @ViewBuilder
     private var emptyTrashState: some View {
+        if !appState.hasFullDiskAccess {
+            FullDiskAccessWarningBanner(scope: .trash)
+                .padding(.horizontal)
+                .padding(.top, 12)
+        }
+
         EmptyResultState(
-            icon: "checkmark.circle",
-            title: "Trash bins are empty",
-            message: "No cleanable items were found in your Trash bins.",
+            icon: appState.hasFullDiskAccess ? "checkmark.circle" : "exclamationmark.shield",
+            title: appState.hasFullDiskAccess ? "Trash bins are empty" : "Trash scan incomplete",
+            message: appState.hasFullDiskAccess
+                ? "No cleanable items were found in your Trash bins."
+                : "Grant Full Disk Access so MacSweep can verify what is currently in Trash.",
+            iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
             actionTitle: "Scan Again",
+            actionDisabled: !appState.hasFullDiskAccess,
             action: { Task { await scanTrash() } }
         )
     }
@@ -177,6 +211,11 @@ struct TrashBinsView: View {
     // MARK: - Actions
 
     private func loadTrashSummary() async {
+        guard appState.hasFullDiskAccess else {
+            trashSummary = nil
+            return
+        }
+
         trashSummary = await TrashSummary.current()
 
         // Auto-scan if there are items
@@ -186,6 +225,10 @@ struct TrashBinsView: View {
     }
 
     private func scanTrash() async {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return
+        }
         guard !model.isScanning else { return }
 
         // Trash starts with nothing selected — the user opts into what to delete —
@@ -204,6 +247,11 @@ struct TrashBinsView: View {
     }
 
     private func deleteSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return nil
+        }
+
         let itemsToDelete = selectedTrashItems
         var deletionError: String?
         var cleanupResult: CleanupResult?
@@ -237,6 +285,10 @@ struct TrashBinsView: View {
     }
 
     private func emptyAllTrash() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.trash.actionBlockedMessage
+            return nil
+        }
         guard !model.isScanning else { return nil }
 
         // Finder-driven bulk empty, not a scan: drive the shared flags directly.

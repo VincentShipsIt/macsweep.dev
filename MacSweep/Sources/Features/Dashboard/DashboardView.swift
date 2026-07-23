@@ -51,6 +51,7 @@ struct DashboardView: View {
                     if !appState.scanFailures.isEmpty {
                         PartialScanStatusRow(
                             failures: appState.scanFailures,
+                            isRetryDisabled: !appState.hasFullDiskAccess,
                             retry: {
                                 Task { await appState.retryLastScan() }
                             },
@@ -84,6 +85,7 @@ struct DashboardView: View {
                     }
 
                     cleanupReviewRows
+                        .disabled(!appState.hasFullDiskAccess)
                 }
 
                 if let summary = appState.smartCareSummary, !summary.recommendedFindings.isEmpty {
@@ -161,24 +163,35 @@ struct DashboardView: View {
                 }
             }
         }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            showingConfirmation = false
+        }
         .cleanupReview(
             isPresented: $showingConfirmation,
             items: recommendedCleanupItems,
             disposition: .mixed,
             note: "Recommended items remain separated from review-only personal files. "
                 + "Every path is checked again immediately before its module runs.",
-            onConfirm: {
-                // Apply the reviewed recommended set to the shared selection only
-                // on confirm — Cancel must never clobber a curated selection.
-                appState.selectedItems = recommendedItemsToClean
-                return try? await appState.deleteSelected(confirmedLargeDeletion: true)
-            }
+            onConfirm: { await cleanRecommended() }
         )
         .onChange(of: showingConfirmation) { _, isPresented in
             if !isPresented {
                 recommendedItemsToClean = []
             }
         }
+    }
+
+    private func cleanRecommended() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            appState.lastDeletionError = FullDiskAccessScope.smartCare.actionBlockedMessage
+            return nil
+        }
+
+        // Apply the reviewed recommended set to the shared selection only
+        // on confirm — Cancel must never clobber a curated selection.
+        appState.selectedItems = recommendedItemsToClean
+        return try? await appState.deleteSelected(confirmedLargeDeletion: true)
     }
 
     /// Snapshot of which conditional status rows/sections are currently visible.
@@ -209,7 +222,7 @@ struct DashboardView: View {
         } label: {
             Image(systemName: appState.isScanning ? "hourglass" : "arrow.clockwise")
         }
-        .disabled(appState.isScanning)
+        .disabled(appState.isScanning || !appState.hasFullDiskAccess)
         .help(scanButtonTitle)
     }
 
@@ -219,7 +232,7 @@ struct DashboardView: View {
         } label: {
             Image(systemName: "trash")
         }
-        .disabled(!hasRecommendedCleanup || appState.isScanning)
+        .disabled(!hasRecommendedCleanup || appState.isScanning || !appState.hasFullDiskAccess)
         .help("Clean Recommended")
     }
 
@@ -435,7 +448,8 @@ struct DashboardView: View {
             title: "Run Deep Scan",
             detail: "Find junk files, caches, and large files.",
             buttonTitle: "Scan",
-            isLoading: appState.isScanning
+            isLoading: appState.isScanning,
+            isDisabled: !appState.hasFullDiskAccess
         ) {
             Task {
                 await appState.scan()
@@ -815,6 +829,7 @@ struct DashboardView: View {
 
 private struct PartialScanStatusRow: View {
     let failures: [ModuleScanFailure]
+    let isRetryDisabled: Bool
     let retry: () -> Void
     let openFullDiskAccess: () -> Void
     let copyDetails: () -> Void
@@ -852,6 +867,7 @@ private struct PartialScanStatusRow: View {
                     Button("Open Full Disk Access", action: openFullDiskAccess)
                 }
                 Button("Retry", action: retry)
+                    .disabled(isRetryDisabled)
                 Button("Copy Details", action: copyDetails)
             }
             .buttonStyle(.borderless)
@@ -927,6 +943,7 @@ struct RecommendationRow: View {
     let detail: String
     let buttonTitle: String
     var isLoading = false
+    var isDisabled = false
     let action: () -> Void
 
     var body: some View {
@@ -958,7 +975,7 @@ struct RecommendationRow: View {
                 }
             }
             .glassButton()
-            .disabled(isLoading)
+            .disabled(isLoading || isDisabled)
         }
         .padding(.vertical, 4)
     }

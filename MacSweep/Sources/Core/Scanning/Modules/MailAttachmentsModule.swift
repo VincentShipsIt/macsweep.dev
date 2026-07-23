@@ -19,10 +19,13 @@ struct MailAttachmentsModule: ScanModule {
     /// name reflects the actual behaviour.
     var minAgeDays: Int? = nil
 
+    /// Injection seam for location-discovery and scan tests.
+    var homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
 
-        let attachmentLocations = getAttachmentLocations()
+        let attachmentLocations = Self.attachmentLocations(homeDirectory: homeDirectory)
 
         for location in attachmentLocations {
             let found = await scanLocation(location)
@@ -37,9 +40,11 @@ struct MailAttachmentsModule: ScanModule {
         return Array(uniqueItems).sorted { $0.size > $1.size }
     }
 
-    private func getAttachmentLocations() -> [AttachmentLocation] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let library = home.appending(path: "Library")
+    static func attachmentLocations(
+        homeDirectory: URL,
+        fileManager: FileManager = .default
+    ) -> [AttachmentLocation] {
+        let library = homeDirectory.appending(path: "Library")
 
         var locations: [AttachmentLocation] = []
 
@@ -60,7 +65,7 @@ struct MailAttachmentsModule: ScanModule {
         // each macOS release, so hardcoding one version misses everyone on a
         // different OS. Enumerate every V<number> dir present instead.
         let mailRoot = library.appending(path: "Mail")
-        if let mailVersions = try? FileManager.default.contentsOfDirectory(
+        if let mailVersions = try? fileManager.contentsOfDirectory(
             at: mailRoot,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) {
@@ -89,7 +94,18 @@ struct MailAttachmentsModule: ScanModule {
 
         // Spark
         locations.append(AttachmentLocation(
-            path: library.appending(path: "Containers/com.readdle.smartemail-Mac/Data/Library/Application Support/Spark/Attachments"),
+            path: library.appending(
+                path: "Containers/com.readdle.smartemail-Mac/Data/Library/Application Support/Spark/Attachments"
+            ),
+            source: "Spark"
+        ))
+
+        // Spark Desktop 3 is an Electron app and no longer uses the legacy
+        // sandbox-container location above. Keep this scoped to Spark's
+        // dedicated attachment cache: the rest of "Spark Desktop" contains
+        // message databases and generic web caches that are not attachments.
+        locations.append(AttachmentLocation(
+            path: library.appending(path: "Application Support/Spark Desktop/core-data/attachments"),
             source: "Spark"
         ))
 
@@ -101,8 +117,11 @@ struct MailAttachmentsModule: ScanModule {
 
         // Thunderbird
         let thunderbirdProfiles = library.appending(path: "Thunderbird/Profiles")
-        if FileManager.default.fileExists(atPath: thunderbirdProfiles.path) {
-            if let profiles = try? FileManager.default.contentsOfDirectory(at: thunderbirdProfiles, includingPropertiesForKeys: nil) {
+        if fileManager.fileExists(atPath: thunderbirdProfiles.path) {
+            if let profiles = try? fileManager.contentsOfDirectory(
+                at: thunderbirdProfiles,
+                includingPropertiesForKeys: nil
+            ) {
                 for profile in profiles {
                     locations.append(AttachmentLocation(
                         path: profile.appending(path: "ImapMail"),

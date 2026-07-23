@@ -3,7 +3,7 @@ import SwiftUI
 /// View for managing mail attachments
 struct MailAttachmentsView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
     @State private var filterSource: String? = nil
     @State private var filterType: String? = nil
     @State private var sizeThreshold: Double = 1  // MB
@@ -11,7 +11,9 @@ struct MailAttachmentsView: View {
     /// Derived from the current results, so it always reflects the live list.
     private var stats: MailStats? { MailStats.from(items: model.items) }
 
-    init() {}
+    init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.mailAttachments)
+    }
 
     /// Seeds the shared model for deterministic headless snapshots without
     /// reading live Mail data.
@@ -34,7 +36,13 @@ struct MailAttachmentsView: View {
             title: "Mail Attachments",
             subtitle: "Reclaim space from downloaded email attachments.",
             trailing: model.items.isEmpty ? nil : AnyView(
-                RescanButton(isScanning: model.isScanning, usesNativeToolbarStyle: true) { Task { await scanAttachments() } }
+                RescanButton(
+                    isScanning: model.isScanning,
+                    isDisabled: !appState.hasFullDiskAccess,
+                    usesNativeToolbarStyle: true
+                ) {
+                    Task { await scanAttachments() }
+                }
             ),
             hidesChrome: model.items.isEmpty,
             scrolls: model.items.isEmpty
@@ -59,10 +67,16 @@ struct MailAttachmentsView: View {
                         }
 
                         EmptyResultState(
-                            icon: "checkmark.circle",
-                            title: "No mail attachments found",
-                            message: "No downloaded attachments matched the current size threshold.",
+                            icon: appState.hasFullDiskAccess ? "checkmark.circle" : "exclamationmark.shield",
+                            title: appState.hasFullDiskAccess
+                                ? "No mail attachments found"
+                                : "Apple Mail scan incomplete",
+                            message: appState.hasFullDiskAccess
+                                ? "No downloaded attachments matched the current size threshold."
+                                : "Grant Full Disk Access before scanning all supported mail apps.",
+                            iconColor: appState.hasFullDiskAccess ? MacSweepTheme.accent : .orange,
                             actionTitle: "Scan Again",
+                            actionDisabled: !appState.hasFullDiskAccess,
                             action: { Task { await scanAttachments() } }
                         )
                     }
@@ -74,8 +88,18 @@ struct MailAttachmentsView: View {
                         description: "Find downloaded attachments across Apple Mail, Outlook, Spark, and more.",
                         ctaTitle: "Scan Mail Attachments",
                         benefits: [
-                            ScanBenefit("tray.full", "Recovers buried space", "Surfaces large attachments downloaded across Apple Mail, Outlook, Spark, and Thunderbird so you can clear the heaviest ones first."),
-                            ScanBenefit("envelope.badge.shield.half.filled", "Your emails stay intact", "Only the cached attachment files are removed. The original messages remain untouched and can re-download on demand."),
+                            ScanBenefit(
+                                "tray.full",
+                                "Recovers buried space",
+                                "Surfaces large attachments downloaded across Apple Mail, Outlook, "
+                                    + "Spark, and Thunderbird so you can clear the heaviest ones first."
+                            ),
+                            ScanBenefit(
+                                "envelope.badge.shield.half.filled",
+                                "Your emails stay intact",
+                                "Only the cached attachment files are removed. "
+                                    + "The original messages remain untouched and can re-download on demand."
+                            )
                         ],
                         illustration: "paperclip",
                         isScanning: model.isScanning,
@@ -108,7 +132,10 @@ struct MailAttachmentsView: View {
             .animated(.scanCrossfade, value: scanPhase)
             }
         }
-        .onDisappear { model.cancelScan() }
+        .onChange(of: appState.hasFullDiskAccess) {
+            guard !appState.hasFullDiskAccess else { return }
+            model.showingConfirmation = false
+        }
     }
 
     private var scanPhase: ScanPhase {
@@ -194,6 +221,7 @@ struct MailAttachmentsView: View {
         }
         .listStyle(.inset)
         .macSweepListSurface()
+        .disabled(!appState.hasFullDiskAccess)
     }
 
     // MARK: - Footer
@@ -204,9 +232,10 @@ struct MailAttachmentsView: View {
             summary: "Will free \(selectedSize)",
             onSelectAll: { model.selectAll(filteredAttachments) },
             actionTitle: "Move to Trash",
-            actionDisabled: model.selectedItems.isEmpty,
+            actionDisabled: model.selectedItems.isEmpty || !appState.hasFullDiskAccess,
             onAction: { model.showingConfirmation = true }
         )
+        .disabled(!appState.hasFullDiskAccess)
         .cleanupReview(
             isPresented: $model.showingConfirmation,
             items: selectedAttachments,
@@ -219,6 +248,11 @@ struct MailAttachmentsView: View {
     // MARK: - Actions
 
     private func scanAttachments() async {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.mail.actionBlockedMessage
+            return
+        }
+
         let threshold = Int64(sizeThreshold * 1_048_576)
         await model.scan(
             selectAllOnCompletion: false,
@@ -232,10 +266,17 @@ struct MailAttachmentsView: View {
     }
 
     private func deleteSelected() async -> CleanupResult? {
+        guard appState.hasFullDiskAccess else {
+            model.errorMessage = FullDiskAccessScope.mail.actionBlockedMessage
+            return nil
+        }
+
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // `stats` recomputes automatically from the pruned list.
-        await model.clean(selectedAttachments) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
+        return await model.clean(selectedAttachments) {
+            "Couldn't move attachments to Trash: \($0.localizedDescription)"
+        }
     }
 
     // MARK: - Computed

@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 class AIAnalysisService: ObservableObject {
+    static let shared = AIAnalysisService()
+
     @Published var findings: [CacheFinding] = []
     @Published var isScanning = false
     @Published var phase = ""

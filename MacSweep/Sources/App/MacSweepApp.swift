@@ -94,7 +94,7 @@ private struct MacSweepCommands: Commands {
                 Task { await appState.quickScan() }
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
-            .disabled(appState.isScanning)
+            .disabled(appState.isScanning || !appState.hasFullDiskAccess)
 
             Button("Stop Scan") {
                 appState.cancelScan()

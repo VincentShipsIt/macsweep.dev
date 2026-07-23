@@ -1,13 +1,22 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+private final class DevToolsScanSession: ObservableObject {
+    static let shared = DevToolsScanSession()
+
+    @Published var hasCompletedBuildArtifactScan = false
+    @Published var isBuildArtifactScanRunning = false
+    @Published var buildArtifactScanState = BuildArtifactScanState()
+
+    private init() {}
+}
+
 /// View for cleaning up developer artifacts
 struct DevToolsView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var scanSession = DevToolsScanSession.shared
     @State private var selectedTab: DevToolsTab = .artifacts
-    @State private var hasCompletedBuildArtifactScan = false
-    @State private var isBuildArtifactScanRunning = false
-    @State private var buildArtifactScanState = BuildArtifactScanState()
 
     enum DevToolsTab: String, CaseIterable {
         case artifacts = "Build Artifacts"
@@ -15,7 +24,8 @@ struct DevToolsView: View {
     }
 
     private var showsBuildArtifactLanding: Bool {
-        selectedTab == .artifacts && (!hasCompletedBuildArtifactScan || isBuildArtifactScanRunning)
+        selectedTab == .artifacts
+            && (!scanSession.hasCompletedBuildArtifactScan || scanSession.isBuildArtifactScanRunning)
     }
 
     var body: some View {
@@ -40,9 +50,9 @@ struct DevToolsView: View {
                 switch selectedTab {
                 case .artifacts:
                     BuildArtifactsView(
-                        scanState: $buildArtifactScanState,
-                        hasCompletedScan: $hasCompletedBuildArtifactScan,
-                        isScanRunning: $isBuildArtifactScanRunning
+                        scanState: $scanSession.buildArtifactScanState,
+                        hasCompletedScan: $scanSession.hasCompletedBuildArtifactScan,
+                        isScanRunning: $scanSession.isBuildArtifactScanRunning
                     )
                 case .packages:
                     PackageManagersView()

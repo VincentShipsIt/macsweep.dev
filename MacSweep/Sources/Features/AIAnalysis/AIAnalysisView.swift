@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AIAnalysisView: View {
-    @StateObject private var service = AIAnalysisService()
+    @StateObject private var service = AIAnalysisService.shared
     @State private var apiKeyInput = ""
     @State private var hasApiKey = false
     @State private var hasLocalAIProvider = false
@@ -47,7 +47,6 @@ struct AIAnalysisView: View {
                     isScanning: service.isScanning,
                     progress: 0,
                     scanningMessage: service.phase,
-                    hidesPageChrome: false,
                     action: { Task { await service.scan() } }
                 )
                 .transition(.scanCrossfade)

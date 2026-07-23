@@ -4,6 +4,24 @@ import Testing
 
 @Suite("Trash bins")
 struct TrashBinsModuleTests {
+    @Test func unreadableTrashDoesNotMasqueradeAsEmpty() async throws {
+        let temporaryDirectory = try TempTestDirectory(prefix: "UnreadableTrash")
+        let trash = temporaryDirectory.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: false)
+        try Data("still here".utf8).write(to: trash.appendingPathComponent("item.txt"))
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: trash.path)
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: trash.path
+            )
+        }
+
+        await #expect(throws: (any Error).self) {
+            try await TrashBinsModule().scanTrashBin(at: trash, name: "Test Trash")
+        }
+    }
+
     @Test func emptyAllResultCountsOnlyPreviewItemsConfirmedGone() {
         let removed = item(path: "/trash/removed", size: 120)
         let retained = item(path: "/trash/retained", size: 80)
