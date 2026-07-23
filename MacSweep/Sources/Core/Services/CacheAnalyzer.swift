@@ -273,6 +273,8 @@ struct CacheAnalyzer {
             ).output
         } catch let error as ProcessPipelineStageError {
             return error.partialResult.output
+        } catch ProcessRunnerError.timedOut(_, let partialResult) {
+            return partialResult.output
         } catch {
             return ""
         }
