@@ -128,8 +128,12 @@ struct PrivacyCategoryCard: View {
 private struct PrivacyItemEvidenceRow: View {
     let item: CleanupItem
 
-    private var evidence: PrivacyItemEvidence {
-        PrivacyItemEvidence(item: item)
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(
+            item: item,
+            modificationDate: item.lastModified,
+            defaultReviewReason: PrivacyModule.cleanupReviewReason
+        )
     }
 
     var body: some View {
@@ -167,20 +171,7 @@ private struct PrivacyItemEvidenceRow: View {
     private var metadata: some View {
         HStack(spacing: 14) {
             Label(evidence.formattedSize, systemImage: "internaldrive")
-
-            switch evidence.modification {
-            case .date(let date):
-                Label {
-                    Text(date, style: .date)
-                } icon: {
-                    Image(systemName: "calendar")
-                }
-            case .unavailable:
-                Label(
-                    "Modified date unavailable",
-                    systemImage: "calendar.badge.exclamationmark"
-                )
-            }
+            CleanupModificationEvidenceLabel(modification: evidence.modification)
         }
         .font(.caption)
         .foregroundStyle(.tertiary)
