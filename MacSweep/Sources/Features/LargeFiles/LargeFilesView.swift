@@ -4,7 +4,7 @@ import QuickLook
 
 /// View for finding and managing large files
 struct LargeFilesView: View {
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
 
     // Filters
     @State private var sizeThreshold: Double = 100  // MB
@@ -20,7 +20,9 @@ struct LargeFilesView: View {
     ]
 
     /// Default production initializer — empty on launch until the user scans.
-    init() {}
+    init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.largeFiles)
+    }
 
     /// Seeds the shared model directly so the headless snapshot harness (and Xcode
     /// previews) can render the populated and error layouts, which otherwise only
@@ -102,7 +104,6 @@ struct LargeFilesView: View {
             .animated(.scanCrossfade, value: model.items.isEmpty)
         }
         .quickLookPreview($previewURL)
-        .onDisappear { model.cancelScan() }
     }
 
     // MARK: - Filter Bar

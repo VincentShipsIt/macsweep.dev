@@ -3,7 +3,7 @@ import AppKit
 
 /// View for reclaiming local storage from cloud providers.
 struct CloudCleanupView: View {
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
     @State private var selectedProvider: String? = nil
     @State private var sortOrder: CleanupSortOrder = .sizeDesc
 
@@ -12,7 +12,9 @@ struct CloudCleanupView: View {
         return names.sorted()
     }
 
-    init() {}
+    init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.cloudCleanup)
+    }
 
     /// Seeds the shared model for deterministic headless snapshots without
     /// reading live cloud-provider data.
@@ -90,7 +92,6 @@ struct CloudCleanupView: View {
             // no-ops under Reduce Motion.
             .animated(.scanCrossfade, value: scanPhase)
         }
-        .onDisappear { model.cancelScan() }
     }
 
     private var scanPhase: ScanPhase {

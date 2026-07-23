@@ -21,7 +21,6 @@ struct FeaturePageShell<Content: View>: View {
     /// (e.g. `scrolls: items.isEmpty`).
     var scrolls: Bool = false
     @ViewBuilder var content: () -> Content
-    @State private var hidesTitlebarChrome = false
 
     init(title: String,
          subtitle: String? = nil,
@@ -46,17 +45,12 @@ struct FeaturePageShell<Content: View>: View {
         .accessibilityLabel(title)
         .accessibilityHint(subtitle ?? "")
         .toolbar {
-            if !shouldHideChrome, let trailing {
+            if !hidesChrome, let trailing {
                 ToolbarItem(placement: .primaryAction) {
                     trailing
                 }
             }
         }
-        .onPreferenceChange(FeaturePageChromeHiddenPreferenceKey.self) { hidesTitlebarChrome = $0 }
-    }
-
-    private var shouldHideChrome: Bool {
-        hidesChrome || hidesTitlebarChrome
     }
 
     @ViewBuilder
@@ -92,14 +86,6 @@ struct FeaturePageShell<Content: View>: View {
     }
 }
 
-private struct FeaturePageChromeHiddenPreferenceKey: PreferenceKey {
-    static let defaultValue = false
-
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = value || nextValue()
-    }
-}
-
 /// CleanMyMac-style pre-scan onboarding: a centered icon, title, a short
 /// description of what the action does, and exactly ONE primary CTA. Swaps to a
 /// progress view while a scan runs. Use this as the empty state for any
@@ -130,7 +116,6 @@ struct ScanLandingView: View {
     var isScanning: Bool = false
     var progress: Double = 0
     var scanningMessage: String? = nil
-    var hidesPageChrome: Bool = true
     /// Kept in the hero's layout so the callout remains centered and never
     /// slides beneath the full-bleed titlebar treatment.
     var permissionWarning: FullDiskAccessScope? = nil
@@ -201,7 +186,6 @@ struct ScanLandingView: View {
         // Crossfade the hero ⇄ progress swap. Disabled under Reduce Motion by
         // `animated`, which then leaves the branch change unanimated (a hard cut).
         .animated(.scanCrossfade, value: isScanning)
-        .preference(key: FeaturePageChromeHiddenPreferenceKey.self, value: hidesPageChrome)
     }
 }
 

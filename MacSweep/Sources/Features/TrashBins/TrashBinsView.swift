@@ -7,7 +7,7 @@ struct TrashBinsView: View {
     /// Shared scan/selection/cleanup state machine — replaces the hand-rolled
     /// `isScanning`/`trashItems`/`selectedItems`/`showingConfirmation`/`hasScanned`/
     /// `errorMessage` cluster this view used to declare inline.
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
 
     /// Trash-specific state that isn't part of the shared scan machine: the
     /// live bin summary (refreshed alongside every scan) and the "empty all"
@@ -22,6 +22,7 @@ struct TrashBinsView: View {
 
     /// Default production initializer — auto-scans on appear when Trash isn't empty.
     init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.trashBins)
         disableAutoLoad = false
     }
 
@@ -113,7 +114,6 @@ struct TrashBinsView: View {
         .task {
             if !disableAutoLoad { await loadTrashSummary() }
         }
-        .onDisappear { model.cancelScan() }
     }
 
     // MARK: - Trash List

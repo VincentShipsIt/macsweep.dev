@@ -4,11 +4,13 @@ import QuickLook
 
 /// View for finding visually similar photos.
 struct SimilarPhotosView: View {
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
     @State private var sortOrder: CleanupSortOrder = .sizeDesc
-    @State private var reviewGroups: [FileReviewGroup] = []
-    @State private var keeperIDs: [FileReviewGroup.ID: CleanupItem.ID] = [:]
     @State private var previewURL: URL?
+
+    init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.similarPhotos)
+    }
 
     var body: some View {
         FeaturePageShell(
@@ -82,7 +84,16 @@ struct SimilarPhotosView: View {
             .animated(.scanCrossfade, value: scanPhase)
         }
         .quickLookPreview($previewURL)
-        .onDisappear { model.cancelScan() }
+    }
+
+    private var reviewGroups: [FileReviewGroup] {
+        get { model.reviewGroups }
+        nonmutating set { model.reviewGroups = newValue }
+    }
+
+    private var keeperIDs: [FileReviewGroup.ID: CleanupItem.ID] {
+        get { model.keeperIDs }
+        nonmutating set { model.keeperIDs = newValue }
     }
 
     /// Which scan stage is on screen, so the crossfade fires on *every* arm

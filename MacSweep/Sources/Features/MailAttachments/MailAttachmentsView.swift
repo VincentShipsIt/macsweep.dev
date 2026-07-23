@@ -3,7 +3,7 @@ import SwiftUI
 /// View for managing mail attachments
 struct MailAttachmentsView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var model = ScanFeatureModel()
+    @StateObject private var model: ScanFeatureModel
     @State private var filterSource: String? = nil
     @State private var filterType: String? = nil
     @State private var sizeThreshold: Double = 1  // MB
@@ -11,7 +11,9 @@ struct MailAttachmentsView: View {
     /// Derived from the current results, so it always reflects the live list.
     private var stats: MailStats? { MailStats.from(items: model.items) }
 
-    init() {}
+    init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.mailAttachments)
+    }
 
     /// Seeds the shared model for deterministic headless snapshots without
     /// reading live Mail data.
@@ -108,7 +110,6 @@ struct MailAttachmentsView: View {
             .animated(.scanCrossfade, value: scanPhase)
             }
         }
-        .onDisappear { model.cancelScan() }
     }
 
     private var scanPhase: ScanPhase {

@@ -3,18 +3,14 @@ import SwiftUI
 /// Privacy cleanup view
 struct PrivacyView: View {
     @EnvironmentObject var appState: AppState
-    @State private var isScanning = false
-    @State private var hasScanned = false
-    @State private var privacyItems: [CleanupItem] = []
+    @StateObject private var model: ScanFeatureModel
     @State private var selectedCategories: Set<String> = []
     @State private var expandedCategories: Set<String> = []
-    @State private var showingConfirmation = false
 
     // Quick actions state
     @State private var clearingClipboard = false
     @State private var clearingTerminal = false
     @State private var clearingRecents = false
-    @State private var errorMessage: String?
 
     /// Deterministic result data for the headless snapshot harness. Production
     /// navigation uses the no-argument initializer and live scan state.
@@ -28,6 +24,7 @@ struct PrivacyView: View {
     private let snapshot: SnapshotState?
 
     init() {
+        _model = StateObject(wrappedValue: FeatureScanSessions.shared.privacy)
         snapshot = nil
     }
 
@@ -37,6 +34,7 @@ struct PrivacyView: View {
         snapshotError: String? = nil,
         snapshotExpandedCategories: Set<String>? = nil
     ) {
+        _model = StateObject(wrappedValue: ScanFeatureModel())
         snapshot = SnapshotState(
             items: snapshotItems,
             hasScanned: snapshotHasScanned,
@@ -98,7 +96,7 @@ struct PrivacyView: View {
 
                             if let displayErrorMessage {
                                 MacSweepErrorBanner(message: displayErrorMessage) {
-                                    self.errorMessage = nil
+                                    model.errorMessage = nil
                                 }
                             }
 
@@ -211,7 +209,7 @@ struct PrivacyView: View {
                     Spacer()
 
                     Button {
-                        showingConfirmation = true
+                        model.showingConfirmation = true
                     } label: {
                         Label("Clean Selected (\(selectedSize))", systemImage: "trash")
                     }
@@ -222,7 +220,7 @@ struct PrivacyView: View {
             }
         }
         .cleanupReview(
-            isPresented: $showingConfirmation,
+            isPresented: $model.showingConfirmation,
             items: selectedPrivacyItems,
             disposition: .trash,
             note: "Only the selected privacy categories are moved to Trash. "
@@ -246,22 +244,12 @@ struct PrivacyView: View {
 
 private extension PrivacyView {
     private func scanPrivacy() async {
-        guard !isScanning else { return }
-        isScanning = true
-        privacyItems = []
         selectedCategories = []
-        errorMessage = nil
-
-        defer {
-            isScanning = false
-            hasScanned = true
-        }
-
-        let module = PrivacyModule()
-        do {
-            privacyItems = try await module.scan()
-        } catch {
-            errorMessage = "Couldn't scan for privacy traces: \(error.localizedDescription)"
+        await model.scan(
+            selectAllOnCompletion: false,
+            onError: { "Couldn't scan for privacy traces: \($0.localizedDescription)" }
+        ) {
+            try await PrivacyModule().scan()
         }
     }
 
@@ -286,9 +274,9 @@ private extension PrivacyView {
             cleanupError = "Couldn't clear privacy items: \(error.localizedDescription)"
         }
 
-        // Refresh (scanPrivacy clears errorMessage, so restore any cleanup error after)
+        // Refresh (scanPrivacy clears the model error, so restore any cleanup error after)
         await scanPrivacy()
-        if let cleanupError { errorMessage = cleanupError }
+        if let cleanupError { model.errorMessage = cleanupError }
         return cleanupResult
     }
 
@@ -305,9 +293,9 @@ private extension PrivacyView {
         clearingTerminal = true
         do {
             try await PrivacyActions.clearTerminalHistory()
-            errorMessage = nil
+            model.errorMessage = nil
         } catch {
-            errorMessage = "Couldn't clear Terminal history: \(error.localizedDescription)"
+            model.errorMessage = "Couldn't clear Terminal history: \(error.localizedDescription)"
         }
 
         await MainActor.run {
@@ -328,9 +316,9 @@ private extension PrivacyView {
             clearingRecents = false
         }
 
-        // Refresh items (scanPrivacy clears errorMessage, so restore after)
+        // Refresh items (scanPrivacy clears the model error, so restore after)
         await scanPrivacy()
-        if let actionError { errorMessage = actionError }
+        if let actionError { model.errorMessage = actionError }
     }
 
 }
@@ -353,19 +341,19 @@ private extension PrivacyView {
     }
 
     private var displayItems: [CleanupItem] {
-        snapshot?.items ?? privacyItems
+        snapshot?.items ?? model.items
     }
 
     private var displayIsScanning: Bool {
-        snapshot == nil && isScanning
+        snapshot == nil && model.isScanning
     }
 
     private var displayHasScanned: Bool {
-        snapshot?.hasScanned ?? hasScanned
+        snapshot?.hasScanned ?? model.hasScanned
     }
 
     private var displayErrorMessage: String? {
-        snapshot?.errorMessage ?? errorMessage
+        snapshot?.errorMessage ?? model.errorMessage
     }
 
     private var displayExpandedCategories: Set<String> {

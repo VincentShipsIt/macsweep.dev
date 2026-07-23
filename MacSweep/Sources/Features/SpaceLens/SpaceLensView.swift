@@ -1,25 +1,64 @@
 import SwiftUI
 
+@MainActor
+private final class SpaceLensScanSession: ObservableObject {
+    static let shared = SpaceLensScanSession()
+
+    @Published var isScanning = false
+    @Published var rootNode: DiskNode?
+    @Published var currentPath: [DiskNode] = []
+    @Published var selectedNode: DiskNode?
+    @Published var diskStats: DiskQuickStats?
+    @Published var errorMessage: String?
+
+    private init() {}
+}
+
 /// DaisyDisk-style storage visualizer
 struct SpaceLensView: View {
     @EnvironmentObject var appState: AppState
-    @State private var isScanning = false
-    @State private var rootNode: DiskNode?
-    @State private var currentPath: [DiskNode] = []
-    @State private var selectedNode: DiskNode?
-    @State private var diskStats: DiskQuickStats?
+    @StateObject private var scanSession = SpaceLensScanSession.shared
     @State private var viewMode: ViewMode = .treemap
     @State private var nodeToTrash: DiskNode?
     // Dedicated presentation Bool: confirmationDialog clears its isPresented
     // binding before the confirm action runs, so a `$nodeToTrash.isPresent()`
     // binding would nil the target and silently skip the trash.
     @State private var isConfirmingTrash = false
-    @State private var errorMessage: String?
 
     enum ViewMode: String, CaseIterable {
         case treemap = "Treemap"
         case sunburst = "Sunburst"
         case list = "List"
+    }
+
+    private var isScanning: Bool {
+        get { scanSession.isScanning }
+        nonmutating set { scanSession.isScanning = newValue }
+    }
+
+    private var rootNode: DiskNode? {
+        get { scanSession.rootNode }
+        nonmutating set { scanSession.rootNode = newValue }
+    }
+
+    private var currentPath: [DiskNode] {
+        get { scanSession.currentPath }
+        nonmutating set { scanSession.currentPath = newValue }
+    }
+
+    private var selectedNode: DiskNode? {
+        get { scanSession.selectedNode }
+        nonmutating set { scanSession.selectedNode = newValue }
+    }
+
+    private var diskStats: DiskQuickStats? {
+        get { scanSession.diskStats }
+        nonmutating set { scanSession.diskStats = newValue }
+    }
+
+    private var errorMessage: String? {
+        get { scanSession.errorMessage }
+        nonmutating set { scanSession.errorMessage = newValue }
     }
 
     private var currentNode: DiskNode? {
@@ -167,13 +206,13 @@ struct SpaceLensView: View {
             case .treemap:
                 TreemapView(
                     node: node,
-                    selectedNode: $selectedNode,
+                    selectedNode: $scanSession.selectedNode,
                     onDrillDown: drillDown
                 )
             case .sunburst:
                 SunburstView(
                     node: node,
-                    selectedNode: $selectedNode,
+                    selectedNode: $scanSession.selectedNode,
                     onDrillDown: drillDown
                 )
             case .list:
@@ -183,7 +222,7 @@ struct SpaceLensView: View {
     }
 
     private func listView(node: DiskNode) -> some View {
-        List(selection: $selectedNode) {
+        List(selection: $scanSession.selectedNode) {
             ForEach(node.children) { child in
                 SpaceLensRow(node: child, parentSize: node.size)
                     .tag(child)
