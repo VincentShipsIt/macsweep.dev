@@ -7,6 +7,14 @@ struct CloudCleanupModule: ScanModule {
     let description = "Evict stale iCloud downloads and remove cloud provider cache folders"
     let icon = "icloud"
 
+    static let localCopyReviewReason =
+        "MacSweep evicts only the downloaded local copy. "
+        + "The cloud file stays available and can be downloaded again."
+
+    static let providerCacheReviewReason =
+        "MacSweep permanently removes only this regenerable provider cache. "
+        + "Synced cloud files stay available."
+
     var minimumFileSize: Int64 = 52_428_800
     var staleDays: Int = 30
     var maxResults: Int = 250
@@ -140,5 +148,35 @@ struct CloudCleanupModule: ScanModule {
                 return .deletePermanently
             }
         }
+    }
+}
+
+/// Presentation-ready evidence for an individual Cloud Cleanup result.
+///
+/// Keeping the per-action rationale and metadata fallback in Core makes the
+/// populated-results contract deterministic without instantiating SwiftUI.
+struct CloudCleanupEvidence: Equatable, Sendable {
+    enum Modification: Equatable, Sendable {
+        case date(Date)
+        case unavailable
+    }
+
+    let path: String
+    let formattedSize: String
+    let modification: Modification
+    let reviewReason: String
+
+    init(item: CleanupItem) {
+        path = item.path.path
+        formattedSize = item.formattedSize
+        modification = item.lastModified.map(Modification.date) ?? .unavailable
+        reviewReason = item.cleanupReviewReason ?? Self.defaultReviewReason(for: item)
+    }
+
+    private static func defaultReviewReason(for item: CleanupItem) -> String {
+        if item.moduleName.contains("Local Copy") {
+            return CloudCleanupModule.localCopyReviewReason
+        }
+        return CloudCleanupModule.providerCacheReviewReason
     }
 }

@@ -197,6 +197,10 @@ struct SnapshotRenderer {
                 CloudCleanupView(snapshotItems: [], snapshotHasScanned: true),
                 appState: AppState()
             )),
+            ("cloud-cleanup-results", wrap(
+                CloudCleanupView(snapshotItems: sampleCloudCleanupItems(), snapshotHasScanned: true),
+                appState: AppState()
+            )),
             privacyResultsVariant(size: size),
             ("trash-bins-results", wrap(
                 TrashBinsView(snapshotItems: trashItems, snapshotSelection: trashSelection),
@@ -357,6 +361,37 @@ struct SnapshotRenderer {
             item("Homebrew/downloads", 980_000_000, "Developer Cache", 9),
             item("com.apple.appstore", 312_000_000, "System Cache", 14),
             item("CrashReporter/diagnostics", 94_000_000, "System Logs", 21),
+        ]
+    }
+
+    /// Populated Cloud Cleanup rows with both action rationales and a missing
+    /// modification date. The long local-copy path verifies the exact cloud
+    /// target remains readable rather than collapsing to its parent directory.
+    @MainActor
+    static func sampleCloudCleanupItems() -> [CleanupItem] {
+        [
+            CleanupItem(
+                id: UUID(),
+                path: URL(
+                    fileURLWithPath:
+                        "/Users/you/Library/Mobile Documents/com~apple~CloudDocs/"
+                        + "Client Deliverables/2024 Product Demo Final.mov"
+                ),
+                size: 4_800_000_000,
+                type: .file,
+                module: "cloud-cleanup",
+                moduleName: "iCloud Local Copy",
+                lastModified: daysAgo(45)
+            ),
+            CleanupItem(
+                id: UUID(),
+                path: URL(fileURLWithPath: "/Users/you/Library/Caches/Dropbox"),
+                size: 780_000_000,
+                type: .directory,
+                module: "cloud-cleanup",
+                moduleName: "Dropbox Cache",
+                lastModified: nil
+            )
         ]
     }
 
