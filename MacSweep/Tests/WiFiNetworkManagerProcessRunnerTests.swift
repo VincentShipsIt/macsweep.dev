@@ -46,6 +46,139 @@ private actor WiFiCommandRecorder {
 }
 
 struct WiFiNetworkManagerProcessRunnerTests {
+    @Test func listingUsesExactArgvAndTimeoutAndPreservesParsing() async {
+        let recorder = WiFiCommandRecorder(outcome: .result(ProcessResult(
+            status: 0,
+            output: """
+            Preferred networks on en7:
+                Office Wi-Fi
+              Cafe Guest
+
+            """,
+            error: "ignored diagnostic"
+        )))
+
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en7",
+            currentSSID: "Office Wi-Fi",
+            commandRunner: { executable, arguments, timeout in
+                try await recorder.run(
+                    executable: executable,
+                    arguments: arguments,
+                    timeout: timeout
+                )
+            }
+        )
+
+        #expect(networks.map(\.ssid) == ["Office Wi-Fi", "Cafe Guest"])
+        #expect(networks.map(\.isCurrentlyConnected) == [true, false])
+        #expect(await recorder.recordedInvocations() == [
+            WiFiCommandRecorder.Invocation(
+                executable: "/usr/sbin/networksetup",
+                arguments: ["-listpreferredwirelessnetworks", "en7"],
+                timeout: WiFiNetworkManager.listingTimeout
+            )
+        ])
+        #expect(WiFiNetworkManager.listingTimeout == 30)
+    }
+
+    @Test func listingNonzeroExitFailsClosedWithoutTrustingOutput() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: "Must Not Surface",
+            commandRunner: { _, _, _ in
+                ProcessResult(
+                    status: 1,
+                    output: "Header\nMust Not Surface\n",
+                    error: "listing failed"
+                )
+            }
+        )
+
+        #expect(networks.isEmpty)
+    }
+
+    @Test func listingWithoutCurrentNetworkLeavesEveryEntryDisconnected() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: nil,
+            commandRunner: { _, _, _ in
+                ProcessResult(
+                    status: 0,
+                    output: "Header\nOffice\nGuest\n",
+                    error: ""
+                )
+            }
+        )
+
+        #expect(networks.map(\.ssid) == ["Office", "Guest"])
+        #expect(networks.allSatisfy { !$0.isCurrentlyConnected })
+    }
+
+    @Test func listingHeaderWithoutNetworksReturnsEmpty() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: "Office",
+            commandRunner: { _, _, _ in
+                ProcessResult(
+                    status: 0,
+                    output: "Preferred networks on en0:\n",
+                    error: ""
+                )
+            }
+        )
+
+        #expect(networks.isEmpty)
+    }
+
+    @Test func listingLaunchFailureFailsClosed() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: nil,
+            commandRunner: { _, _, _ in
+                throw ProcessRunnerError.launchFailed("fixture")
+            }
+        )
+
+        #expect(networks.isEmpty)
+    }
+
+    @Test func listingTimeoutFailsClosedWithoutTrustingPartialOutput() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: nil,
+            commandRunner: { _, _, _ in
+                throw ProcessRunnerError.timedOut(
+                    after: WiFiNetworkManager.listingTimeout,
+                    partialResult: ProcessResult(
+                        status: -1,
+                        output: "Header\nPartial Network\n",
+                        error: ""
+                    )
+                )
+            }
+        )
+
+        #expect(networks.isEmpty)
+    }
+
+    @Test func listingInvalidUTF8FailsClosed() async {
+        let networks = await WiFiNetworkManager.savedNetworks(
+            interface: "en0",
+            currentSSID: nil,
+            commandRunner: { _, _, _ in
+                ProcessResult(
+                    status: 0,
+                    output: "Header\nReplacement Character Network\n",
+                    error: "",
+                    outputWasValidUTF8: false
+                )
+            }
+        )
+
+        #expect(networks.isEmpty)
+    }
+
     @Test func removalUsesExactArgvAndTimeout() async throws {
         let recorder = WiFiCommandRecorder(outcome: .result(ProcessResult(
             status: 0,
@@ -70,7 +203,7 @@ struct WiFiNetworkManagerProcessRunnerTests {
                 arguments: [
                     "-removepreferredwirelessnetwork",
                     "en7",
-                    "Cafe Wi-Fi; $(touch /tmp/never)",
+                    "Cafe Wi-Fi; $(touch /tmp/never)"
                 ],
                 timeout: WiFiNetworkManager.removalTimeout
             )

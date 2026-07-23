@@ -215,29 +215,6 @@ struct MailAttachmentsModule: ScanModule {
     }
 }
 
-/// Presentation-ready evidence for an individual Mail Attachments result.
-///
-/// Keeping fallback policy in Core makes missing filesystem metadata
-/// deterministic and directly testable without instantiating a SwiftUI view.
-struct MailAttachmentEvidence: Equatable, Sendable {
-    enum Modification: Equatable, Sendable {
-        case date(Date)
-        case unavailable
-    }
-
-    let path: String
-    let formattedSize: String
-    let modification: Modification
-    let reviewReason: String
-
-    init(item: CleanupItem) {
-        path = item.path.path
-        formattedSize = item.formattedSize
-        modification = item.lastModified.map(Modification.date) ?? .unavailable
-        reviewReason = item.cleanupReviewReason ?? MailAttachmentsModule.cleanupReviewReason
-    }
-}
-
 // MARK: - Attachment Location
 
 struct AttachmentLocation {

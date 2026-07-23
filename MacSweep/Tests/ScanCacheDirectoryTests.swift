@@ -43,6 +43,8 @@ final class ScanCacheDirectoryTests {
 
         let lastModified = try #require(item?.lastModified)
         #expect(abs(lastModified.timeIntervalSince(expected)) < 1)
+        let contentModificationDate = try #require(item?.contentModificationDate)
+        #expect(abs(contentModificationDate.timeIntervalSince(expected)) < 1)
     }
 
     // MARK: - threshold (ServiceWorker >1024/>10240, Network >1024, Docker >0)

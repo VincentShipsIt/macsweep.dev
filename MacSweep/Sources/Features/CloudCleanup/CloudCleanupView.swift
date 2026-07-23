@@ -212,13 +212,21 @@ private struct CloudCleanupRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(
+            item: item,
+            modificationDate: item.contentModificationDate,
+            defaultReviewReason: CloudCleanupModule.defaultCleanupReviewReason(for: item)
+        )
+    }
+
     var body: some View {
         SelectableItemRow(isSelected: isSelected) {
             Image(systemName: item.moduleName.contains("Local Copy") ? "icloud.and.arrow.down" : "externaldrive.badge.icloud")
                 .foregroundStyle(item.moduleName.contains("Local Copy") ? .cyan : .blue)
                 .frame(width: 22)
         } content: {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(item.displayName)
                     .lineLimit(1)
 
@@ -226,23 +234,26 @@ private struct CloudCleanupRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text(item.path.deletingLastPathComponent().path)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.head)
-            }
-        } trailing: {
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(item.formattedSize)
-                    .font(.headline)
+                CleanupModificationEvidenceLabel(
+                    modification: evidence.modification,
+                    showsModifiedPrefix: true
+                )
 
-                if let date = item.lastModified {
-                    Text(date, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(evidence.path)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(evidence.reviewReason, systemImage: "checkmark.shield")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } trailing: {
+            Text(evidence.formattedSize)
+                .font(.headline)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([item.path])
@@ -251,8 +262,10 @@ private struct CloudCleanupRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Show \(item.displayName) in Finder")
         }
     }
+
 }
 
 #if !SWIFT_PACKAGE

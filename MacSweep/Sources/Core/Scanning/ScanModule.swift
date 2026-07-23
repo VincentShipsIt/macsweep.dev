@@ -55,7 +55,8 @@ extension ScanModule {
             type: type,
             module: id,
             moduleName: displayName,
-            lastModified: lastModified
+            lastModified: lastModified,
+            contentModificationDate: lastModified
         )
     }
 
@@ -234,7 +235,10 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     let size: Int64
     let module: String
     let moduleName: String
+    /// Module-defined activity timestamp used by existing age filters and sort order.
     let lastModified: Date?
+    /// Actual filesystem content-modification timestamp when the scanner captures it separately.
+    let contentModificationDate: Date?
     let cleanupReviewReason: String?
 
     enum Target: Hashable, Sendable {
@@ -257,6 +261,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         module: String,
         moduleName: String,
         lastModified: Date? = nil,
+        contentModificationDate: Date? = nil,
         cleanupReviewReason: String? = nil
     ) {
         self.id = id
@@ -265,6 +270,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.module = module
         self.moduleName = moduleName
         self.lastModified = lastModified
+        self.contentModificationDate = contentModificationDate
         self.cleanupReviewReason = cleanupReviewReason
     }
 
@@ -282,6 +288,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.module = action.moduleID
         self.moduleName = action.displayName
         self.lastModified = lastModified
+        self.contentModificationDate = nil
         self.cleanupReviewReason = nil
     }
 
@@ -333,6 +340,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
                 module: module,
                 moduleName: moduleName,
                 lastModified: lastModified,
+                contentModificationDate: contentModificationDate,
                 cleanupReviewReason: reason
             )
         case .action:
@@ -346,6 +354,34 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
 
     static func == (lhs: CleanupItem, rhs: CleanupItem) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+/// Presentation-ready metadata shared by populated cleanup result rows.
+///
+/// Modules supply the timestamp and fallback rationale because those remain
+/// domain-specific, while path, size, custom-reason precedence, and the
+/// unavailable-date contract stay consistent across every cleanup surface.
+struct CleanupResultEvidence: Equatable, Sendable {
+    enum Modification: Equatable, Sendable {
+        case date(Date)
+        case unavailable
+    }
+
+    let path: String
+    let formattedSize: String
+    let modification: Modification
+    let reviewReason: String
+
+    init(
+        item: CleanupItem,
+        modificationDate: Date?,
+        defaultReviewReason: String
+    ) {
+        path = item.path.path
+        formattedSize = item.formattedSize
+        modification = modificationDate.map(Modification.date) ?? .unavailable
+        reviewReason = item.cleanupReviewReason ?? defaultReviewReason
     }
 }
 

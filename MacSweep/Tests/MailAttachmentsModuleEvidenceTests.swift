@@ -24,8 +24,16 @@ struct MailAttachmentsModuleEvidenceTests {
             moduleName: "Apple Mail - Archives"
         )
 
-        let datedEvidence = MailAttachmentEvidence(item: dated)
-        let fallbackEvidence = MailAttachmentEvidence(item: missingMetadata)
+        let datedEvidence = CleanupResultEvidence(
+            item: dated,
+            modificationDate: dated.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
+        let fallbackEvidence = CleanupResultEvidence(
+            item: missingMetadata,
+            modificationDate: missingMetadata.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
 
         #expect(datedEvidence.path == dated.path.path)
         #expect(datedEvidence.formattedSize == dated.formattedSize)

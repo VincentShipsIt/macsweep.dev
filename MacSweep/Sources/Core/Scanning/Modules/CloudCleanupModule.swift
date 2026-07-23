@@ -7,6 +7,21 @@ struct CloudCleanupModule: ScanModule {
     let description = "Evict stale iCloud downloads and remove cloud provider cache folders"
     let icon = "icloud"
 
+    static let localCopyReviewReason =
+        "MacSweep evicts only the downloaded local copy. "
+        + "The cloud file stays available and can be downloaded again."
+
+    static let providerCacheReviewReason =
+        "MacSweep permanently removes only this regenerable provider cache. "
+        + "Synced cloud files stay available."
+
+    static func defaultCleanupReviewReason(for item: CleanupItem) -> String {
+        if item.moduleName.contains("Local Copy") {
+            return localCopyReviewReason
+        }
+        return providerCacheReviewReason
+    }
+
     var minimumFileSize: Int64 = 52_428_800
     var staleDays: Int = 30
     var maxResults: Int = 250
@@ -66,7 +81,8 @@ struct CloudCleanupModule: ScanModule {
                     type: .file,
                     module: id,
                     moduleName: "\(provider) Local Copy",
-                    lastModified: activityDate
+                    lastModified: activityDate,
+                    contentModificationDate: values?.contentModificationDate
                 ))
 
                 if items.count >= maxResults {

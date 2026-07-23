@@ -279,11 +279,16 @@ struct AttachmentRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
-    private var evidence: MailAttachmentEvidence {
-        MailAttachmentEvidence(item: item)
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(
+            item: item,
+            modificationDate: item.lastModified,
+            defaultReviewReason: MailAttachmentsModule.cleanupReviewReason
+        )
     }
 
     var body: some View {
+        let evidence = evidence
         SelectableItemRow(isSelected: isSelected) {
             // File icon
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.path.path))
@@ -305,7 +310,7 @@ struct AttachmentRow: View {
 
                 }
 
-                modificationEvidence
+                CleanupModificationEvidenceLabel(modification: evidence.modification)
 
                 Text(evidence.path)
                     .font(.caption2)
@@ -333,26 +338,6 @@ struct AttachmentRow: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Show \(item.displayName) in Finder")
         }
-    }
-
-    private var modificationEvidence: some View {
-        Group {
-            switch evidence.modification {
-            case .date(let date):
-                Label {
-                    Text(date, style: .date)
-                } icon: {
-                    Image(systemName: "calendar")
-                }
-            case .unavailable:
-                Label(
-                    "Modified date unavailable",
-                    systemImage: "calendar.badge.exclamationmark"
-                )
-            }
-        }
-        .font(.caption)
-        .foregroundStyle(.tertiary)
     }
 
     private func sourceColor(_ source: String) -> Color {

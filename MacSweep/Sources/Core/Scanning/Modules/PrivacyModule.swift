@@ -194,30 +194,6 @@ struct PrivacyModule: ScanModule {
     }
 }
 
-/// Presentation-ready evidence for an individual Privacy result.
-///
-/// Keeping the fallback policy in Core makes the populated-results UI
-/// deterministic and lets focused SwiftPM tests cover missing filesystem
-/// metadata without instantiating a SwiftUI view.
-struct PrivacyItemEvidence: Equatable, Sendable {
-    enum Modification: Equatable, Sendable {
-        case date(Date)
-        case unavailable
-    }
-
-    let path: String
-    let formattedSize: String
-    let modification: Modification
-    let reviewReason: String
-
-    init(item: CleanupItem) {
-        path = item.path.path
-        formattedSize = item.formattedSize
-        modification = item.lastModified.map(Modification.date) ?? .unavailable
-        reviewReason = item.cleanupReviewReason ?? PrivacyModule.cleanupReviewReason
-    }
-}
-
 // MARK: - Privacy Actions (System-level)
 
 struct PrivacyActions {

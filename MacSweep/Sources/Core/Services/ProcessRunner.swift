@@ -11,6 +11,33 @@ typealias ProcessOutputHandler = @Sendable (
     _ chunk: Data
 ) -> Void
 
+typealias ProcessPipelineLaunchHandler = @Sendable (
+    _ stageIndex: Int,
+    _ processID: pid_t
+) -> Void
+
+/// One argv-only command in a `ProcessRunner` pipeline.
+struct ProcessPipelineStage: Sendable, Equatable {
+    let executable: String
+    let arguments: [String]
+
+    init(executable: String, arguments: [String] = []) {
+        self.executable = executable
+        self.arguments = arguments
+    }
+}
+
+/// A completed pipeline stage failed after the tail output was captured.
+struct ProcessPipelineStageError: Error, Sendable, CustomStringConvertible {
+    let stageNumber: Int
+    let status: Int32
+    let partialResult: ProcessResult
+
+    var description: String {
+        "Pipeline stage \(stageNumber) exited with status \(status)"
+    }
+}
+
 /// Result of a completed subprocess, with stdout and stderr captured separately.
 ///
 /// Keeping the two streams apart lets callers parse stdout without stderr noise —
@@ -51,14 +78,14 @@ struct ProcessResult: Sendable {
     }
 }
 
-/// Errors thrown by `ProcessRunner.run`.
+/// Errors thrown by `ProcessRunner` APIs.
 enum ProcessRunnerError: Error, Sendable, CustomStringConvertible {
     /// The executable could not be launched (bad path, permissions, …).
     case launchFailed(String)
     /// The process lifecycle exceeded `timeout`. Output captured before the hard
     /// deadline is retained for diagnostics instead of being discarded.
     case timedOut(after: TimeInterval, partialResult: ProcessResult)
-    /// Only thrown by `ProcessResult.checkedSuccess()` — the process exited non-zero.
+    /// Thrown by `ProcessResult.checkedSuccess()` when a process exits non-zero.
     case nonZeroExit(status: Int32, stderr: String)
 
     var description: String {
@@ -160,22 +187,48 @@ enum ProcessRunner {
         )
     }
 
+    /// Runs argv-only commands with each stage's stdout connected to the next
+    /// stage's stdin and returns the tail stage's captured stdout.
+    ///
+    /// All stages share one isolated process group and one monotonic timeout.
+    /// Stderr is discarded to match the read-only discovery pipelines this API
+    /// replaces. A launch failure or timeout terminates and reaps every started
+    /// stage; a completed nonzero stage throws `ProcessPipelineStageError` with
+    /// the captured tail output.
+    static func runPipeline(
+        stages: [ProcessPipelineStage],
+        timeout: TimeInterval = 10,
+        onStageStartedForTesting: ProcessPipelineLaunchHandler? = nil
+    ) async throws -> ProcessResult {
+        try validate(timeout: timeout, cooperativeTimeoutGrace: 0)
+        guard !stages.isEmpty else {
+            return ProcessResult(status: 0, output: "", error: "")
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    continuation.resume(returning: try ProcessPipelineRunner.run(
+                        stages: stages,
+                        timeout: timeout,
+                        onStageStarted: onStageStartedForTesting
+                    ))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     private static func execute(
         executable: String,
         arguments: [String],
         options: RunOptions
     ) async throws -> ProcessResult {
-        guard options.timeout.isFinite,
-              options.timeout >= 0,
-              options.timeout <= maximumTimeout,
-              options.cooperativeTimeoutGrace.isFinite,
-              options.cooperativeTimeoutGrace >= 0,
-              options.cooperativeTimeoutGrace <= maximumTimeout
-        else {
-            throw ProcessRunnerError.launchFailed(
-                "Timeout values must be finite and between 0 and \(maximumTimeout) seconds"
-            )
-        }
+        try validate(
+            timeout: options.timeout,
+            cooperativeTimeoutGrace: options.cooperativeTimeoutGrace
+        )
 
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -189,6 +242,23 @@ enum ProcessRunner {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
+
+    private static func validate(
+        timeout: TimeInterval,
+        cooperativeTimeoutGrace: TimeInterval
+    ) throws {
+        guard timeout.isFinite,
+              timeout >= 0,
+              timeout <= maximumTimeout,
+              cooperativeTimeoutGrace.isFinite,
+              cooperativeTimeoutGrace >= 0,
+              cooperativeTimeoutGrace <= maximumTimeout
+        else {
+            throw ProcessRunnerError.launchFailed(
+                "Timeout values must be finite and between 0 and \(maximumTimeout) seconds"
+            )
         }
     }
 

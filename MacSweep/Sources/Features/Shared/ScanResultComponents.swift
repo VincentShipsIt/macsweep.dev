@@ -75,6 +75,41 @@ struct SelectableItemRow<Leading: View, Content: View, Trailing: View>: View {
     }
 }
 
+// MARK: - Cleanup evidence
+
+/// Consistent modification-date evidence for populated cleanup result rows.
+struct CleanupModificationEvidenceLabel: View {
+    let modification: CleanupResultEvidence.Modification
+    var showsModifiedPrefix = false
+
+    var body: some View {
+        Group {
+            switch modification {
+            case .date(let date):
+                Label {
+                    if showsModifiedPrefix {
+                        HStack(spacing: 4) {
+                            Text("Modified")
+                            Text(date, style: .date)
+                        }
+                    } else {
+                        Text(date, style: .date)
+                    }
+                } icon: {
+                    Image(systemName: "calendar")
+                }
+            case .unavailable:
+                Label(
+                    "Modified date unavailable",
+                    systemImage: "calendar.badge.exclamationmark"
+                )
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+    }
+}
+
 // MARK: - Review-only file groups
 
 struct FileIconView: View {
