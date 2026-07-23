@@ -274,7 +274,9 @@ struct MailAttachmentsView: View {
         // The shared model routes through ScanEngine (per-item SafetyChecker +
         // aggregate DeletionGuard cap), then prunes only the items that left disk;
         // `stats` recomputes automatically from the pruned list.
-        await model.clean(selectedAttachments) { "Couldn't move attachments to Trash: \($0.localizedDescription)" }
+        return await model.clean(selectedAttachments) {
+            "Couldn't move attachments to Trash: \($0.localizedDescription)"
+        }
     }
 
     // MARK: - Computed
