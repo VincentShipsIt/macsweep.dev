@@ -22,7 +22,10 @@ struct MailAttachmentsModuleDiscoveryTests {
 
         let results = try await module.scan()
 
-        #expect(results.map(\.path) == [attachment])
+        #expect(
+            results.map { $0.path.resolvingSymlinksInPath() }
+                == [attachment.resolvingSymlinksInPath()]
+        )
         #expect(results.first?.moduleName == "Spark - Documents")
     }
 

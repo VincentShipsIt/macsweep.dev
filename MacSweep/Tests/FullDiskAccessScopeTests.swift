@@ -3,14 +3,14 @@ import Testing
 
 @Suite("Full Disk Access recovery copy")
 struct FullDiskAccessScopeTests {
-    @Test("Scoped warnings name the protected area and explain partial results")
+    @Test("Scoped warnings name the protected area and blocked state")
     func scopedWarningsAreSpecific() {
         #expect(FullDiskAccessScope.mail.title.contains("Apple Mail"))
-        #expect(FullDiskAccessScope.mail.detail.contains("skipped"))
+        #expect(FullDiskAccessScope.mail.detail.contains("stay disabled"))
         #expect(FullDiskAccessScope.trash.title.contains("Trash"))
         #expect(FullDiskAccessScope.trash.detail.contains("cannot be verified"))
         #expect(FullDiskAccessScope.safari.title.contains("Safari"))
-        #expect(FullDiskAccessScope.safari.detail.contains("other supported browsers"))
+        #expect(FullDiskAccessScope.safari.detail.contains("without returning partial results"))
         #expect(FullDiskAccessScope.systemData.title.contains("system data"))
         #expect(FullDiskAccessScope.systemData.detail.contains("incomplete"))
     }
