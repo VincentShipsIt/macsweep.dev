@@ -249,8 +249,8 @@ struct PrivacyView: View {
 // MARK: - Actions
 
 private extension PrivacyView {
-    private func scanPrivacy(requiresFullDiskAccess: Bool = true) async {
-        if requiresFullDiskAccess, !appState.hasFullDiskAccess {
+    private func scanPrivacy() async {
+        guard appState.hasFullDiskAccess else {
             model.errorMessage = FullDiskAccessScope.safari.actionBlockedMessage
             return
         }
@@ -332,8 +332,12 @@ private extension PrivacyView {
             clearingRecents = false
         }
 
-        // Refresh items (scanPrivacy clears the model error, so restore after)
-        await scanPrivacy(requiresFullDiskAccess: false)
+        // A privacy scan requires Full Disk Access even though clearing recent
+        // documents does not. Skip the refresh when access is unavailable so a
+        // partial result can never be presented as a completed scan.
+        if appState.hasFullDiskAccess {
+            await scanPrivacy()
+        }
         if let actionError { model.errorMessage = actionError }
     }
 
