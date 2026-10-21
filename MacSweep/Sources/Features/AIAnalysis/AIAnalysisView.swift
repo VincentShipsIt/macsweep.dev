@@ -8,6 +8,8 @@ struct AIAnalysisView: View {
     @State private var showKeyField = false
     @State private var keySaveError = false
     @State private var isCleaning = false
+    @State private var showingReview = false
+    @State private var cleanupItems: [CleanupItem] = []
 
     private var selectedFindings: [CacheFinding] {
         service.findings.filter { $0.isSelected }
@@ -65,6 +67,18 @@ struct AIAnalysisView: View {
         .onAppear {
             refreshProviderState()
         }
+        .safeAreaInset(edge: .top) {
+            if let error = service.error {
+                MacSweepErrorBanner(message: error) { service.error = nil }
+            }
+        }
+        .cleanupReview(
+            isPresented: $showingReview,
+            items: cleanupItems,
+            disposition: .trash,
+            note: "AI suggestions are estimates. Review the measured paths before moving anything to Trash.",
+            onConfirm: performCleanup
+        )
     }
 
     // MARK: - API Key Popover
@@ -210,57 +224,33 @@ struct AIAnalysisView: View {
     private func cleanSelected() {
         guard !isCleaning else { return }
         isCleaning = true
-        let pathsToDelete = selectedFindings.map { $0.path }
+        let selected = selectedFindings
         Task {
             defer { isCleaning = false }
-            // Do the blocking trashItem I/O OFF the main thread (returns only
-            // Sendable [String] arrays, so no @StateObject is captured by the
-            // detached task), then apply UI mutations back on the main actor.
-            let outcome = await Task.detached(priority: .userInitiated) {
-                () -> (deleted: [String], failed: [String], blocked: [String]) in
-                var deleted: [String] = []
-                var failed: [String] = []
-                var blocked: [String] = []
-                let safety = SafetyChecker()
-
-                for path in pathsToDelete {
-                    let url = URL(fileURLWithPath: path)
-
-                    // AI suggestions are advisory — they MUST pass the same safety
-                    // gate as every other cleanup path. The `ai-analysis` module id
-                    // reaches the dedicated allow-zone (developer + AI-tool cache
-                    // roots outside ~/Library/Caches); without it those findings
-                    // fail closed and the feature's own results can't be cleaned.
-                    guard safety.validateForCleanup(url, moduleID: "ai-analysis").isSafe else {
-                        blocked.append(path)
-                        continue
-                    }
-
-                    do {
-                        // Recoverable: AI false positives are possible, so move to
-                        // Trash rather than deleting outright.
-                        try CleanupFileRemover.recoverable(url, module: "ai-analysis")
-                        deleted.append(path)
-                    } catch {
-                        failed.append(path)
-                    }
-                }
-                return (deleted, failed, blocked)
-            }.value
-
-            // Remove deleted items from findings
-            service.findings.removeAll { outcome.deleted.contains($0.path) }
-
-            var messages: [String] = []
-            if !outcome.blocked.isEmpty {
-                messages.append("\(outcome.blocked.count) item(s) blocked by safety checks")
+            do {
+                cleanupItems = try await AIAnalysisModule.prepare(selected)
+                showingReview = true
+            } catch {
+                service.error = "Couldn't prepare cleanup: \(error.localizedDescription)"
             }
-            if !outcome.failed.isEmpty {
-                messages.append("\(outcome.failed.count) item(s) could not be moved to Trash (check permissions)")
-            }
-            if !messages.isEmpty {
-                service.error = messages.joined(separator: "; ")
-            }
+        }
+    }
+
+    private func performCleanup() async -> CleanupResult? {
+        guard !isCleaning else { return nil }
+        isCleaning = true
+        defer { isCleaning = false }
+        do {
+            let result = try await ScanEngine().clean(
+                items: cleanupItems, dryRun: false, confirmedLargeDeletion: true
+            )
+            let completedIDs = Set(cleanupItems.filter { result.errors.failure(affecting: $0) == nil }.map(\.id))
+            service.findings.removeAll { completedIDs.contains($0.id) }
+            service.error = result.failureSummaryMessage
+            return result
+        } catch {
+            service.error = "Couldn't clean selected caches: \(error.localizedDescription)"
+            return nil
         }
     }
 

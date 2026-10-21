@@ -99,4 +99,3 @@ public struct HeadlessUninstallResult: Codable, Sendable {
         self.errors = errors
     }
 }
-

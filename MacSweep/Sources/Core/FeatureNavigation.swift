@@ -18,7 +18,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .main:
             return [.smartScan, .assistant, .cleanupHistory]
         case .cleanup:
-            return [.systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup]
+            return [.systemJunk, .browserCleanup, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup]
         case .protection:
             return [.malwareRemoval, .privacy, .loginItems]
         case .speed:
@@ -26,7 +26,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .applications:
             return [.uninstaller, .homebrewUpdater]
         case .files:
-            return [.spaceLens, .duplicateFiles, .similarPhotos, .shredder]
+            return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         case .developer:
             return [.developerLogs]
         }
@@ -40,6 +40,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case cleanupHistory = "Cleanup History"
 
     case systemJunk = "System Junk"
+    case browserCleanup = "Browser Cleanup"
     case mailAttachments = "Mail Attachments"
     case trashBins = "Trash Bins"
     case devTools = "Developer Tools"
@@ -75,6 +76,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .share: return "square.and.arrow.up"
         case .cleanupHistory: return "clock.arrow.circlepath"
         case .systemJunk: return "gearshape.2"
+        case .browserCleanup: return "globe"
         case .mailAttachments: return "envelope"
         case .trashBins: return "trash"
         case .devTools: return "hammer"
@@ -101,7 +103,7 @@ enum Feature: String, CaseIterable, Identifiable {
     var section: FeatureSection {
         switch self {
         case .smartScan, .assistant, .share, .cleanupHistory: return .main
-        case .systemJunk, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
+        case .systemJunk, .browserCleanup, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .homebrewUpdater: return .applications

@@ -9,7 +9,7 @@ struct MenuBarView: View {
     @State private var expandedWidget: WidgetType?
     @State private var menuWindow: NSWindow?
     @State private var freeRAMError: String?
-    private var monitor: SystemMonitor { appState.systemMonitor }
+    @ObservedObject var monitor: SystemMonitor
     @AppStorage(CompanionToolbarPreferences.storageCardVisible) private var storageCardVisible = true
     @AppStorage(CompanionToolbarPreferences.memoryCardVisible) private var memoryCardVisible = true
     @AppStorage(CompanionToolbarPreferences.batteryCardVisible) private var batteryCardVisible = true
@@ -177,7 +177,7 @@ struct MenuBarView: View {
                         .foregroundStyle(.green)
                         .font(.caption)
 
-                    Text("Last cleanup: \(lastCleanup.formattedBytesFreed) freed")
+                    Text("Last cleanup: \(lastCleanup.formattedBytesFreed) processed (estimate)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -487,8 +487,9 @@ struct SystemStatCard: View {
 
 #if !SWIFT_PACKAGE
 #Preview {
-    MenuBarView()
-        .environmentObject(AppState())
+    let state = AppState()
+    MenuBarView(monitor: state.systemMonitor)
+        .environmentObject(state)
 }
 
 #endif

@@ -148,7 +148,7 @@ final class ScanFeatureModel: ObservableObject {
             }
 
             do {
-                let scanned = try await body()
+                let scanned = try await ScanDiagnostics.collect(body)
                 // A rescan started while `body` ran supersedes this result.
                 try Task.checkCancellation()
                 guard generation == scanGeneration else { return }
@@ -156,6 +156,10 @@ final class ScanFeatureModel: ObservableObject {
                 if selectAllOnCompletion {
                     selectedItems = Set(scanned.map(\.id))
                 }
+            } catch let partial as PartialModuleScanError {
+                guard generation == scanGeneration, !Task.isCancelled else { return }
+                items = partial.items
+                errorMessage = partial.localizedDescription
             } catch is CancellationError {
                 // Superseded or cancelled — leave the state to whoever replaced us.
             } catch {
@@ -235,8 +239,7 @@ final class ScanFeatureModel: ObservableObject {
         }
 
         let submittedIDs = Set(itemsToClean.map(\.id))
-        let failedPaths = Set(result.errors.map(\.path))
-        items.removeAll { submittedIDs.contains($0.id) && !failedPaths.contains($0.path) }
+        items.removeAll { submittedIDs.contains($0.id) && result.errors.failure(affecting: $0) == nil }
         selectedItems = selectedItems.filter { id in items.contains(where: { $0.id == id }) }
         errorMessage = result.failureSummaryMessage
         return result

@@ -6,6 +6,7 @@ struct CPUDetailView: View {
     /// Shared with MemoryDetailView via the parent, so only one 5s `ps` sampling
     /// loop runs regardless of how many detail views have been opened (issue #103).
     @ObservedObject var processMonitor: ProcessMonitor
+    @State private var monitoringConsumer = UUID()
     @State private var pulseAnimation = false
 
     private var alertLevel: MetricAlertLevel {
@@ -32,12 +33,12 @@ struct CPUDetailView: View {
         }
         .padding()
         .task {
-            await processMonitor.startMonitoring()
+            await processMonitor.startMonitoring(for: monitoringConsumer)
         }
         .onDisappear {
             // Stop the 5s ps-sampling timer when the popover closes, else it leaks
             // and keeps spawning subprocesses after the view is gone.
-            processMonitor.stopMonitoring()
+            processMonitor.stopMonitoring(for: monitoringConsumer)
         }
     }
 

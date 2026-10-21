@@ -9,6 +9,8 @@ private final class DevToolsScanSession: ObservableObject {
     @Published var isBuildArtifactScanRunning = false
     @Published var buildArtifactScanState = BuildArtifactScanState()
 
+    var scanTask: Task<Void, Never>?
+
     private init() {}
 }
 
@@ -157,7 +159,12 @@ struct BuildArtifactsView: View {
                     ],
                     illustration: "hammer",
                     isScanning: true,
-                    action: { Task { await scan() } }
+                    scanningMessage: scanState.scanStage,
+                    onCancel: {
+                        scanState.scanStage = "Stopping scan…"
+                        DevToolsScanSession.shared.scanTask?.cancel()
+                    },
+                    action: startScan
                 )
                 .transition(.scanCrossfade)
             } else if !hasCompletedScan {
@@ -171,7 +178,7 @@ struct BuildArtifactsView: View {
                         ScanBenefit("arrow.triangle.branch", "Tidies stale Git clutter", "Spots merged branches and abandoned worktrees, while flagging projects in active development so nothing live gets touched."),
                     ],
                     illustration: "hammer",
-                    action: { Task { await scan() } }
+                    action: startScan
                 )
                 .transition(.scanCrossfade)
             } else if projects.isEmpty && systemArtifacts.isEmpty && gitArtifacts.isEmpty {
@@ -212,7 +219,7 @@ struct BuildArtifactsView: View {
             title: "No Developer Artifacts Found",
             message: "No build artifacts, stale worktrees, or merged branches were found.",
             actionTitle: "Scan Again",
-            action: { Task { await scan() } }
+            action: startScan
         )
     }
 
@@ -488,6 +495,11 @@ struct BuildArtifactsView: View {
 
     // MARK: - Actions
 
+    private func startScan() {
+        guard !isScanning else { return }
+        DevToolsScanSession.shared.scanTask = Task { await scan() }
+    }
+
     private func scan() async {
         guard !isScanning else { return }
         isScanning = true
@@ -498,29 +510,39 @@ struct BuildArtifactsView: View {
         gitArtifacts = []
         selectedItems = []
         selectedGitItems = []
-
+        scanState.errorMessage = nil
+        scanState.scanStage = "Finding projects…"
         defer {
             isScanning = false
             isScanRunning = false
-            hasCompletedScan = true
+            hasCompletedScan = !Task.isCancelled
+            DevToolsScanSession.shared.scanTask = nil
         }
-
-        // Scan for projects
-        let scanner = ProjectScanner()
-        projects = await scanner.discoverProjects(in: FileManager.default.homeDirectoryForCurrentUser)
-        projectCleanupItems = await buildCleanupItems(for: projects)
-
-        // Scan for system artifacts (DerivedData, etc.)
-        let module = DevToolsModule()
-        systemArtifacts = (try? await module.scan()) ?? []
-
-        // Filter out duplicates
-        let projectPaths = Set(projects.flatMap(\.artifactPaths).map(\.path))
-        systemArtifacts = systemArtifacts.filter { !projectPaths.contains($0.path.path) }
-
-        let gitScanner = GitArtifactScanner()
-        gitToolStatus = await gitScanner.toolStatus()
-        gitArtifacts = await gitScanner.discoverStaleArtifacts()
+        do {
+            _ = try await ScanDiagnostics.collect {
+                projects = await ProjectScanner().discoverProjects(in: FileManager.default.homeDirectoryForCurrentUser)
+                try Task.checkCancellation()
+                scanState.scanStage = "Measuring build artifacts…"
+                projectCleanupItems = await buildCleanupItems(for: projects)
+                try Task.checkCancellation()
+                systemArtifacts = try await DevToolsModule().scan()
+                let projectPaths = Set(projects.flatMap(\.artifactPaths).map(\.path))
+                systemArtifacts = systemArtifacts.filter { !projectPaths.contains($0.path.path) }
+                scanState.scanStage = "Inspecting Git branches and worktrees…"
+                let gitScanner = GitArtifactScanner()
+                gitToolStatus = await gitScanner.toolStatus()
+                try Task.checkCancellation()
+                gitArtifacts = await gitScanner.discoverStaleArtifacts()
+                return projectCleanupItems + systemArtifacts
+            }
+        } catch is CancellationError {
+            projects = []
+            projectCleanupItems = []
+            systemArtifacts = []
+            gitArtifacts = []
+        } catch {
+            scanState.errorMessage = error.localizedDescription
+        }
     }
 
     private func toggleProject(_ project: ProjectInfo) {

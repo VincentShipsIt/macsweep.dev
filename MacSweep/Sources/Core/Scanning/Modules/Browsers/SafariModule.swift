@@ -76,4 +76,3 @@ struct SafariModule: BrowserModule {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
-

@@ -156,17 +156,22 @@ public struct HeadlessCleanupResult: Codable, Sendable {
     public let itemsProcessed: Int
     public let bytesFreed: Int64
     public let errors: [HeadlessCleanupError]
+    public let accounting: CleanupAccounting?
+    public let bytesFreedIsEstimate: Bool
 
     public init(
         dryRun: Bool,
         itemsProcessed: Int,
         bytesFreed: Int64,
-        errors: [HeadlessCleanupError]
+        errors: [HeadlessCleanupError],
+        accounting: CleanupAccounting? = nil
     ) {
         self.dryRun = dryRun
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
         self.errors = errors
+        self.accounting = accounting
+        self.bytesFreedIsEstimate = true
     }
 }
 

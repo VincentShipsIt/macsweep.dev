@@ -201,7 +201,7 @@ struct BrowserCleanupView: View {
             guard browser.isInstalled else { continue }
 
             do {
-                let items = try await browser.scan()
+                let items = try await ScanDiagnostics.collect { try await browser.scan() }
                 if !items.isEmpty {
                     let result = BrowserScanResult(
                         id: UUID(),
@@ -212,6 +212,12 @@ struct BrowserCleanupView: View {
                     )
                     browserResults.append(result)
                 }
+            } catch let partial as PartialModuleScanError {
+                if !partial.items.isEmpty {
+                    browserResults.append(BrowserScanResult(id: UUID(), browserName: browser.name,
+                        browserIcon: browser.icon, isRunning: browser.isRunning, items: partial.items))
+                }
+                failedBrowsers.append(browser.name)
             } catch {
                 failedBrowsers.append(browser.name)
             }
@@ -224,7 +230,7 @@ struct BrowserCleanupView: View {
         // Scan service workers
         let swModule = ServiceWorkerModule()
         do {
-            let swItems = try await swModule.scan()
+            let swItems = try await ScanDiagnostics.collect { try await swModule.scan() }
             // Commit replacement results atomically after a successful scan.
             // An empty successful result clears the old entries; a failure
             // preserves the last known-good service-worker findings.

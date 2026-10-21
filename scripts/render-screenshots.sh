@@ -11,6 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="${0:A:h:h}"   # scripts/ -> repo root
+source "$REPO_ROOT/scripts/toolchain.sh"
 cd "$REPO_ROOT"
 
 SRC="MacSweep/Sources"

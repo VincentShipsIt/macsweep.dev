@@ -4,7 +4,7 @@ import AppKit
 private enum ModulePermissionCatalog {
     static func requiredPermissions(for moduleID: String) -> [HeadlessPermissionKind] {
         switch moduleID {
-        case "browser-safari", "mail-attachments", "privacy":
+        case "browser-safari", "mail-attachments", "privacy", "system-cache", "trash-bins":
             return [.fullDiskAccess]
         default:
             return []
@@ -109,17 +109,9 @@ public actor MacSweepHeadlessService {
 
         let items: [CleanupItem]
         let scanFailures: [ModuleScanFailure]
-        if request.smartCare {
-            items = try await engine.smartCareScan()
-            scanFailures = []
-        } else {
-            // Use the diagnostics variant so a module that throws is captured as a
-            // failure instead of silently dropped — the caller surfaces it as a
-            // partial scan (and the CLI turns it into a nonzero exit code).
-            let partial = await engine.scanWithDiagnostics(modules: executedModuleIDs)
-            items = partial.items
-            scanFailures = partial.failures
-        }
+        let partial = await engine.scanWithDiagnostics(modules: executedModuleIDs)
+        items = partial.items
+        scanFailures = partial.failures
 
         let diskUsage = await DiskUsage.current()
         let smartCareSummary = SmartCareAnalyzer().summarize(items: items, diskUsage: diskUsage)
@@ -224,7 +216,8 @@ public actor MacSweepHeadlessService {
             bytesFreed: result.bytesFreed,
             errors: result.errors.map {
                 HeadlessCleanupError(path: $0.path.path, message: $0.message)
-            }
+            },
+            accounting: result.accounting
         )
     }
 
@@ -772,10 +765,11 @@ private func runMalwareScanOnMain(useAI: Bool) async -> HeadlessMalwareScanRepor
     return HeadlessMalwareScanReport(
         scannedAt: result?.scannedAt ?? Date(),
         totalScanned: result?.totalScanned ?? 0,
-        isClean: result?.isClean ?? true,
+        isClean: result?.isClean ?? false,
         xprotectStatus: service.xprotectStatus,
         aiAnalysisRequested: useAI,
-        findings: findings
+        findings: findings,
+        collectionErrors: result?.collectionErrors ?? ["Scan did not produce a result"]
     )
 }
 

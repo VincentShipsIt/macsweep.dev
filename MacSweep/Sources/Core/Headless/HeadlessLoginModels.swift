@@ -68,4 +68,3 @@ public struct HeadlessLoginItemMutationResult: Codable, Sendable {
         self.removed = removed
     }
 }
-

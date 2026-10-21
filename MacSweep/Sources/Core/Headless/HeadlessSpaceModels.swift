@@ -51,4 +51,3 @@ public struct HeadlessDiskTree: Codable, Sendable {
         self.root = root
     }
 }
-

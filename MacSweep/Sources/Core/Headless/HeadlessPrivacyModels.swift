@@ -13,4 +13,3 @@ public struct HeadlessPrivacyActionResult: Codable, Sendable {
         self.message = message
     }
 }
-

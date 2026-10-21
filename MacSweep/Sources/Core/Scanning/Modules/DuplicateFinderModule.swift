@@ -102,7 +102,7 @@ struct DuplicateFinderModule: ScanModule {
             .isSymbolicLinkKey
         ]
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: root,
             includingPropertiesForKeys: Array(resourceKeys),
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
@@ -117,7 +117,7 @@ struct DuplicateFinderModule: ScanModule {
             iterations += 1
             if iterations % 512 == 0 { try Task.checkCancellation() }
             do {
-                let values = try url.resourceValues(forKeys: resourceKeys)
+                let values = try url.scanResourceValues(forKeys: resourceKeys)
 
                 // Skip directories and symlinks
                 guard values.isDirectory == false,
@@ -175,7 +175,7 @@ struct DuplicateFinderModule: ScanModule {
             guard urls.count > 1 else { return nil }
 
             let files = urls.compactMap { url -> DuplicateFile? in
-                guard let values = try? url.resourceValues(forKeys: [
+                guard let values = try? url.scanResourceValues(forKeys: [
                     .fileSizeKey,
                     .creationDateKey,
                     .contentModificationDateKey

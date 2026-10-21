@@ -13,7 +13,7 @@ enum DockerCLI {
     /// shared `HomebrewPaths`), else the Docker Desktop bundle — or nil.
     static var path: String? {
         if let brewDocker = HomebrewPaths.toolPath("docker") { return brewDocker }
-        return FileManager.default.fileExists(atPath: dockerDesktopPath) ? dockerDesktopPath : nil
+        return ScanFileSystem.exists(atPath: dockerDesktopPath) ? dockerDesktopPath : nil
     }
 
     /// Parse a complete Docker size token (e.g. "1.5GB", "256M", "512kB")
@@ -142,7 +142,7 @@ struct DockerModule: ScanModule {
 
     private func isDockerInstalled() -> Bool {
         dockerPath() != nil ||
-        FileManager.default.fileExists(atPath: "/Applications/Docker.app")
+        ScanFileSystem.exists(atPath: "/Applications/Docker.app")
     }
 
     private func getDockerDiskUsage() async -> [CleanupItem]? {
@@ -172,9 +172,20 @@ struct DockerModule: ScanModule {
     }
 
     private func dockerDiskUsageData(executable: String) async -> Data? {
-        guard let result = try? await commandRunner(executable, Self.diskUsageArguments),
-              result.didSucceed else { return nil }
-        return Data(result.output.utf8)
+        do {
+            let result = try await commandRunner(executable, Self.diskUsageArguments)
+            guard result.didSucceed, result.outputWasValidUTF8 else {
+                let error = NSError(domain: "MacSweep.Scan", code: Int(result.status), userInfo: [
+                    NSLocalizedDescriptionKey: "Docker disk usage unavailable: \(result.error)"
+                ])
+                ScanDiagnostics.current?.record(error, at: URL(fileURLWithPath: executable))
+                return nil
+            }
+            return Data(result.output.utf8)
+        } catch {
+            ScanDiagnostics.current?.record(error, at: URL(fileURLWithPath: executable))
+            return nil
+        }
     }
 
     /// Parse `docker system df --format "{{json .}}"` output — one JSON object

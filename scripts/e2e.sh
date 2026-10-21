@@ -23,6 +23,7 @@ set -uo pipefail
 
 REPO_ROOT="${0:A:h:h}"
 PKG="$REPO_ROOT/MacSweep"
+source "$REPO_ROOT/scripts/toolchain.sh"
 
 BIN="${MACSWEEP_BIN:-}"
 if [[ -z "$BIN" ]]; then
@@ -41,6 +42,7 @@ trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
 typeset -i failures=0
 OUT=""
+LAST_RC=0
 
 ok()   { print "ok   - $1" }
 fail() { print -u2 "FAIL - $1"; failures+=1 }
@@ -52,7 +54,8 @@ run_expect() {
   local rc
   OUT="$("$BIN" "$@" 2>&1 < /dev/null)"
   rc=$?
-  if [[ "$rc" -eq "$expected" ]]; then
+  LAST_RC=$rc
+  if [[ ",$expected," == *",$rc,"* ]]; then
     ok "$desc (exit $rc)"
   else
     fail "$desc: expected exit $expected, got $rc"
@@ -96,13 +99,15 @@ mkdir -p "$SCAN_FIXTURE"
 dd if=/dev/urandom of="$SCAN_FIXTURE/junk.bin" bs=1024 count=64 2>/dev/null
 touch -t 202401010000 "$SCAN_FIXTURE/junk.bin" "$SCAN_FIXTURE" "$FIXTURE_ROOT"
 
-run_expect 0 "scan --modules system-cache emits JSON" scan --modules system-cache --format json
+run_expect 0,1 "scan --modules system-cache emits complete or explicit partial JSON" scan --modules system-cache --format json
+json_assert "scan exit status matches diagnostic errors" "($LAST_RC == 0) == (not d['summary']['errors'])"
 json_assert "scan JSON has metadata/findings/summary" \
   "'metadata' in d and 'findings' in d and 'summary' in d"
 json_assert "scan surfaces the temp fixture" "'$FIXTURE_ROOT' in json.dumps(d)"
 
 # ------------------------------------------------------- dry-run is dry
-run_expect 0 "dry-run --modules system-cache emits JSON" dry-run --modules system-cache --format json
+run_expect 0,1 "dry-run --modules system-cache emits JSON" dry-run --modules system-cache --format json
+json_assert "dry-run exit status matches diagnostic errors" "($LAST_RC == 0) == (not d['summary']['errors'])"
 json_assert "dry-run JSON carries a cleanup preview" "'cleanup' in json.dumps(d)"
 if [[ -f "$SCAN_FIXTURE/junk.bin" ]]; then
   ok "dry-run deleted nothing (fixture intact)"

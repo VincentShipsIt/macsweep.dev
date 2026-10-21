@@ -16,6 +16,7 @@ enum AnthropicMessagesClient {
 
     enum ClientError: Error, LocalizedError, Sendable {
         case invalidRequestBody
+        case truncatedResponse
         case emptyResponse
         case unparseableResponse
         case httpFailure(status: Int, body: String)
@@ -25,6 +26,8 @@ enum AnthropicMessagesClient {
             switch self {
             case .invalidRequestBody:
                 return "Could not encode Anthropic request body"
+            case .truncatedResponse:
+                return "Anthropic response was truncated; retry with fewer items"
             case .emptyResponse:
                 return "Anthropic API returned an empty response"
             case .unparseableResponse:
@@ -85,12 +88,16 @@ enum AnthropicMessagesClient {
             throw ClientError.httpFailure(status: http.statusCode, body: bodyText)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = json["content"] as? [[String: Any]],
-              let text = content.first?["text"] as? String
-        else {
-            throw ClientError.unparseableResponse
+        guard response is HTTPURLResponse,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw ClientError.unparseableResponse }
+        guard json["stop_reason"] as? String != "max_tokens" else {
+            throw ClientError.truncatedResponse
         }
+        guard let content = json["content"] as? [[String: Any]],
+              let block = content.first(where: { $0["type"] as? String == "text" }),
+              let text = block["text"] as? String
+        else { throw ClientError.unparseableResponse }
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ClientError.emptyResponse }

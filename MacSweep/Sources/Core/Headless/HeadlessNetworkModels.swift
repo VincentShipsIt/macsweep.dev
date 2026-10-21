@@ -69,4 +69,3 @@ public struct HeadlessSSHRemoveResult: Codable, Sendable {
         self.clearedAll = clearedAll
     }
 }
-

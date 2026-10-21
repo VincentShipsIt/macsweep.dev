@@ -85,13 +85,15 @@ final class ScanScheduler {
 
     private func runBackgroundScan() async {
         let engine = ScanEngine()
-        guard let items = try? await engine.scan() else {
+        let scan = await engine.scanWithDiagnostics()
+        guard !scan.isPartial else {
             if Self.isEnabled {
                 scheduleNextScan()
             }
             return
         }
 
+        let items = scan.items
         let totalSize = items.reduce(0) { $0 + $1.size }
         let itemCount = items.count
 

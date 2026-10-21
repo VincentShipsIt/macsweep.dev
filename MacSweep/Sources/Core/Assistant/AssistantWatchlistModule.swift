@@ -20,7 +20,7 @@ struct AssistantWatchlistModule: ScanModule {
 
         for target in targets {
             let expandedTarget = expand(path: target.path)
-            guard FileManager.default.fileExists(atPath: expandedTarget.path) else { continue }
+            guard ScanFileSystem.exists(atPath: expandedTarget.path) else { continue }
 
             let excludedRoots = Set(target.excludePaths.map { expand(path: $0).path })
             let targetItems = await scanTarget(
@@ -51,9 +51,9 @@ struct AssistantWatchlistModule: ScanModule {
         ]
 
         do {
-            let values = try rootURL.resourceValues(forKeys: resourceKeys)
+            let values = try rootURL.scanResourceValues(forKeys: resourceKeys)
             if values.isDirectory == true {
-                let children = try FileManager.default.contentsOfDirectory(
+                let children = try ScanFileSystem.contentsOfDirectory(
                     at: rootURL,
                     includingPropertiesForKeys: Array(resourceKeys),
                     options: [.skipsHiddenFiles]
@@ -72,7 +72,7 @@ struct AssistantWatchlistModule: ScanModule {
                 for child in children where !excludedRoots.contains(where: { child.path.hasPrefix($0) }) {
                     guard checker.validateForScan(child, moduleID: id).isSafe else { continue }
                     do {
-                        let childValues = try child.resourceValues(forKeys: resourceKeys)
+                        let childValues = try child.scanResourceValues(forKeys: resourceKeys)
                         let size: Int64
                         if childValues.isDirectory == true {
                             size = try await DiskAnalyzer.directorySize(at: child)
@@ -112,7 +112,7 @@ struct AssistantWatchlistModule: ScanModule {
     }
 
     private func directoryType(for url: URL) -> CleanupItem.ItemType {
-        ((try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false) ? .directory : .file
+        ((try? url.scanResourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false) ? .directory : .file
     }
 
     private func expand(path: String) -> URL {
@@ -147,7 +147,7 @@ struct AssistantWatchlistModule: ScanModule {
                 // the children that did get trashed.
                 let contents: [URL]
                 do {
-                    contents = try FileManager.default.contentsOfDirectory(at: item.path, includingPropertiesForKeys: nil)
+                    contents = try ScanFileSystem.contentsOfDirectory(at: item.path, includingPropertiesForKeys: nil)
                 } catch {
                     errors.append(CleanupError(
                         path: item.path,

@@ -140,6 +140,22 @@ final class LargeFilesModuleTests {
         #expect(items.isEmpty)
     }
 
+    @Test func visibleFolderIncludesHiddenDescendantsAndRespectsExcludedBoundaries() async throws {
+        try write(bigBytes, to: "visible/.cache/deep/data.bin")
+        try write(bigBytes, to: ".hidden-root/data.bin")
+        try write(bigBytes, to: "excluded/data.bin")
+        try write(bigBytes, to: "excluded-neighbor/data.bin")
+        var scanner = module(.both)
+        scanner.excludePaths = ["excluded"]
+
+        let items = try await scanner.scan()
+
+        #expect(names(items) == ["visible", "excluded-neighbor"])
+        let visible = try #require(items.first { $0.path.lastPathComponent == "visible" })
+        let expectedSize = try await DiskAnalyzer.directorySize(at: root.appending(path: "visible"))
+        #expect(visible.size == expectedSize)
+    }
+
     @Test func activityAgeCutoffsAreDeterministic() throws {
         let calendar = Calendar(identifier: .gregorian)
         let reference = try #require(calendar.date(from: DateComponents(

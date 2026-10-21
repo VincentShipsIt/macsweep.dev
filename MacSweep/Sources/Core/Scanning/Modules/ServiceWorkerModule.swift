@@ -82,7 +82,7 @@ struct ServiceWorkerModule: ScanModule {
 
         let appSupportURL = URL.libraryDirectory.appending(path: "Application Support")
 
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: appSupportURL,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
@@ -127,7 +127,7 @@ struct ServiceWorkerModule: ScanModule {
                 }
             }
 
-            let contents = try FileManager.default.contentsOfDirectory(
+            let contents = try ScanFileSystem.contentsOfDirectory(
                 at: item.path,
                 includingPropertiesForKeys: nil
             )

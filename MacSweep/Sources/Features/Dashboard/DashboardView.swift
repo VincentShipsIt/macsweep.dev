@@ -11,7 +11,7 @@ struct DashboardView: View {
     @State private var showingConfirmation = false
     @State private var recommendedItemsToClean: Set<CleanupItem.ID> = []
 
-    private var monitor: SystemMonitor { appState.systemMonitor }
+    @ObservedObject var monitor: SystemMonitor
 
     var body: some View {
         VStack(spacing: 0) {
@@ -680,7 +680,7 @@ struct DashboardView: View {
                 icon: "checkmark.circle",
                 tint: .green,
                 title: "Last Cleanup",
-                detail: "Freed \(cleanup.formattedBytesFreed) \(relativeTimeText(for: cleanup.timestamp))"
+                detail: "Processed estimate \(cleanup.formattedBytesFreed) \(relativeTimeText(for: cleanup.timestamp))"
             )
 
             HStack(spacing: 12) {

@@ -41,11 +41,16 @@ extension ScanModule {
         threshold: Int64 = 0,
         safetyCheck: (@Sendable (URL) -> Bool)? = nil
     ) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard ScanFileSystem.exists(atPath: url.path) else { return nil }
         if let safetyCheck, !safetyCheck(url) { return nil }
-        let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
+        let size: Int64
+        do { size = try await DiskAnalyzer.directorySize(at: url) }
+        catch {
+            ScanDiagnostics.current?.record(error, at: url)
+            return nil
+        }
         guard size > threshold else { return nil }
-        let lastModified = try? url.resourceValues(
+        let lastModified = try? url.scanResourceValues(
             forKeys: [.contentModificationDateKey]
         ).contentModificationDate
         return CleanupItem(
@@ -210,7 +215,7 @@ enum DockerCleanupAction: String, CaseIterable, Hashable, Sendable {
     /// List command used to enumerate concrete targets before remove-by-id.
     var listArguments: [String]? {
         switch self {
-        case .pruneContainers: return ["container", "ls", "-aq", "-f", "status=exited"]
+        case .pruneContainers: return ["container", "ls", "-aq", "-f", "status=exited", "-f", "status=created", "-f", "status=dead"]
         case .pruneVolumes: return ["volume", "ls", "-q", "-f", "dangling=true"]
         case .pruneBuildCache, .pruneImages: return nil
         }
@@ -228,7 +233,7 @@ enum DockerCleanupAction: String, CaseIterable, Hashable, Sendable {
     var commandPreview: String {
         switch self {
         case .pruneContainers:
-            return "docker container ls -aq -f status=exited && docker container rm <ids>"
+            return "docker container ls -aq -f status=exited -f status=created -f status=dead && docker container rm <ids>"
         case .pruneVolumes:
             return "docker volume ls -q -f dangling=true && docker volume rm <names>"
         case .pruneBuildCache, .pruneImages:
@@ -463,6 +468,7 @@ struct CleanupResult: Sendable {
     let errors: [CleanupError]
     let historyActions: [CleanupItem.ID: CleanupHistoryAction]
     let timestamp: Date
+    let accounting: CleanupAccounting?
 
     var formattedBytesFreed: String {
         bytesFreed.formattedFileSize
@@ -481,13 +487,15 @@ struct CleanupResult: Sendable {
         itemsProcessed: Int,
         bytesFreed: Int64,
         errors: [CleanupError] = [],
-        historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:]
+        historyActions: [CleanupItem.ID: CleanupHistoryAction] = [:],
+        accounting: CleanupAccounting? = nil
     ) {
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
         self.errors = errors
         self.historyActions = historyActions
         self.timestamp = Date()
+        self.accounting = accounting
     }
 }
 
@@ -560,6 +568,12 @@ struct CleanupError: Error, Identifiable, Sendable {
 }
 
 extension Array where Element == CleanupError {
+    func failure(affecting item: CleanupItem) -> CleanupError? {
+        first { error in
+            error.path == item.path || (item.type == .directory && error.path.path.hasPrefix(item.path.path + "/"))
+        }
+    }
+
     /// User-facing summary of per-item cleanup failures, or nil when empty.
     /// Wording stays generic on purpose: cleanup errors mix safety vetoes with
     /// ordinary deletion failures, so a blanket "blocked by safety checks" would

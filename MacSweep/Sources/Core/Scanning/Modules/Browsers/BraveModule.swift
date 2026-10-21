@@ -45,7 +45,7 @@ struct BraveModule: BrowserModule {
 
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: basePath.path) else {
             return found
         }
         for item in contents where item.hasPrefix("Profile ") {
@@ -78,4 +78,3 @@ struct BraveModule: BrowserModule {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
-

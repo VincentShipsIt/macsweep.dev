@@ -86,12 +86,12 @@ struct SystemCacheModule: ScanModule {
 
     /// Scan a target directory for cleanup items
     private func scanDirectory(_ targetURL: URL, category: String) async -> [CleanupItem] {
-        guard FileManager.default.fileExists(atPath: targetURL.path) else { return [] }
+        guard ScanFileSystem.exists(atPath: targetURL.path) else { return [] }
 
         var items: [CleanupItem] = []
 
         do {
-            let contents = try FileManager.default.contentsOfDirectory(
+            let contents = try ScanFileSystem.contentsOfDirectory(
                 at: targetURL,
                 includingPropertiesForKeys: [
                     .fileSizeKey,
@@ -107,7 +107,7 @@ struct SystemCacheModule: ScanModule {
                 if isProtected(url) { continue }
 
                 do {
-                    let resourceValues = try url.resourceValues(forKeys: [
+                    let resourceValues = try url.scanResourceValues(forKeys: [
                         .isDirectoryKey,
                         .contentModificationDateKey
                     ])
@@ -154,10 +154,10 @@ struct SystemCacheModule: ScanModule {
 
         for subdir in safeSubdirs {
             let subdirURL = userFolderBase.appending(path: subdir)
-            guard FileManager.default.fileExists(atPath: subdirURL.path) else { continue }
+            guard ScanFileSystem.exists(atPath: subdirURL.path) else { continue }
 
             do {
-                let contents = try FileManager.default.contentsOfDirectory(
+                let contents = try ScanFileSystem.contentsOfDirectory(
                     at: subdirURL,
                     includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
                     options: [.skipsHiddenFiles]
@@ -168,13 +168,13 @@ struct SystemCacheModule: ScanModule {
                     if isProtected(url) { continue }
 
                     // Skip items modified recently (within last hour) - they might be in use
-                    if let modDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                    if let modDate = try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                        Date().timeIntervalSince(modDate) < 3600 {
                         continue
                     }
 
                     do {
-                        let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey])
+                        let resourceValues = try url.scanResourceValues(forKeys: [.isDirectoryKey])
                         let size = try await DiskAnalyzer.size(of: url)
 
                         // Skip tiny items
@@ -189,7 +189,7 @@ struct SystemCacheModule: ScanModule {
                             type: resourceValues.isDirectory == true ? .directory : .file,
                             module: id,
                             moduleName: "\(name) - \(category)",
-                            lastModified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                            lastModified: try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
                         ))
                     } catch {
                         continue
@@ -259,7 +259,7 @@ struct SystemCacheModule: ScanModule {
                 // time, not just at scan.
                 let contents: [URL]
                 do {
-                    contents = try FileManager.default.contentsOfDirectory(
+                    contents = try ScanFileSystem.contentsOfDirectory(
                         at: item.path,
                         includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
                     )
@@ -281,7 +281,7 @@ struct SystemCacheModule: ScanModule {
                 // credit, but the item must be reported as partial rather than
                 // full success.
                 do {
-                    let survivors = try FileManager.default.contentsOfDirectory(
+                    let survivors = try ScanFileSystem.contentsOfDirectory(
                         at: item.path,
                         includingPropertiesForKeys: nil,
                         options: []
@@ -330,7 +330,7 @@ struct SystemCacheModule: ScanModule {
     private func removeValidatedNode(_ url: URL, checker: SafetyChecker) async -> NodeRemovalResult {
         let values: URLResourceValues
         do {
-            values = try url.resourceValues(forKeys: [
+            values = try url.scanResourceValues(forKeys: [
                 .isDirectoryKey,
                 .isSymbolicLinkKey,
                 .totalFileAllocatedSizeKey,
@@ -353,7 +353,7 @@ struct SystemCacheModule: ScanModule {
         if isDirectory {
             let children: [URL]
             do {
-                children = try FileManager.default.contentsOfDirectory(
+                children = try ScanFileSystem.contentsOfDirectory(
                     at: url,
                     includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
                 )

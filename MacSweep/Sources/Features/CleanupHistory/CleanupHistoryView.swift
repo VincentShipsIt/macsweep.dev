@@ -108,9 +108,18 @@ private struct CleanupHistoryRunView: View {
 
                 Spacer()
 
-                Text(run.bytesCompleted.formattedFileSize)
+                Text("Estimated target size: \(run.bytesCompleted.formattedFileSize)")
                     .font(.system(.headline, design: .rounded))
                     .foregroundStyle(MacSweepTheme.accent)
+            }
+
+            if let accounting = run.accounting {
+                Text("Moved to Trash: \(accounting.movedToTrashBytes.formattedFileSize) · Permanently removed targets: \(accounting.permanentlyRemovedTargetBytes.formattedFileSize) (estimates)")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(accounting.volumeObservations, id: \.before.volumePath) { observation in
+                    Text("Observed available-space change: \(observation.observedAvailableChange.map { String($0) + " bytes" } ?? "unavailable"). Includes other activity on the volume.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
 
             Divider()

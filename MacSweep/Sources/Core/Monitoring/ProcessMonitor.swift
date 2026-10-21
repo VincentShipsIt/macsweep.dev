@@ -32,29 +32,30 @@ final class ProcessMonitor: ObservableObject {
 
     private var timer: Timer?
 
-    func startMonitoring() async {
-        // Don't schedule a second timer if one is already running (e.g. `.task`
-        // re-fires). The leaked-timer case is handled by the views calling
-        // stopMonitoring() in .onDisappear.
+    private var consumers = Set<UUID>()
+    var isMonitoring: Bool { timer != nil }
+
+    func startMonitoring(for consumer: UUID) async {
+        guard !Task.isCancelled else { return }
+        consumers.insert(consumer)
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh()
             }
         }
-
-        // Assign the timer before suspending in refresh(). Main-actor methods
-        // are re-entrant across await, so assigning afterwards allowed a second
-        // caller to pass the nil guard and schedule another timer.
         await refresh()
     }
 
-    func stopMonitoring() {
+    func stopMonitoring(for consumer: UUID) {
+        consumers.remove(consumer)
+        guard consumers.isEmpty else { return }
         timer?.invalidate()
         timer = nil
     }
 
     func refresh() async {
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
 

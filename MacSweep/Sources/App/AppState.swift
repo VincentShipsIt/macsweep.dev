@@ -146,8 +146,7 @@ final class AppState: ObservableObject {
             // Per-item failures are returned in result.errors (not thrown). Only
             // remove items that actually left disk; keep failed ones in the list
             // rather than silently dropping them.
-            let failedPaths = Set(result.errors.map(\.path))
-            scanResults.removeAll { selectedItems.contains($0.id) && !failedPaths.contains($0.path) }
+            scanResults.removeAll { selectedItems.contains($0.id) && result.errors.failure(affecting: $0) == nil }
             selectedItems = selectedItems.filter { id in scanResults.contains(where: { $0.id == id }) }
             smartCareSummary = scanResults.isEmpty
                 ? nil
@@ -313,9 +312,15 @@ final class AppState: ObservableObject {
                 ? "Finalizing results"
                 : "Checking assistant watchlist"
             scanProgress = max(scanProgress, 0.95)
-            let persistentItems = try await watchlistItems
+            let persistentItems: [CleanupItem]
+            var assistantFailures: [ModuleScanFailure] = []
+            do { persistentItems = try await watchlistItems }
+            catch let partial as PartialModuleScanError {
+                persistentItems = partial.items
+                assistantFailures = [ModuleScanFailure(moduleID: AssistantWatchlistModule.moduleID, moduleName: "Assistant Watchlists", message: partial.localizedDescription)]
+            }
             let combined = deduplicated(items: result.items + persistentItems)
-            scanFailures = result.failures.sorted {
+            scanFailures = (result.failures + assistantFailures).sorted {
                 $0.moduleName.localizedStandardCompare($1.moduleName) == .orderedAscending
             }
             applyScanResults(combined, modules: scope.modules)

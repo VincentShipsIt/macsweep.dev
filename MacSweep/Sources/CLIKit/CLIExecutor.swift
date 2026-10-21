@@ -206,7 +206,10 @@ public enum CLIExecutor {
             // Scan ran successfully; signal a genuine threat via exit code so agents
             // can branch on the process result, not just parse output. `review`/
             // unknown items keep the scan clean (isClean ignores them) → exit 0.
-            return report.isClean ? CLIExitCode.success.rawValue : CLIExitCode.threatsFound.rawValue
+            if report.findings.contains(where: { ["suspicious", "malicious"].contains($0.threatLevel) }) {
+                return CLIExitCode.threatsFound.rawValue
+            }
+            return report.isComplete ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
 
         case .homebrewOutdated(let format):
             let report = try await service.homebrewOutdated()
@@ -498,8 +501,15 @@ public enum CLIExecutor {
 
             if let cleanup = output.cleanup {
                 lines.append(
-                    "\(cleanup.dryRun ? "Preview" : "Cleanup"): \(cleanup.itemsProcessed) items, \(cleanup.bytesFreed.formattedFileSize)"
+                    "\(cleanup.dryRun ? "Preview" : "Cleanup"): \(cleanup.itemsProcessed) items, estimated target size \(cleanup.bytesFreed.formattedFileSize)"
                 )
+                if let accounting = cleanup.accounting {
+                    lines.append("Moved to Trash (estimate): \(accounting.movedToTrashBytes.formattedFileSize)")
+                    lines.append("Permanently removed targets (estimate): \(accounting.permanentlyRemovedTargetBytes.formattedFileSize)")
+                    for observation in accounting.volumeObservations {
+                        lines.append("Observed available-space change: \(observation.observedAvailableChange.map(String.init) ?? "unavailable") bytes; includes other activity")
+                    }
+                }
                 if !cleanup.errors.isEmpty {
                     lines.append("Errors: \(cleanup.errors.count)")
                 }
@@ -561,7 +571,7 @@ public enum CLIExecutor {
                 "Success: \(output.result.success ? "yes" : "no")"
             ]
             if output.result.bytesFreed > 0 {
-                lines.append("Freed: \(output.result.bytesFreed.formattedFileSize)")
+                lines.append("Processed target estimate: \(output.result.bytesFreed.formattedFileSize)")
             }
             return lines.joined(separator: "\n")
 
@@ -640,7 +650,7 @@ public enum CLIExecutor {
                 "Uninstall: \(status) — \(result.appName) (\(result.appID))",
                 "Bundle: \(result.bundlePath)",
                 "Items: \(result.itemsProcessed) (\(result.leftoversRemoved) leftover(s) removed)",
-                "Reclaimed: \(formatter.string(fromByteCount: result.bytesFreed))"
+                "Processed target estimate: \(formatter.string(fromByteCount: result.bytesFreed))"
             ]
             if !result.leftovers.isEmpty {
                 lines.append("Leftovers:")
@@ -679,7 +689,9 @@ public enum CLIExecutor {
         case let output as CLIMalwareOutput:
             let report = output.report
             var lines = [
-                "Malware scan: \(report.isClean ? "clean" : "THREATS FOUND")",
+                "Persistence audit: \(report.isClean ? "no threats detected in inspected items" : report.isComplete ? "review findings" : "INCOMPLETE")",
+                report.coverageDescription,
+                report.collectionErrors.joined(separator: "\n"),
                 "XProtect: \(report.xprotectStatus)",
                 "Scanned: \(report.totalScanned)",
                 "AI analysis: \(report.aiAnalysisRequested ? "on" : "off")"

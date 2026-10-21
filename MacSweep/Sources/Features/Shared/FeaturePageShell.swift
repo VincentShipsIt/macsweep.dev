@@ -114,17 +114,21 @@ struct ScanLandingView: View {
     var benefits: [ScanBenefit] = []
     var illustration: String? = nil
     var isScanning: Bool = false
-    var progress: Double = 0
+    var progress: Double? = nil
     var scanningMessage: String? = nil
     /// Kept in the hero's layout so the callout remains centered and never
     /// slides beneath the full-bleed titlebar treatment.
     var permissionWarning: FullDiskAccessScope? = nil
+    var onCancel: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
         Group {
             if isScanning {
-                ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
+                VStack(spacing: 16) {
+                    ScanProgressStatusView(progress: progress, message: scanningMessage ?? "Scanning")
+                    if let onCancel { Button("Stop Scan", action: onCancel).glassButton() }
+                }
                     .frame(maxWidth: 360)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(40)

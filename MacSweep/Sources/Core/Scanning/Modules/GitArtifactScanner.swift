@@ -1,5 +1,6 @@
 import Foundation
 
+
 // MARK: - Git Artifact Discovery
 
 enum GitCleanupKind: String, Sendable {
@@ -87,6 +88,7 @@ struct GitToolStatus: Sendable {
 
 struct GitArtifactScanner: Sendable {
     var searchPaths: [URL]
+    var homeDirectory: URL
     var maxDepth: Int
     var staleInterval: TimeInterval
     var includeGitHubState: Bool
@@ -95,8 +97,10 @@ struct GitArtifactScanner: Sendable {
         searchPaths: [URL] = [FileManager.default.homeDirectoryForCurrentUser],
         maxDepth: Int = 5,
         staleInterval: TimeInterval = 14 * 24 * 60 * 60,
-        includeGitHubState: Bool = true
+        includeGitHubState: Bool = true,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) {
+        self.homeDirectory = homeDirectory
         self.searchPaths = searchPaths
         self.maxDepth = maxDepth
         self.staleInterval = staleInterval
@@ -119,11 +123,18 @@ struct GitArtifactScanner: Sendable {
         guard Self.executablePath(for: "git") != nil else { return [] }
 
         let status = await toolStatus()
-        let roots = discoverRepositoryRoots()
+        let collector = ScanDiagnostics.current
+        let roots = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let roots = ScanDiagnostics.$current.withValue(collector) { discoverRepositoryRoots() }
+                continuation.resume(returning: roots)
+            }
+        }
         var seenCommonDirectories = Set<String>()
         var items: [GitCleanupItem] = []
 
         for root in roots {
+            if Task.isCancelled { break }
             guard let repository = await Self.repository(at: root) else { continue }
             guard seenCommonDirectories.insert(repository.commonDirectory.path).inserted else { continue }
 
@@ -151,12 +162,13 @@ struct GitArtifactScanner: Sendable {
         }
     }
 
-    private func discoverRepositoryRoots() -> [URL] {
+    func discoverRepositoryRoots() -> [URL] {
+        let worktreeRoots = Set(Self.worktreeRoots(in: homeDirectory).map(\.path))
         var roots: [URL] = []
         var seen = Set<String>()
 
         for path in candidateSearchPaths() {
-            for root in Self.repositoryRoots(in: path, maxDepth: maxDepth, skipHidden: path.lastPathComponent != ".codex") {
+            for root in Self.repositoryRoots(in: path, maxDepth: maxDepth, skipHidden: !worktreeRoots.contains(path.standardizedFileURL.path)) {
                 let standardized = root.standardizedFileURL.path
                 if seen.insert(standardized).inserted {
                     roots.append(root)
@@ -167,16 +179,15 @@ struct GitArtifactScanner: Sendable {
         return roots
     }
 
-    private func candidateSearchPaths() -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let hiddenWorktreeRoots = [
-            home.appending(path: ".codex/worktrees", directoryHint: .isDirectory),
-            home.appending(path: ".claude/worktrees", directoryHint: .isDirectory),
-            home.appending(path: ".agents/worktrees", directoryHint: .isDirectory)
-        ]
+    static func worktreeRoots(in home: URL) -> [URL] {
+        [".codex/worktrees", ".claude/worktrees", ".agents/worktrees", ".grok/worktrees", ".t3/worktrees", "worktrees"].map {
+            home.appending(path: $0).standardizedFileURL
+        }
+    }
 
-        return (searchPaths + hiddenWorktreeRoots).filter {
-            FileManager.default.fileExists(atPath: $0.path)
+    private func candidateSearchPaths() -> [URL] {
+        (searchPaths + Self.worktreeRoots(in: homeDirectory)).filter {
+            ScanFileSystem.exists(atPath: $0.path)
         }
     }
 
@@ -194,7 +205,7 @@ struct GitArtifactScanner: Sendable {
         for (index, entry) in entries.enumerated() {
             guard index > 0 else { continue } // never remove the main worktree
             guard let path = entry.path else { continue }
-            guard FileManager.default.fileExists(atPath: path.path) else { continue }
+            guard ScanFileSystem.exists(atPath: path.path) else { continue }
             guard await Self.isCleanWorkingTree(path) else { continue }
             // Don't surface a worktree as clean/removable if it holds gitignored
             // content (secrets, local DBs) that `git worktree remove` would
@@ -296,7 +307,7 @@ struct GitArtifactScanner: Sendable {
             roots.append(baseURL)
         }
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: baseURL,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: options
@@ -526,7 +537,7 @@ struct GitArtifactScanner: Sendable {
     }
 
     private static func lastModificationDate(for url: URL) -> Date? {
-        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     private static func isCleanWorkingTree(_ url: URL) async -> Bool {
@@ -553,16 +564,18 @@ struct GitArtifactScanner: Sendable {
         ])
         guard result.status == 0 else { return true }
 
-        // `-z` emits paths verbatim and terminates each record with NUL, so
-        // quotes, backslashes, tabs, newlines, and non-ASCII characters are not
-        // C-quoted or confused with a record boundary.
-        for record in result.output.split(separator: "\0") {
-            guard record.hasPrefix("!! ") else { continue }  // "!!" marks ignored entries
-            let entry = String(record.dropFirst(3))
-            guard !entry.isEmpty else { continue }
-            if pathHasNonzeroContent(url.appending(path: entry)) { return true }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                for record in result.output.split(separator: "\0") where record.hasPrefix("!! ") {
+                    let entry = String(record.dropFirst(3))
+                    if !entry.isEmpty, pathHasNonzeroContent(url.appending(path: entry)) {
+                        continuation.resume(returning: true)
+                        return
+                    }
+                }
+                continuation.resume(returning: false)
+            }
         }
-        return false
     }
 
     /// Whether `url` is a nonempty file, or a directory containing at least one
@@ -570,25 +583,27 @@ struct GitArtifactScanner: Sendable {
     /// short-circuits on the first nonzero-size file.
     private static func pathHasNonzeroContent(_ url: URL) -> Bool {
         let fm = FileManager.default
-        var isDirectory: ObjCBool = false
-        guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return false }
-
-        if !isDirectory.boolValue {
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isSymbolicLink != true else { return true }
+        if values.isDirectory != true {
+            guard let size = values.fileSize else { return true }
             return size > 0
         }
 
+        var readFailed = false
         guard let enumerator = fm.enumerator(
             at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey],
+            errorHandler: { _, _ in readFailed = true; return false }
         ) else {
             return true  // can't enumerate — be conservative
         }
         for case let child as URL in enumerator {
-            let values = try? child.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            if values?.isRegularFile == true, (values?.fileSize ?? 0) > 0 { return true }
+            guard let values = try? child.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey]),
+                  values.isSymbolicLink != true else { return true }
+            if values.isRegularFile == true, (values.fileSize ?? 0) > 0 { return true }
         }
-        return false
+        return readFailed
     }
 
     private static func isEphemeralWorktree(_ url: URL) -> Bool {
@@ -597,10 +612,12 @@ struct GitArtifactScanner: Sendable {
         return path.hasPrefix(home + "/.codex/worktrees/")
             || path.hasPrefix(home + "/.claude/worktrees/")
             || path.hasPrefix(home + "/.agents/worktrees/")
+            || path.hasPrefix(home + "/.grok/worktrees/")
+            || path.hasPrefix(home + "/.t3/worktrees/")
     }
 
     private static func isRepositoryRoot(_ url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.appending(path: ".git").path)
+        ScanFileSystem.exists(atPath: url.appending(path: ".git").path)
     }
 
     private static func shouldSkipDirectory(named name: String) -> Bool {
@@ -840,5 +857,15 @@ private extension String {
     func removingPrefix(_ prefix: String) -> String? {
         guard hasPrefix(prefix) else { return nil }
         return String(dropFirst(prefix.count))
+    }
+}
+
+
+enum DeveloperScanRoots {
+    static func paths(in base: URL) -> [URL] {
+        guard base.standardizedFileURL == FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL else { return [base] }
+        return [base] + [".codex/worktrees", ".claude/worktrees", ".agents/worktrees", ".grok/worktrees", ".t3/worktrees", "worktrees"].map {
+            base.appending(path: $0)
+        }.filter { ScanFileSystem.exists(atPath: $0.path) }
     }
 }

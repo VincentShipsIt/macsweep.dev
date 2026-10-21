@@ -44,13 +44,13 @@ struct FirefoxModule: BrowserModule {
     /// Get all Firefox profile directories
     private var profilePaths: [URL] {
         let profilesDir = basePath.appending(path: "Profiles")
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: profilesDir,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
         return contents.filter { url in
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            (try? url.scanResourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
     }
 
@@ -72,4 +72,3 @@ struct FirefoxModule: BrowserModule {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
-

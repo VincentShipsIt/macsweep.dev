@@ -29,4 +29,3 @@ public struct HeadlessShredResult: Codable, Sendable {
         self.errors = errors
     }
 }
-

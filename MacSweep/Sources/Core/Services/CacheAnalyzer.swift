@@ -79,12 +79,14 @@ struct CacheAnalyzer {
     func analyze(deep: Bool) async -> Result {
         var errors: [String] = []
         let fast = await runFastScan()
-        var findings = fast
+        var findings = fast.findings
+        if let error = fast.error { errors.append(error) }
         var aiRan = false
 
         if deep {
             let dirList = await largestApplicationSupportDirectories()
-            let prompt = makeAIPrompt(dirList: dirList)
+            if let error = dirList.error { errors.append(error) }
+            let prompt = makeAIPrompt(dirList: dirList.output)
             let local = await runLocalAIScan(prompt: prompt)
 
             if local.provider != nil {
@@ -106,7 +108,7 @@ struct CacheAnalyzer {
             }
         }
 
-        return Result(findings: findings, fastCount: fast.count, aiRan: aiRan, errors: errors)
+        return Result(findings: findings, fastCount: fast.findings.count, aiRan: aiRan, errors: errors)
     }
 
     // MARK: - Fast Scan
@@ -139,11 +141,10 @@ struct CacheAnalyzer {
         "*/.claude/paste-cache",
         "*/.claude/telemetry",
         "*/.claude/shell-snapshots",
-        "*/.codex/log",
-        "*/.codex/archived_sessions"
+        "*/.codex/log"
     ]
 
-    private func runFastScan() async -> [Finding] {
+    private func runFastScan() async -> (findings: [Finding], error: String?) {
         // Replaces `find ~ … -print0 | xargs -0 du -sk | sort -rn` with an
         // argv-only pipeline. `~` is expanded here since there is no shell.
         // `du -sk` (raw KiB, not -sh's human strings) feeds the exact byte
@@ -173,7 +174,7 @@ struct CacheAnalyzer {
                 ],
                 timeout: Self.fastScanTimeout
             )
-            return Self.parseFastScanOutput(output)
+            return (Self.parseFastScanOutput(output.output), output.error)
         }.value
     }
 
@@ -186,7 +187,8 @@ struct CacheAnalyzer {
             guard parts.count == 2 else { return nil }
             let size = parts[0].trimmingCharacters(in: .whitespaces)
             let path = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !path.isEmpty, let kibibytes = Int64(size) else { return nil }
+            guard !path.isEmpty, !isConversationHistory(path), let kibibytes = Int64(size),
+                  kibibytes >= 0, kibibytes <= Int64.max / 1024 else { return nil }
             let bytes = kibibytes * 1024
             return Finding(
                 path: path,
@@ -215,7 +217,7 @@ struct CacheAnalyzer {
         if p.contains(".claude") || p.contains(".codex") {
             return .aiToolCache
         }
-        if p.contains("debug") || p.contains("/log") || p.contains("archived_sessions") {
+        if p.contains("debug") || p.contains("/log") {
             return .devDebugLogs
         }
         return .other
@@ -223,14 +225,17 @@ struct CacheAnalyzer {
 
     // MARK: - AI Scan
 
-    private func largestApplicationSupportDirectories() async -> String {
+    private func largestApplicationSupportDirectories() async -> (output: String, error: String?) {
         await Task.detached(priority: .userInitiated) {
             // Replaces `du -sh ~/Library/Application\ Support/*/ | sort -rh | head -50`.
             // The shell glob `*/` is expanded here to immediate, non-hidden
             // subdirectories so no path is ever passed through a shell.
             let appSupport = NSHomeDirectory() + "/Library/Application Support"
             let fileManager = FileManager.default
-            let directories = ((try? fileManager.contentsOfDirectory(atPath: appSupport)) ?? [])
+            let children: [String]
+            do { children = try fileManager.contentsOfDirectory(atPath: appSupport) }
+            catch { return ("", "Application Support scan incomplete: \(error.localizedDescription)") }
+            let directories = children
                 .filter { !$0.hasPrefix(".") }
                 .map { appSupport + "/" + $0 }
                 .filter { path in
@@ -239,7 +244,7 @@ struct CacheAnalyzer {
                 }
                 .sorted()
                 .map { $0 + "/" }   // trailing slash matches the `*/` the shell produced
-            guard !directories.isEmpty else { return "" }
+            guard !directories.isEmpty else { return ("", nil) }
 
             let output = await Self.bestEffortPipelineOutput(
                 stages: [
@@ -255,28 +260,26 @@ struct CacheAnalyzer {
                 timeout: Self.fastScanTimeout
             )
             // `head -50`
-            return output
+            return (output.output
                 .split(separator: "\n", omittingEmptySubsequences: false)
                 .prefix(50)
-                .joined(separator: "\n")
+                .joined(separator: "\n"), output.error)
         }.value
     }
 
-    private static func bestEffortPipelineOutput(
+    static func bestEffortPipelineOutput(
         stages: [ProcessPipelineStage],
         timeout: TimeInterval
-    ) async -> String {
+    ) async -> (output: String, error: String?) {
         do {
-            return try await ProcessRunner.runPipeline(
-                stages: stages,
-                timeout: timeout
-            ).output
+            let result = try await ProcessRunner.runPipeline(stages: stages, timeout: timeout)
+            return (result.output, nil)
         } catch let error as ProcessPipelineStageError {
-            return error.partialResult.output
+            return (error.partialResult.output, "Cache scan incomplete: \(error.description)")
         } catch ProcessRunnerError.timedOut(after: _, partialResult: let partialResult) {
-            return partialResult.output
+            return (partialResult.output, "Cache scan incomplete: discovery timed out")
         } catch {
-            return ""
+            return ("", "Cache scan incomplete: \(error.localizedDescription)")
         }
     }
 
@@ -290,10 +293,10 @@ struct CacheAnalyzer {
         Identify safe-to-delete cache directories. Categories:
         1. Electron/Chromium: "Code Cache", "GPUCache", "DawnWebGPUCache", "DawnGraphiteCache", "ShaderCache", "warm" in "vm_bundles/"
         2. Package Manager: .npm/_cacache, .npm/_npx, .bun/install/cache, .yarn/cache, .pnpm-store, .cache/pip, .cache/uv
-        3. Dev Debug Logs: dotdir's "debug", "log", "logs", "archived_sessions"
+        3. Dev Debug Logs: dotdir's "debug", "log", "logs"
         4. AI Tool Caches: .claude/debug, .claude/paste-cache, .claude/telemetry, .claude/shell-snapshots
 
-        NEVER flag: /projects/, /sessions/, /global/, *.json, *.bundle, vm_bundles/claudevm.bundle, ~/.bun/install/global
+        NEVER flag conversation history, archived_sessions, /projects/, /sessions/, /global/, *.json, *.bundle, vm_bundles/claudevm.bundle, ~/.bun/install/global
 
         Respond ONLY with a JSON array (no markdown):
         [{"path":"...","size_estimate":"...","category":"Electron/Chromium|Package Manager|Dev Debug Logs|AI Tool Cache|Other","regenerates_automatically":true,"reason":"..."}]
@@ -421,15 +424,16 @@ struct CacheAnalyzer {
         }
     }
 
-    private static func parseAIFindings(_ text: String, source: String) -> [Finding]? {
+    static func parseAIFindings(_ text: String, source: String) -> [Finding]? {
         let cleaned = AnthropicMessagesClient.extractJSONArray(from: text)
+
         guard let arrayData = cleaned.data(using: .utf8),
               let items = try? JSONSerialization.jsonObject(with: arrayData) as? [[String: Any]] else {
             return nil
         }
 
         return items.compactMap { item -> Finding? in
-            guard let path = item["path"] as? String else { return nil }
+            guard let path = item["path"] as? String, !isConversationHistory(path) else { return nil }
             let size = item["size_estimate"] as? String ?? "Unknown"
             let cat = item["category"] as? String ?? "Other"
             let regen = item["regenerates_automatically"] as? Bool ?? true
@@ -444,6 +448,15 @@ struct CacheAnalyzer {
                 reason: reason
             )
         }
+    }
+
+    private static func isConversationHistory(_ path: String) -> Bool {
+        let components = URL(fileURLWithPath: path.expandingTilde).standardized.pathComponents.map { $0.lowercased() }
+        for (index, component) in components.enumerated() where index + 1 < components.count {
+            if component == ".codex", ["sessions", "archived_sessions"].contains(components[index + 1]) { return true }
+            if component == ".claude", components[index + 1] == "projects" { return true }
+        }
+        return false
     }
 
     // MARK: - Shell helper

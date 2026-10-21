@@ -19,6 +19,7 @@ set -euo pipefail
 
 REPO_ROOT="${0:A:h:h}"
 PKG="$REPO_ROOT/MacSweep"
+source "$REPO_ROOT/scripts/toolchain.sh"
 
 zsh "$REPO_ROOT/scripts/test.sh" --enable-code-coverage
 

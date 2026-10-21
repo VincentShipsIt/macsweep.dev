@@ -39,7 +39,8 @@ enum BrowserModuleID {
 
 extension BrowserModule {
     var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: basePath.path)
+        ScanFileSystem.exists(atPath: basePath.path)
+            || NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
     }
 
     var isRunning: Bool {
@@ -361,6 +362,7 @@ private enum BrowserCacheRemovalError: LocalizedError {
         }
     }
 }
+
 
 // MARK: - Browser Cleanup Error
 

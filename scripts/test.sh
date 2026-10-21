@@ -19,6 +19,7 @@ set -euo pipefail
 
 REPO_ROOT="${0:A:h:h}"   # scripts/ -> repo root
 PKG="$REPO_ROOT/MacSweep"
+source "$REPO_ROOT/scripts/toolchain.sh"
 
 CLT_FW="/Library/Developer/CommandLineTools/Library/Developer/Frameworks"
 CLT_LIB="/Library/Developer/CommandLineTools/Library/Developer/usr/lib"

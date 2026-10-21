@@ -40,6 +40,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed sandbox-only entitlements from the intentionally non-sandboxed app
   and disabled debugger-entitlement injection in Release builds.
 
+## [1.1.4] - 2026-10-21
+
+### Security
+
+- Protect assistant conversation history from routine cache cleanup, including
+  misclassified AI suggestions. AI cleanup now requires shared review and live
+  preflight limits and records its results in cleanup history.
+
+### Fixed
+
+- Allow only supported attachment files through Mail cleanup safety checks;
+  continue protecting message databases, provider state and symlinks.
+- Preserve partial-scan diagnostics in Smart Care, feature scans and scheduled
+  scans. Include hidden files in directory sizes and discover supported hidden
+  developer build artifacts and agent worktree roots consistently.
+- Expose Browser Cleanup and Large & Old Files in navigation. Developer scans
+  display their current stage and support cancellation.
+- Report malware-audit coverage and collection failures, inspect additional
+  Chromium profiles, and avoid clean verdicts for empty or incomplete scans.
+
+### Changed
+
+- Label processed allocation as estimates and separate Trash moves, permanent
+  targets and observed volume-space changes in results, JSON and history.
+  Legacy JSON `bytesFreed` remains an explicitly marked estimate.
+- Verification scripts select full Xcode when available alongside Command Line
+  Tools, with an explicit environment override for custom toolchains.
+
 ## [1.0.8] - 2026-07-08
 
 ### Added

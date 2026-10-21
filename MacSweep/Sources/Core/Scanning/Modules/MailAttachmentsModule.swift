@@ -22,6 +22,34 @@ struct MailAttachmentsModule: ScanModule {
     /// Injection seam for location-discovery and scan tests.
     var homeDirectory = FileManager.default.homeDirectoryForCurrentUser
 
+    static func isAttachmentFile(at url: URL, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        let path = url.standardizedFileURL.path
+        let library = homeDirectory.standardizedFileURL.appending(path: "Library").path
+        let excludedExtensions: Set<String> = ["emlx", "emlxpart", "mbox", "partial", "db", "sqlite", "sqlite3", "msf", "plist"]
+        guard !excludedExtensions.contains(url.pathExtension.lowercased()),
+              (try? url.scanResourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true else { return false }
+        let roots = [
+            "Mail Downloads",
+            "Containers/com.apple.mail/Data/Library/Mail Downloads",
+            "Containers/com.microsoft.Outlook/Data/Library/Caches",
+            "Containers/com.readdle.smartemail-Mac/Data/Library/Application Support/Spark/Attachments",
+            "Application Support/Spark Desktop/core-data/attachments",
+        ]
+        if roots.contains(where: { path.hasPrefix(library + "/" + $0 + "/") }) { return true }
+        guard path.hasPrefix(library + "/") else { return false }
+        let relative = String(path.dropFirst(library.count + 1)).split(separator: "/").map(String.init)
+        if relative.count >= 5, relative[0] == "Mail", relative[1].hasPrefix("V"),
+           Int(relative[1].dropFirst()) != nil,
+           let attachments = relative.firstIndex(of: "Attachments"), attachments < relative.count - 1 { return true }
+        let providerRoots = [
+            "Group Containers/UBF8T346G9.Office/Outlook/Outlook 15 Profiles/",
+            "Containers/it.bloop.airmail2/Data/Library/Application Support/Airmail/",
+            "Thunderbird/Profiles/",
+        ]
+        return providerRoots.contains { path.hasPrefix(library + "/" + $0) }
+            && relative.dropLast().contains("Attachments")
+    }
+
     func scan() async throws -> [CleanupItem] {
         var items: [CleanupItem] = []
 
@@ -65,7 +93,7 @@ struct MailAttachmentsModule: ScanModule {
         // each macOS release, so hardcoding one version misses everyone on a
         // different OS. Enumerate every V<number> dir present instead.
         let mailRoot = library.appending(path: "Mail")
-        if let mailVersions = try? fileManager.contentsOfDirectory(
+        if let mailVersions = try? ScanFileSystem.contentsOfDirectory(
             at: mailRoot,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) {
@@ -118,7 +146,7 @@ struct MailAttachmentsModule: ScanModule {
         // Thunderbird
         let thunderbirdProfiles = library.appending(path: "Thunderbird/Profiles")
         if fileManager.fileExists(atPath: thunderbirdProfiles.path) {
-            if let profiles = try? fileManager.contentsOfDirectory(
+            if let profiles = try? ScanFileSystem.contentsOfDirectory(
                 at: thunderbirdProfiles,
                 includingPropertiesForKeys: nil
             ) {
@@ -137,7 +165,7 @@ struct MailAttachmentsModule: ScanModule {
     private func scanLocation(_ location: AttachmentLocation) async -> [CleanupItem] {
         var items: [CleanupItem] = []
 
-        guard FileManager.default.fileExists(atPath: location.path.path) else { return [] }
+        guard ScanFileSystem.exists(atPath: location.path.path) else { return [] }
 
         let resourceKeys: Set<URLResourceKey> = [
             .fileSizeKey,
@@ -147,7 +175,7 @@ struct MailAttachmentsModule: ScanModule {
             .contentModificationDateKey
         ]
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: location.path,
             includingPropertiesForKeys: Array(resourceKeys),
             options: [.skipsHiddenFiles]
@@ -155,12 +183,13 @@ struct MailAttachmentsModule: ScanModule {
 
         while let url = enumerator.nextObject() as? URL {
             do {
-                let values = try url.resourceValues(forKeys: resourceKeys)
+                let values = try url.scanResourceValues(forKeys: resourceKeys)
 
                 // Skip directories and symlinks
                 guard values.isDirectory == false,
                       values.isSymbolicLink == false
                 else { continue }
+                guard Self.isAttachmentFile(at: url, homeDirectory: homeDirectory) else { continue }
 
                 // Check file patterns if specified
                 if let patterns = location.filePatterns {

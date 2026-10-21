@@ -51,7 +51,7 @@ struct ArcModule: BrowserModule {
     /// Detect Arc profiles
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: userDataPath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: userDataPath.path) else {
             return found
         }
         for item in contents where item.hasPrefix("Profile ") {
@@ -84,4 +84,3 @@ struct ArcModule: BrowserModule {
         try await cleanBrowserItems(items, dryRun: dryRun)
     }
 }
-

@@ -417,7 +417,7 @@ struct SystemStatusRow: View {
 }
 
 struct ScanProgressStatusView: View {
-    let progress: Double
+    let progress: Double?
     let message: String
     var compact = false
 
@@ -433,17 +433,26 @@ struct ScanProgressStatusView: View {
 
                 Spacer()
 
-                Text("\(Int(progress * 100))%")
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                if let progress {
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption).fontWeight(.medium).foregroundStyle(.secondary).monospacedDigit()
+                }
             }
 
-            ProgressView(value: min(max(progress, 0), 1))
+            if let progress { ProgressView(value: min(max(progress, 0), 1)) }
+            else { ProgressView().progressViewStyle(.linear) }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Scan progress")
-        .accessibilityValue("\(Int(progress * 100)) percent, \(message)")
+        .accessibilityValue(progress.map { "\(Int($0 * 100)) percent, \(message)" } ?? message)
     }
 }
+
+#if !SWIFT_PACKAGE
+#Preview {
+    let state = AppState()
+    DashboardView(monitor: state.systemMonitor)
+        .environmentObject(state)
+        .frame(width: 800, height: 600)
+}
+#endif

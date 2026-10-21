@@ -50,7 +50,7 @@ struct DockerCleanupActionTests {
                 return ProcessResult(status: 0, output: output, error: "")
             }
             // Enumerated clean path: list exited containers / dangling volumes.
-            if arguments == ["container", "ls", "-aq", "-f", "status=exited"] {
+            if arguments == ["container", "ls", "-aq", "-f", "status=exited", "-f", "status=created", "-f", "status=dead"] {
                 return ProcessResult(status: 0, output: "aabbccddeeff\n", error: "")
             }
             if arguments == ["volume", "ls", "-q", "-f", "dangling=true"] {
@@ -83,7 +83,7 @@ struct DockerCleanupActionTests {
         }) == [
             .pruneBuildCache: "docker builder prune -f",
             .pruneImages: "docker image prune -f",
-            .pruneContainers: "docker container ls -aq -f status=exited && docker container rm <ids>",
+            .pruneContainers: "docker container ls -aq -f status=exited -f status=created -f status=dead && docker container rm <ids>",
             .pruneVolumes: "docker volume ls -q -f dangling=true && docker volume rm <names>"
         ])
         #expect(DockerCleanupAction.pruneBuildCache.impactDescription.localizedCaseInsensitiveContains("ALL unused"))
@@ -143,7 +143,7 @@ struct DockerCleanupActionTests {
             ["image", "prune", "-f"],
             ["volume", "ls", "-q", "-f", "dangling=true"],
             ["volume", "rm", "orphan_volume"],
-            ["container", "ls", "-aq", "-f", "status=exited"],
+            ["container", "ls", "-aq", "-f", "status=exited", "-f", "status=created", "-f", "status=dead"],
             ["container", "rm", "aabbccddeeff"],
         ])
     }

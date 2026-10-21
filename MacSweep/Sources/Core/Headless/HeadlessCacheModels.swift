@@ -56,4 +56,3 @@ public struct HeadlessCacheReport: Codable, Sendable {
         self.errors = errors
     }
 }
-

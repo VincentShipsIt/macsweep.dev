@@ -156,7 +156,7 @@ struct ContentView: View {
         switch feature {
         // Main
         case .smartScan:
-            staticDetail(DashboardView())
+            staticDetail(DashboardView(monitor: appState.systemMonitor))
         case .assistant:
             staticDetail(AssistantView())
         case .share:
@@ -165,6 +165,8 @@ struct ContentView: View {
             staticDetail(CleanupHistoryView())
 
         // Cleanup
+        case .browserCleanup:
+            staticDetail(BrowserCleanupView())
         case .systemJunk:
             landingDetail(SystemCleanupView(), enabled: appState.scanResults.isEmpty)
         case .mailAttachments:
@@ -190,9 +192,9 @@ struct ContentView: View {
 
         // Speed
         case .optimization:
-            staticDetail(OptimizationView())
+            staticDetail(OptimizationView(processMonitor: appState.processMonitor, systemMonitor: appState.systemMonitor))
         case .batteryMonitor:
-            staticDetail(BatteryMonitorView())
+            staticDetail(BatteryMonitorView(monitor: appState.systemMonitor))
         case .maintenance:
             staticDetail(MaintenanceView())
 
@@ -246,6 +248,7 @@ private extension Feature {
              .similarPhotos:
             return true
         case .smartScan,
+             .browserCleanup,
              .assistant,
              .share,
              .cleanupHistory,

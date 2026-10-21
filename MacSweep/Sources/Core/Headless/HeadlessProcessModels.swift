@@ -52,4 +52,3 @@ public struct HeadlessProcessQuitResult: Codable, Sendable {
         self.terminated = terminated
     }
 }
-

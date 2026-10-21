@@ -57,4 +57,3 @@ public struct HeadlessHomebrewLeavesReport: Codable, Sendable {
         self.leaves = leaves
     }
 }
-
