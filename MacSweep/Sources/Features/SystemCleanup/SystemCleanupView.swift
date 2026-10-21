@@ -172,7 +172,7 @@ struct SystemCleanupView: View {
         CleanupFooter(
             selectedCount: appState.selectedItems.count,
             totalCount: appState.scanResults.count,
-            summary: "Will free \(appState.selectedSize.formattedFileSize)",
+            summary: "Estimated size: \(appState.selectedSize.formattedFileSize)",
             onSelectAll: { appState.selectAll() },
             actionTitle: "Clean",
             actionDisabled: appState.selectedItems.isEmpty || !appState.hasFullDiskAccess,

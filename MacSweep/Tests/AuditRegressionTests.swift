@@ -4,6 +4,21 @@ import Testing
 @testable import MacSweepCore
 
 struct AuditRegressionTests {
+    @Test func serviceWorkerDiscoveryIgnoresOrdinaryApplicationSupportFiles() async throws {
+        let fixture = try TempTestDirectory(prefix: "ServiceWorkerDiscovery")
+        try Data("settings".utf8).write(to: fixture.url.appending(path: "settings.dat"))
+        let worker = fixture.url.appending(path: "Example App/Service Worker")
+        try FileManager.default.createDirectory(at: worker, withIntermediateDirectories: true)
+        try Data(count: 16_384).write(to: worker.appending(path: "cache.bin"))
+
+        let items = try await ScanDiagnostics.collect {
+            await ServiceWorkerModule().scanUnknownElectronApps(in: fixture.url)
+        }
+
+        #expect(items.count == 1)
+        #expect(items.first?.path.lastPathComponent == "Service Worker")
+    }
+
     @Test func conversationArchivesAreNeverCacheCleanupTargets() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let checker = SafetyChecker(userRules: .empty)

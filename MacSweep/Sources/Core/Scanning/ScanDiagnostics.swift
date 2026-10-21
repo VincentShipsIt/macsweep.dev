@@ -53,11 +53,22 @@ enum ScanFileSystem {
             return true
         } catch {
             let error = error as NSError
-            if error.domain != NSCocoaErrorDomain || ![NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) {
+            if !isAbsentOptionalPath(error) {
                 ScanDiagnostics.current?.record(error, at: URL(fileURLWithPath: path))
             }
             return false
         }
+    }
+
+    private static func isAbsentOptionalPath(_ error: NSError) -> Bool {
+        if error.domain == NSCocoaErrorDomain,
+           [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) { return true }
+        if error.domain == NSPOSIXErrorDomain,
+           [POSIXErrorCode.ENOENT.rawValue, POSIXErrorCode.ENOTDIR.rawValue].contains(Int32(error.code)) { return true }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return isAbsentOptionalPath(underlying)
+        }
+        return false
     }
 
     static func contentsOfDirectory(

@@ -76,11 +76,9 @@ struct ServiceWorkerModule: ScanModule {
     }
 
     /// Scan Application Support for any other Service Worker directories
-    private func scanUnknownElectronApps() async -> [CleanupItem] {
+    func scanUnknownElectronApps(in appSupportURL: URL = URL.libraryDirectory.appending(path: "Application Support")) async -> [CleanupItem] {
         var items: [CleanupItem] = []
         let knownPaths = Set(Self.electronApps.map { $0.path.expandingTilde })
-
-        let appSupportURL = URL.libraryDirectory.appending(path: "Application Support")
 
         guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: appSupportURL,

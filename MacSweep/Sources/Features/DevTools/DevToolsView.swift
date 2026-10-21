@@ -428,7 +428,7 @@ struct BuildArtifactsView: View {
                     }
                 }
 
-                Text("Will free \(selectedSize)")
+                Text("Estimated size: \(selectedSize)")
                     .font(.headline)
             }
 

@@ -218,7 +218,7 @@ struct LargeFilesView: View {
     private var footer: some View {
         CleanupFooter(
             selectedCount: model.selectedItems.count,
-            summary: "Will free \(selectedSize)",
+            summary: "Estimated size: \(selectedSize)",
             onSelectAll: { model.selectAll(filteredItems) },
             actionTitle: "Move to Trash",
             actionDisabled: model.selectedItems.isEmpty,

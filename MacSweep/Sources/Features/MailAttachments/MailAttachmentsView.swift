@@ -229,7 +229,7 @@ struct MailAttachmentsView: View {
     private var footer: some View {
         CleanupFooter(
             selectedCount: model.selectedItems.count,
-            summary: "Will free \(selectedSize)",
+            summary: "Estimated size: \(selectedSize)",
             onSelectAll: { model.selectAll(filteredAttachments) },
             actionTitle: "Move to Trash",
             actionDisabled: model.selectedItems.isEmpty || !appState.hasFullDiskAccess,
