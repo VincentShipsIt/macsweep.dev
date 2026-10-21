@@ -93,15 +93,12 @@ struct LargeFilesModule: ScanModule {
             // instead of re-walking each subtree via DiskAnalyzer.directorySize at
             // every ancestor level (the old O(files × depth) hot path: a file N
             // levels deep was counted once by each of its N sized ancestors).
-            // The numbers are identical to directorySize by construction — same
-            // enumerator options, same symlink/hidden handling, same on-disk
-            // sizing — so folder surfacing decisions are byte-for-byte unchanged.
             // Skipped entirely when folders aren't being surfaced (nothing reads it).
             let subtreeSizes = scanKind.includesFolders
-                ? try Self.subtreeSizes(under: searchPath, checker: checker, moduleID: id)
+                ? try subtreeSizes(under: searchPath, checker: checker)
                 : [:]
 
-            guard let enumerator = FileManager.default.enumerator(
+            guard let enumerator = ScanFileSystem.enumerator(
                 at: searchPath,
                 includingPropertiesForKeys: Array(resourceKeys),
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
@@ -117,17 +114,14 @@ struct LargeFilesModule: ScanModule {
                 if iterations % 512 == 0 { try Task.checkCancellation() }
 
                 // Check if we should skip this path
-                let relativePath = url.path.replacingOccurrences(
-                    of: searchPath.path + "/",
-                    with: ""
-                )
-                if excludePaths.contains(where: { relativePath.hasPrefix($0) }) {
+                let relativePath = url.pathComponents.suffix(enumerator.level).joined(separator: "/")
+                if isExcluded(relativePath) {
                     enumerator.skipDescendants()
                     continue
                 }
 
                 do {
-                    let values = try url.resourceValues(forKeys: resourceKeys)
+                    let values = try url.scanResourceValues(forKeys: resourceKeys)
 
                     // Skip symlinks
                     guard values.isSymbolicLink == false else { continue }
@@ -221,56 +215,74 @@ struct LargeFilesModule: ScanModule {
     /// re-enumerates a whole subtree per call, so sizing a directory and then its
     /// children re-walked the same files O(depth) times. Here every file is read
     /// exactly once. The result for any directory equals `directorySize(at:)`
-    /// exactly — identical enumerator options (`.skipsHiddenFiles`, packages
-    /// descended into), identical symlink skipping, identical `diskSize` sizing —
-    /// so the scan surfaces the same folders with the same byte counts.
-    private static func subtreeSizes(
+    /// includes hidden descendants in visible folders, skips excluded roots,
+    /// and retains totals only for folders that the result pass can surface.
+    private func subtreeSizes(
         under root: URL,
-        checker: SafetyChecker,
-        moduleID: String
+        checker: SafetyChecker
     ) throws -> [String: Int64] {
         let resourceKeys: Set<URLResourceKey> = [
             .totalFileAllocatedSizeKey,
             .fileSizeKey,
             .isDirectoryKey,
+            .isHiddenKey,
             .isSymbolicLinkKey
         ]
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: root,
             includingPropertiesForKeys: Array(resourceKeys),
-            options: [.skipsHiddenFiles]
+            options: []
         ) else { return [:] }
 
-        let rootPath = root.path
         var sizes: [String: Int64] = [:]
         var processed = 0
 
-        while let fileURL = enumerator.nextObject() as? URL {
+        // A scan runs inside a long-lived Swift task, without AppKit's event-loop
+        // pool. Release Foundation's temporary URL/metadata objects per entry.
+        while try autoreleasepool(invoking: { () throws -> Bool in
+            guard let fileURL = enumerator.nextObject() as? URL else { return false }
             processed += 1
             // Periodic cooperative cancellation without a check-per-file cost.
             if processed & 0x3FFF == 0 { try Task.checkCancellation() }
 
-            guard let values = try? fileURL.resourceValues(forKeys: resourceKeys) else { continue }
+            // Foundation may enumerate /var through its /private/var alias.
+            // Enumerator depth gives a relative path without lexical root guesses.
+            let relativePath = fileURL.pathComponents.suffix(enumerator.level).joined(separator: "/")
+            if isExcluded(relativePath) {
+                enumerator.skipDescendants()
+                return true
+            }
+            guard let values = try? fileURL.scanResourceValues(forKeys: resourceKeys) else { return true }
+            // Hidden top-level folders cannot appear in the result pass. Avoid
+            // walking their potentially huge caches just to discard their totals.
+            // Hidden data inside visible folders still contributes to their size.
+            if !relativePath.contains("/"), values.isHidden == true {
+                enumerator.skipDescendants()
+                return true
+            }
             // Match directorySize: skip symlinks, count only files.
-            if values.isSymbolicLink == true { continue }
-            guard values.isDirectory == false else { continue }
-            guard checker.validateForScan(fileURL, moduleID: moduleID).isSafe else { continue }
+            if values.isSymbolicLink == true { return true }
+            guard values.isDirectory == false else { return true }
+            guard checker.validateForScan(fileURL, moduleID: id).isSafe else { return true }
 
             let bytes = values.diskSize
-            guard bytes > 0 else { continue }
+            guard bytes > 0 else { return true }
 
-            // Fold this file's bytes into each ancestor directory up to `root`.
-            var dir = fileURL.deletingLastPathComponent()
-            while true {
-                let path = dir.path
+            let components = relativePath.split(separator: "/").dropLast()
+            var path = String(fileURL.path.dropLast(relativePath.count + 1))
+            for component in components.prefix(maxDirectoryDepth + 1) {
+                path += "/" + component
                 sizes[path, default: 0] += bytes
-                if path == rootPath || path.count <= rootPath.count { break }
-                dir = dir.deletingLastPathComponent()
             }
-        }
+            return true
+        }) {}
 
         return sizes
+    }
+
+    private func isExcluded(_ relativePath: String) -> Bool {
+        excludePaths.contains { relativePath == $0 || relativePath.hasPrefix($0 + "/") }
     }
 
     /// Categorize file by type

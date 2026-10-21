@@ -829,8 +829,9 @@ struct DNSCacheView: View {
         isScanning = true
         defer { isScanning = false }
 
-        let module = NetworkModule()
-        cacheItems = (try? await module.scan()) ?? []
+        let result = await ScanEngine(modules: [NetworkModule()]).scanWithDiagnostics()
+        cacheItems = result.items
+        flushErrorMessage = result.failures.isEmpty ? nil : result.failures.map(\.message).joined(separator: "; ")
     }
 
     private var totalCacheSize: String {

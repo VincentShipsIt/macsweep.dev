@@ -121,7 +121,7 @@ struct ShareView: View {
         let receiptTitle = "\(productName) cleanup receipt"
 
         return """
-        \(receiptTitle): \(formattedBytes(summary.totalBytesFreed)) reclaimed in the last \(windowDays) days.
+        \(receiptTitle): \(formattedBytes(summary.totalBytesFreed)) processed (estimated target size) in the last \(windowDays) days.
         Cleanups: \(summary.cleanupCount). Items cleaned: \(cleaned). Success rate: \(success).
         Install: brew install --cask vincentshipsit/tap/macsweep
         """
@@ -305,7 +305,7 @@ private struct CleanupPerformanceShareCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
 
-                Text(summary.isEmpty ? "RUN A CLEANUP TO MINT YOUR RECEIPT" : "RECLAIMED IN 30 DAYS")
+                Text(summary.isEmpty ? "RUN A CLEANUP TO MINT YOUR RECEIPT" : "ESTIMATED TARGET SIZE · 30 DAYS")
                     .font(.system(size: 15, weight: .heavy, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(MacSweepTheme.accent)
@@ -389,7 +389,7 @@ private struct CleanupPerformanceShareCard: View {
         }
 
         if let last = summary.lastCleanup {
-            return "Latest cleanup freed \(formattedBytes(last.bytesFreed)) across \(last.itemsProcessed) items."
+            return "Latest cleanup processed an estimated \(formattedBytes(last.bytesFreed)) across \(last.itemsProcessed) items."
         }
 
         return "Cleanup history is tracked locally on this Mac."

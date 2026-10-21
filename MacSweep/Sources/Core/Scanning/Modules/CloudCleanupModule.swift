@@ -53,8 +53,8 @@ struct CloudCleanupModule: ScanModule {
         var items: [CleanupItem] = []
         let checker = SafetyChecker()
 
-        for root in roots where FileManager.default.fileExists(atPath: root.path) {
-            guard let enumerator = FileManager.default.enumerator(
+        for root in roots where ScanFileSystem.exists(atPath: root.path) {
+            guard let enumerator = ScanFileSystem.enumerator(
                 at: root,
                 includingPropertiesForKeys: Array(resourceKeys),
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
@@ -63,7 +63,7 @@ struct CloudCleanupModule: ScanModule {
             while let url = enumerator.nextObject() as? URL {
                 guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
 
-                let values = try? url.resourceValues(forKeys: resourceKeys)
+                let values = try? url.scanResourceValues(forKeys: resourceKeys)
                 guard values?.isDirectory == false else { continue }
                 guard values?.isUbiquitousItem == true || url.path.contains("/Mobile Documents/") else { continue }
 

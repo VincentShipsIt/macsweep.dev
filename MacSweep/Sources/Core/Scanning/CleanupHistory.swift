@@ -94,11 +94,13 @@ struct CleanupHistoryRun: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
     let records: [CleanupHistoryRecord]
+    let accounting: CleanupAccounting?
 
-    init(id: UUID = UUID(), timestamp: Date, records: [CleanupHistoryRecord]) {
+    init(id: UUID = UUID(), timestamp: Date, records: [CleanupHistoryRecord], accounting: CleanupAccounting? = nil) {
         self.id = id
         self.timestamp = timestamp
         self.records = records
+        self.accounting = accounting
     }
 
     var completedCount: Int {
@@ -153,7 +155,8 @@ final class CleanupHistoryStore: @unchecked Sendable {
             timestamp: result.timestamp,
             errors: result.errors,
             overallError: nil,
-            actions: result.historyActions
+            actions: result.historyActions,
+            accounting: result.accounting
         )
     }
 
@@ -164,7 +167,8 @@ final class CleanupHistoryStore: @unchecked Sendable {
             timestamp: timestamp,
             errors: [],
             overallError: error.localizedDescription,
-            actions: [:]
+            actions: [:],
+            accounting: nil
         )
     }
 
@@ -173,14 +177,13 @@ final class CleanupHistoryStore: @unchecked Sendable {
         timestamp: Date,
         errors: [CleanupError],
         overallError: String?,
-        actions: [CleanupItem.ID: CleanupHistoryAction]
+        actions: [CleanupItem.ID: CleanupHistoryAction],
+        accounting: CleanupAccounting?
     ) -> CleanupHistoryRun? {
         guard !items.isEmpty else { return nil }
 
-        let errorsByPath = Dictionary(grouping: errors, by: { $0.path.absoluteString })
         let records = items.map { item in
-            let pathKey = item.path.absoluteString
-            let itemError = errorsByPath[pathKey]?.first?.message ?? overallError
+            let itemError = errors.failure(affecting: item)?.message ?? overallError
             return CleanupHistoryRecord(
                 timestamp: timestamp,
                 moduleID: item.module,
@@ -192,7 +195,7 @@ final class CleanupHistoryStore: @unchecked Sendable {
                 errorMessage: itemError
             )
         }
-        let run = CleanupHistoryRun(timestamp: timestamp, records: records)
+        let run = CleanupHistoryRun(timestamp: timestamp, records: records, accounting: accounting)
 
         queue.sync {
             var runs = loadHistory()

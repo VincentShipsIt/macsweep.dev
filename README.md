@@ -168,6 +168,7 @@ prompt you to install them.
 ```bash
 git clone https://github.com/VincentShipsIt/macsweep.dev.git
 cd macsweep.dev/MacSweep
+source ../scripts/toolchain.sh
 swift build -c release --product macsweep
 ```
 
@@ -189,6 +190,29 @@ zsh scripts/render-screenshots.sh   # render every GUI state to scripts/screensh
 CI runs the unit suite with coverage floors and the e2e smoke suite on every
 push/PR, renders GUI snapshots as a PR artifact, and repeats e2e + coverage on
 a daily schedule (`.github/workflows/nightly.yml`).
+
+Verification scripts prefer full Xcode when both Xcode and Command Line Tools
+are installed. Set `MACSWEEP_DEVELOPER_DIR` to use a particular toolchain without
+changing the system-wide selection.
+
+### Scan completeness and cleanup accounting
+
+Scans retain readable findings when another location fails and report incomplete
+coverage explicitly. CLI scan and dry-run commands exit nonzero for partial
+results; an empty finding list alone does not establish that every location was
+readable. Malware scanning is a persistence audit of launch agents, daemons,
+supported browser extensions and crontab, rather than a full-file antivirus scan.
+
+Cleanup results distinguish estimated target allocation, targets moved to Trash,
+permanently removed targets, local-copy eviction and tool-managed operations.
+Observed volume-available changes include timestamps, volume identity and the
+capacity metric; they include concurrent activity from other apps. APFS clones,
+shared extents and open deleted files can delay or reduce recovery. A Trash move
+does not free disk space until Trash is emptied.
+
+CLI JSON retains the legacy `bytesFreed` estimate for compatibility, marks it with
+`bytesFreedIsEstimate: true`, and supplies the separate `accounting` object.
+Conversation archives are protected user data and never routine cache cleanup.
 
 ### Release signing for app updates
 

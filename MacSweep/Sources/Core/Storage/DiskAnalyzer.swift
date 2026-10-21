@@ -7,9 +7,9 @@ actor DiskAnalyzer {
 
     /// Get size of a file or directory
     static func size(of url: URL) async throws -> Int64 {
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey])
+        let values = try url.scanResourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileSizeKey])
 
-        if values.isDirectory == true {
+        if values.isDirectory == true && values.isSymbolicLink != true {
             return try await directorySize(at: url)
         } else {
             return values.diskSize
@@ -18,6 +18,7 @@ actor DiskAnalyzer {
 
     /// Calculate total size of a directory
     static func directorySize(at url: URL) async throws -> Int64 {
+        if try url.scanResourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { return 0 }
         let resourceKeys: Set<URLResourceKey> = [
             .totalFileAllocatedSizeKey,
             .fileSizeKey,
@@ -25,10 +26,10 @@ actor DiskAnalyzer {
             .isSymbolicLinkKey
         ]
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: url,
             includingPropertiesForKeys: Array(resourceKeys),
-            options: [.skipsHiddenFiles]
+            options: []
         ) else {
             return 0
         }
@@ -42,7 +43,7 @@ actor DiskAnalyzer {
             iterations += 1
             if iterations % 512 == 0 { try Task.checkCancellation() }
             do {
-                let values = try fileURL.resourceValues(forKeys: resourceKeys)
+                let values = try fileURL.scanResourceValues(forKeys: resourceKeys)
 
                 // Skip symlinks to avoid infinite loops
                 if values.isSymbolicLink == true { continue }
@@ -75,7 +76,7 @@ actor DiskAnalyzer {
             .contentModificationDateKey
         ]
 
-        let values = try url.resourceValues(forKeys: resourceKeys)
+        let values = try url.scanResourceValues(forKeys: resourceKeys)
         // A symlinked directory must be treated as a leaf: following it would let
         // a self-referential link (e.g. ~/foo -> ~) recurse forever, and any link
         // pointing inside the tree would double-count its target's bytes.
@@ -100,10 +101,10 @@ actor DiskAnalyzer {
 
         if depth < maxDepth {
             // Enumerate children
-            guard let contents = try? FileManager.default.contentsOfDirectory(
+            guard let contents = try? ScanFileSystem.contentsOfDirectory(
                 at: url,
                 includingPropertiesForKeys: Array(resourceKeys),
-                options: [.skipsHiddenFiles]
+                options: []
             ) else {
                 return DiskNode(url: url, name: url.lastPathComponent, size: 0, isDirectory: true, children: [])
             }
@@ -119,7 +120,7 @@ actor DiskAnalyzer {
             var fileNodes: [DiskNode] = []
             var subdirectories: [URL] = []
             for childURL in contents {
-                let childValues = try? childURL.resourceValues(forKeys: resourceKeys)
+                let childValues = try? childURL.scanResourceValues(forKeys: resourceKeys)
                 let childIsDirectory = childValues?.isDirectory == true && childValues?.isSymbolicLink != true
                 if childIsDirectory {
                     subdirectories.append(childURL)
@@ -187,7 +188,7 @@ actor DiskAnalyzer {
             .volumeAvailableCapacityForImportantUsageKey
         ]
 
-        guard let values = try? url.resourceValues(forKeys: resourceKeys) else {
+        guard let values = try? url.scanResourceValues(forKeys: resourceKeys) else {
             return DiskQuickStats(total: 0, available: 0, used: 0)
         }
 

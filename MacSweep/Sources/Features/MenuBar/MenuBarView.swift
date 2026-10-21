@@ -169,7 +169,7 @@ struct MenuBarView: View {
                         .foregroundStyle(.green)
                         .font(.caption)
 
-                    Text("Last cleanup: \(lastCleanup.formattedBytesFreed) freed")
+                    Text("Last cleanup: \(lastCleanup.formattedBytesFreed) processed (estimate)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

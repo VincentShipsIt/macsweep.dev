@@ -39,7 +39,8 @@ enum BrowserModuleID {
 
 extension BrowserModule {
     var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: basePath.path)
+        ScanFileSystem.exists(atPath: basePath.path)
+            || NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) != nil
     }
 
     var isRunning: Bool {
@@ -409,7 +410,7 @@ struct ChromeModule: BrowserModule {
     /// Detect all Chrome profiles (Default, Profile 1, Profile 2, etc.)
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: basePath.path) else {
             return found
         }
         for item in contents {
@@ -566,13 +567,13 @@ struct FirefoxModule: BrowserModule {
     /// Get all Firefox profile directories
     private var profilePaths: [URL] {
         let profilesDir = basePath.appending(path: "Profiles")
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: profilesDir,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return [] }
 
         return contents.filter { url in
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            (try? url.scanResourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
     }
 
@@ -639,7 +640,7 @@ struct BraveModule: BrowserModule {
 
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: basePath.path) else {
             return found
         }
         for item in contents where item.hasPrefix("Profile ") {
@@ -723,7 +724,7 @@ struct ArcModule: BrowserModule {
     /// Detect Arc profiles
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: userDataPath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: userDataPath.path) else {
             return found
         }
         for item in contents where item.hasPrefix("Profile ") {
@@ -802,7 +803,7 @@ struct EdgeModule: BrowserModule {
 
     private var profiles: [String] {
         var found: [String] = ["Default"]
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: basePath.path) else {
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(atPath: basePath.path) else {
             return found
         }
         for item in contents where item.hasPrefix("Profile ") {

@@ -255,8 +255,22 @@ private struct CleanupReviewSheet: View {
                 .foregroundStyle(result.errors.isEmpty ? .green : .orange)
             Text(result.errors.isEmpty ? "Cleanup Complete" : "Cleanup Finished with Issues")
                 .font(.title2.weight(.semibold))
-            Text("Freed \(result.formattedBytesFreed)")
+            Text("Processed target size: \(result.formattedBytesFreed) (estimate)")
                 .font(.title3)
+            if let accounting = result.accounting {
+                Text("Moved to Trash: \(accounting.movedToTrashBytes.formattedFileSize) · Permanently removed targets: \(accounting.permanentlyRemovedTargetBytes.formattedFileSize)")
+                    .font(.caption)
+                ForEach(accounting.volumeObservations, id: \.before.volumePath) { observation in
+                    if let change = observation.observedAvailableChange {
+                        Text("Observed available-space change: \(change >= 0 ? "+" : "−")\(change.magnitude.formatted()) bytes")
+                            .font(.caption)
+                    } else {
+                        Text("Available-space measurement unavailable").font(.caption)
+                    }
+                }
+            }
+            Text("Trash moves do not free space until Trash is emptied. APFS shared data and open files can affect recovery. Observed volume changes include other apps' activity.")
+                .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 30)
 
             HStack(spacing: 12) {
                 reviewMetric("Processed", value: "\(result.itemsProcessed)")
