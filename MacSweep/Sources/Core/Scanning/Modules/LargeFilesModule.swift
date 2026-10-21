@@ -238,7 +238,10 @@ struct LargeFilesModule: ScanModule {
         var sizes: [String: Int64] = [:]
         var processed = 0
 
-        while let fileURL = enumerator.nextObject() as? URL {
+        // A scan runs inside a long-lived Swift task, without AppKit's event-loop
+        // pool. Release Foundation's temporary URL/metadata objects per entry.
+        while try autoreleasepool(invoking: { () throws -> Bool in
+            guard let fileURL = enumerator.nextObject() as? URL else { return false }
             processed += 1
             // Periodic cooperative cancellation without a check-per-file cost.
             if processed & 0x3FFF == 0 { try Task.checkCancellation() }
@@ -248,23 +251,23 @@ struct LargeFilesModule: ScanModule {
             let relativePath = fileURL.pathComponents.suffix(enumerator.level).joined(separator: "/")
             if isExcluded(relativePath) {
                 enumerator.skipDescendants()
-                continue
+                return true
             }
-            guard let values = try? fileURL.scanResourceValues(forKeys: resourceKeys) else { continue }
+            guard let values = try? fileURL.scanResourceValues(forKeys: resourceKeys) else { return true }
             // Hidden top-level folders cannot appear in the result pass. Avoid
             // walking their potentially huge caches just to discard their totals.
             // Hidden data inside visible folders still contributes to their size.
             if !relativePath.contains("/"), values.isHidden == true {
                 enumerator.skipDescendants()
-                continue
+                return true
             }
             // Match directorySize: skip symlinks, count only files.
-            if values.isSymbolicLink == true { continue }
-            guard values.isDirectory == false else { continue }
-            guard checker.validateForScan(fileURL, moduleID: id).isSafe else { continue }
+            if values.isSymbolicLink == true { return true }
+            guard values.isDirectory == false else { return true }
+            guard checker.validateForScan(fileURL, moduleID: id).isSafe else { return true }
 
             let bytes = values.diskSize
-            guard bytes > 0 else { continue }
+            guard bytes > 0 else { return true }
 
             let components = relativePath.split(separator: "/").dropLast()
             var path = String(fileURL.path.dropLast(relativePath.count + 1))
@@ -272,7 +275,8 @@ struct LargeFilesModule: ScanModule {
                 path += "/" + component
                 sizes[path, default: 0] += bytes
             }
-        }
+            return true
+        }) {}
 
         return sizes
     }
