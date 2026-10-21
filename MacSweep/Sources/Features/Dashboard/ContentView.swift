@@ -165,6 +165,8 @@ struct ContentView: View {
             staticDetail(CleanupHistoryView())
 
         // Cleanup
+        case .browserCleanup:
+            staticDetail(BrowserCleanupView())
         case .systemJunk:
             landingDetail(SystemCleanupView(), enabled: appState.scanResults.isEmpty)
         case .mailAttachments:
@@ -246,6 +248,7 @@ private extension Feature {
              .similarPhotos:
             return true
         case .smartScan,
+             .browserCleanup,
              .assistant,
              .share,
              .cleanupHistory,

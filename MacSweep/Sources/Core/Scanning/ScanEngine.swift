@@ -175,6 +175,7 @@ actor ScanEngine {
             SimilarPhotosModule(),
             CloudCleanupModule(),
             AssistantWatchlistModule(),
+            AIAnalysisModule(),
 
             // Browsers
             ChromeModule(),
@@ -182,6 +183,7 @@ actor ScanEngine {
             FirefoxModule(),
             BraveModule(),
             ArcModule(),
+            EdgeModule(),
             ServiceWorkerModule(),
 
             // Files
@@ -214,7 +216,7 @@ actor ScanEngine {
         guard !targets.isEmpty else { return [] }
 
         let module = AssistantWatchlistModule(targets: targets)
-        let items = try await module.scan()
+        let items = try await ScanDiagnostics.collect { try await module.scan() }
 
         return items.compactMap { item in
             guard safetyChecker.validateForScan(item, moduleID: module.id).isSafe else {
@@ -261,6 +263,7 @@ actor ScanEngine {
             case items(moduleID: String, moduleName: String, items: [CleanupItem])
             case cancelled(moduleID: String, moduleName: String)
             case failure(ModuleScanFailure, moduleName: String)
+            case partial(ModuleScanFailure, items: [CleanupItem])
         }
 
         let totalModules = modulesToScan.count
@@ -275,7 +278,7 @@ actor ScanEngine {
             for module in modulesToScan {
                 group.addTask {
                     do {
-                        let items = try await module.scan()
+                        let items = try await ScanDiagnostics.collect { try await module.scan() }
                         // Filter through safety checker
                         let safe: [CleanupItem] = items.compactMap { item in
                             guard self.safetyChecker.validateForScan(item, moduleID: module.id).isSafe else {
@@ -285,6 +288,11 @@ actor ScanEngine {
                             return item.markingCleanupReview(reason: cleanup.reason)
                         }
                         return .items(moduleID: module.id, moduleName: module.name, items: safe)
+                    } catch let partial as PartialModuleScanError {
+                        return .partial(
+                            ModuleScanFailure(moduleID: module.id, moduleName: module.name, message: partial.localizedDescription),
+                            items: partial.items
+                        )
                     } catch is CancellationError {
                         return .cancelled(moduleID: module.id, moduleName: module.name)
                     } catch {
@@ -319,6 +327,14 @@ actor ScanEngine {
                         moduleID: moduleID,
                         moduleName: moduleName
                     ))
+                case .partial(let failure, let items):
+                    Log.scanError("Incomplete scan [\(failure.moduleID)]: \(failure.message)")
+                    allItems.append(contentsOf: items.compactMap { item in
+                        guard self.safetyChecker.validateForScan(item, moduleID: failure.moduleID).isSafe else { return nil }
+                        return item.markingCleanupReview(reason: self.safetyChecker.validateForCleanup(item, moduleID: failure.moduleID).reason)
+                    })
+                    failures.append(failure)
+                    await progress?(ScanProgressUpdate(completedModules: completedModules, totalModules: totalModules, moduleID: failure.moduleID, moduleName: failure.moduleName))
                 case .failure(let failure, let moduleName):
                     failures.append(failure)
                     Log.scanError(
@@ -345,20 +361,24 @@ actor ScanEngine {
     /// gate, not advisory. Defaults to `false` so any caller that forgets to
     /// confirm fails closed rather than silently deleting.
     func clean(items: [CleanupItem], dryRun: Bool, confirmedLargeDeletion: Bool = false) async throws -> CleanupResult {
+        let safeIDs = Set(items.filter { safetyChecker.validateForCleanup($0, moduleID: $0.module).isSafe }.map(\.id))
+        let items = items.filter { safeIDs.contains($0.id) }.withoutOverlappingTargets()
+            + items.filter { !safeIDs.contains($0.id) }
         if dryRun {
             return try await performClean(
                 items: items,
                 dryRun: true,
                 confirmedLargeDeletion: confirmedLargeDeletion
-            )
+            ).accounting(for: items)
         }
 
+        let snapshots = CleanupAccounting.snapshots(for: items)
         do {
             let result = try await performClean(
                 items: items,
                 dryRun: false,
                 confirmedLargeDeletion: confirmedLargeDeletion
-            )
+            ).accounting(for: items, observations: CleanupAccounting.observations(since: snapshots))
             if let firstError = result.errors.first {
                 let count = result.errors.count
                 Log.scanError(
@@ -373,7 +393,8 @@ actor ScanEngine {
             if !partial.finalizedItems.isEmpty {
                 cleanupHistoryStore.record(
                     items: partial.finalizedItems,
-                    result: partial.partialResult
+                    result: partial.partialResult.accounting(for: partial.finalizedItems,
+                        observations: CleanupAccounting.observations(since: snapshots))
                 )
             }
             if !partial.remainingItems.isEmpty {

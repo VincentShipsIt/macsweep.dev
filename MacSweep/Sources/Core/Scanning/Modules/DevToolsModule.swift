@@ -22,7 +22,7 @@ struct DevToolsModule: ScanModule {
 
         let patterns = DevArtifactPattern.allPatterns
 
-        for searchPath in searchPaths {
+        for searchPath in searchPaths.flatMap({ DeveloperScanRoots.paths(in: $0) }) {
             let found = await scanForPatterns(patterns, in: searchPath)
             items.append(contentsOf: found)
         }
@@ -50,19 +50,21 @@ struct DevToolsModule: ScanModule {
             }
         }
 
-        return items.sorted { $0.size > $1.size }
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.path.standardizedFileURL.path).inserted }.sorted { $0.size > $1.size }
     }
 
     private func scanForPatterns(_ patterns: [DevArtifactPattern], in baseURL: URL) async -> [CleanupItem] {
         var items: [CleanupItem] = []
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: baseURL,
             includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            options: [.skipsPackageDescendants]
         ) else { return [] }
 
         while let url = enumerator.nextObject() as? URL {
+            if Task.isCancelled { return items }
             // Depth is derived inline from path components on each visit.
             let pathComponents = url.pathComponents.count - baseURL.pathComponents.count
             if pathComponents > maxDepth {
@@ -72,7 +74,8 @@ struct DevToolsModule: ScanModule {
 
             // Skip certain directories to speed up scanning
             let name = url.lastPathComponent
-            if name == ".git" || name == ".svn" || name == "Library" {
+            if name == ".git" || name == ".svn" || name == "Library"
+                || (name.hasPrefix(".") && !patterns.contains(where: { $0.directoryName == name })) {
                 enumerator.skipDescendants()
                 continue
             }
@@ -144,7 +147,7 @@ struct DevToolsModule: ScanModule {
     /// mid-scan.
     static func projectHasRecentActivity(forArtifactAt artifactURL: URL) -> Bool {
         let parent = artifactURL.deletingLastPathComponent()
-        guard let entries = try? FileManager.default.contentsOfDirectory(
+        guard let entries = try? ScanFileSystem.contentsOfDirectory(
             at: parent,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: []
@@ -200,9 +203,9 @@ struct DevArtifactPattern {
     /// exact-name `fileExists` path.
     private static func parentContainsFile(matching glob: String, in parent: URL) -> Bool {
         guard glob.hasPrefix("*.") else {
-            return FileManager.default.fileExists(atPath: parent.appending(path: glob).path)
+            return ScanFileSystem.exists(atPath: parent.appending(path: glob).path)
         }
-        let entries = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+        let entries = (try? ScanFileSystem.contentsOfDirectory(atPath: parent.path)) ?? []
         return entries.contains { indicator(glob, matchesFilename: $0) }
     }
 
@@ -662,17 +665,27 @@ actor ProjectScanner {
         in baseURL: URL,
         maxDepth: Int = ProjectScanner.defaultMaxDepth
     ) async -> [ProjectInfo] {
+        var all: [ProjectInfo] = []
+        for root in DeveloperScanRoots.paths(in: baseURL) {
+            all.append(contentsOf: await discoverProjectsAtRoot(in: root, maxDepth: maxDepth))
+        }
+        var seen = Set<String>()
+        return all.filter { seen.insert($0.path.standardizedFileURL.path + $0.type.rawValue).inserted }
+    }
+
+    private func discoverProjectsAtRoot(in baseURL: URL, maxDepth: Int) async -> [ProjectInfo] {
         var projects: [ProjectInfo] = []
         var seenProjects = Set<String>()
         let checker = SafetyChecker()
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: baseURL,
             includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
         while let url = enumerator.nextObject() as? URL {
+            if Task.isCancelled { return projects }
             let depth = url.pathComponents.count - baseURL.pathComponents.count
             if depth > maxDepth {
                 enumerator.skipDescendants()
@@ -699,7 +712,7 @@ actor ProjectScanner {
 
             for artifactDir in DevArtifactPattern.artifactDirectories(for: projectType) {
                 let artifactPath = projectPath.appending(path: artifactDir)
-                guard FileManager.default.fileExists(atPath: artifactPath.path) else { continue }
+                guard ScanFileSystem.exists(atPath: artifactPath.path) else { continue }
                 // Same gate scanForPatterns applies (DevToolsModule.scan): a
                 // protected path must not become listable/selectable in the
                 // per-project browser UI.
@@ -709,7 +722,7 @@ actor ProjectScanner {
                 totalSize += (try? await DiskAnalyzer.directorySize(at: artifactPath)) ?? 0
 
                 // Track most recent modification
-                if let modDate = try? artifactPath.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                if let modDate = try? artifactPath.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
                     if mostRecentModification == nil || modDate > mostRecentModification! {
                         mostRecentModification = modDate
                     }
@@ -717,7 +730,7 @@ actor ProjectScanner {
             }
 
             // Also check the project indicator file's modification date
-            if let indicatorModDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+            if let indicatorModDate = try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
                 if mostRecentModification == nil || indicatorModDate > mostRecentModification! {
                     mostRecentModification = indicatorModDate
                 }
@@ -864,6 +877,7 @@ struct GitArtifactScanner: Sendable {
         var items: [GitCleanupItem] = []
 
         for root in roots {
+            if Task.isCancelled { break }
             guard let repository = await Self.repository(at: root) else { continue }
             guard seenCommonDirectories.insert(repository.commonDirectory.path).inserted else { continue }
 
@@ -896,7 +910,7 @@ struct GitArtifactScanner: Sendable {
         var seen = Set<String>()
 
         for path in candidateSearchPaths() {
-            for root in Self.repositoryRoots(in: path, maxDepth: maxDepth, skipHidden: path.lastPathComponent != ".codex") {
+            for root in Self.repositoryRoots(in: path, maxDepth: maxDepth, skipHidden: true) {
                 let standardized = root.standardizedFileURL.path
                 if seen.insert(standardized).inserted {
                     roots.append(root)
@@ -912,11 +926,14 @@ struct GitArtifactScanner: Sendable {
         let hiddenWorktreeRoots = [
             home.appending(path: ".codex/worktrees", directoryHint: .isDirectory),
             home.appending(path: ".claude/worktrees", directoryHint: .isDirectory),
-            home.appending(path: ".agents/worktrees", directoryHint: .isDirectory)
+            home.appending(path: ".agents/worktrees", directoryHint: .isDirectory),
+            home.appending(path: ".grok/worktrees", directoryHint: .isDirectory),
+            home.appending(path: ".t3/worktrees", directoryHint: .isDirectory),
+            home.appending(path: "worktrees", directoryHint: .isDirectory)
         ]
 
         return (searchPaths + hiddenWorktreeRoots).filter {
-            FileManager.default.fileExists(atPath: $0.path)
+            ScanFileSystem.exists(atPath: $0.path)
         }
     }
 
@@ -934,7 +951,7 @@ struct GitArtifactScanner: Sendable {
         for (index, entry) in entries.enumerated() {
             guard index > 0 else { continue } // never remove the main worktree
             guard let path = entry.path else { continue }
-            guard FileManager.default.fileExists(atPath: path.path) else { continue }
+            guard ScanFileSystem.exists(atPath: path.path) else { continue }
             guard await Self.isCleanWorkingTree(path) else { continue }
             // Don't surface a worktree as clean/removable if it holds gitignored
             // content (secrets, local DBs) that `git worktree remove` would
@@ -1036,7 +1053,7 @@ struct GitArtifactScanner: Sendable {
             roots.append(baseURL)
         }
 
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = ScanFileSystem.enumerator(
             at: baseURL,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: options
@@ -1266,7 +1283,7 @@ struct GitArtifactScanner: Sendable {
     }
 
     private static func lastModificationDate(for url: URL) -> Date? {
-        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     private static func isCleanWorkingTree(_ url: URL) async -> Bool {
@@ -1314,7 +1331,7 @@ struct GitArtifactScanner: Sendable {
         guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return false }
 
         if !isDirectory.boolValue {
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let size = (try? url.scanResourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             return size > 0
         }
 
@@ -1325,7 +1342,7 @@ struct GitArtifactScanner: Sendable {
             return true  // can't enumerate — be conservative
         }
         for case let child as URL in enumerator {
-            let values = try? child.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            let values = try? child.scanResourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             if values?.isRegularFile == true, (values?.fileSize ?? 0) > 0 { return true }
         }
         return false
@@ -1337,10 +1354,12 @@ struct GitArtifactScanner: Sendable {
         return path.hasPrefix(home + "/.codex/worktrees/")
             || path.hasPrefix(home + "/.claude/worktrees/")
             || path.hasPrefix(home + "/.agents/worktrees/")
+            || path.hasPrefix(home + "/.grok/worktrees/")
+            || path.hasPrefix(home + "/.t3/worktrees/")
     }
 
     private static func isRepositoryRoot(_ url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.appending(path: ".git").path)
+        ScanFileSystem.exists(atPath: url.appending(path: ".git").path)
     }
 
     private static func shouldSkipDirectory(named name: String) -> Bool {
@@ -1580,5 +1599,15 @@ private extension String {
     func removingPrefix(_ prefix: String) -> String? {
         guard hasPrefix(prefix) else { return nil }
         return String(dropFirst(prefix.count))
+    }
+}
+
+
+enum DeveloperScanRoots {
+    static func paths(in base: URL) -> [URL] {
+        guard base.standardizedFileURL == FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL else { return [base] }
+        return [base] + [".codex/worktrees", ".claude/worktrees", ".agents/worktrees", ".grok/worktrees", ".t3/worktrees", "worktrees"].map {
+            base.appending(path: $0)
+        }.filter { ScanFileSystem.exists(atPath: $0.path) }
     }
 }

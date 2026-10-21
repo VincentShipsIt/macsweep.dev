@@ -23,7 +23,7 @@ struct AIAnalysisModelsTests {
         #expect(ScanSource.ai.rawValue == "AI Analysis")
     }
 
-    @Test func cacheFindingDefaultsToSelectedWithoutAReason() {
+    @Test func cacheFindingRequiresExplicitSelection() {
         let finding = CacheFinding(
             path: "/tmp/cache",
             size: "12 MB",
@@ -32,7 +32,7 @@ struct AIAnalysisModelsTests {
             source: .deterministic
         )
 
-        #expect(finding.isSelected)
+        #expect(!finding.isSelected)
         #expect(finding.reason == nil)
     }
 

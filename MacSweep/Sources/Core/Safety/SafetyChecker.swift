@@ -338,6 +338,16 @@ struct SafetyChecker: Sendable {
             return validation
         }
 
+        if context.moduleID == "mail-attachments", MailAttachmentsModule.isAttachmentFile(at: standardized) {
+            guard context.itemType != .directory, context.itemType != .symbolicLink,
+                  (try? standardized.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
+                  standardized.deletingLastPathComponent().resolvingSymlinksInPath().path
+                    == standardized.deletingLastPathComponent().standardizedFileURL.path else {
+                return .symlink(reason: "Mail attachment path contains a symbolic link")
+            }
+            return .safe
+        }
+
         // 5. Module-scoped carve-outs for user-managed roots (~/Documents, ~/Pictures…)
         //    and cloud roots. Checked BEFORE neverDelete because these roots also
         //    appear in neverDelete; only an explicitly opted-in module may proceed.
@@ -649,6 +659,9 @@ struct ProtectedPaths {
         "~/.kube",
         "~/.config",
         "~/.netrc",
+        "~/.codex/sessions",
+        "~/.codex/archived_sessions",
+        "~/.claude/projects",
 
         // App data (not caches)
         "~/Library/Preferences",
@@ -796,7 +809,6 @@ struct ProtectedPaths {
         "~/.claude/telemetry",
         "~/.claude/shell-snapshots",
         "~/.codex/log",
-        "~/.codex/archived_sessions",
     ]
 
     /// Directory names that are generally safe to delete

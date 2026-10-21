@@ -110,7 +110,7 @@ actor AppDiscovery {
         var apps: [InstalledApp] = []
 
         for searchPath in searchPaths {
-            guard let contents = try? FileManager.default.contentsOfDirectory(
+            guard let contents = try? ScanFileSystem.contentsOfDirectory(
                 at: searchPath,
                 includingPropertiesForKeys: nil
             ) else { continue }
@@ -242,7 +242,7 @@ actor LeftoverScanner {
         var orphans: [AppLeftover] = []
 
         for (baseURL, type) in leftoverLocations {
-            guard let contents = try? FileManager.default.contentsOfDirectory(
+            guard let contents = try? ScanFileSystem.contentsOfDirectory(
                 at: baseURL,
                 includingPropertiesForKeys: [.isDirectoryKey]
             ) else { continue }
@@ -284,7 +284,7 @@ actor LeftoverScanner {
     ) async -> [AppLeftover] {
         var found: [AppLeftover] = []
 
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: baseURL,
             includingPropertiesForKeys: nil
         ) else { return [] }

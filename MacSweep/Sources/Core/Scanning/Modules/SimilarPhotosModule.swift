@@ -80,8 +80,8 @@ struct SimilarPhotosModule: ScanModule {
 
         var candidates: [SimilarPhotoCandidate] = []
 
-        for root in searchPaths where FileManager.default.fileExists(atPath: root.path) {
-            guard let enumerator = FileManager.default.enumerator(
+        for root in searchPaths where ScanFileSystem.exists(atPath: root.path) {
+            guard let enumerator = ScanFileSystem.enumerator(
                 at: root,
                 includingPropertiesForKeys: Array(resourceKeys),
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
@@ -94,7 +94,7 @@ struct SimilarPhotosModule: ScanModule {
                 iterations += 1
                 if iterations % 512 == 0 { try Task.checkCancellation() }
 
-                let values = try? url.resourceValues(forKeys: resourceKeys)
+                let values = try? url.scanResourceValues(forKeys: resourceKeys)
                 guard values?.isDirectory == false, values?.isSymbolicLink == false else { continue }
                 guard values?.contentType?.conforms(to: .image) == true else { continue }
                 guard checker.validateForScan(url, moduleID: id).isSafe else { continue }

@@ -7,6 +7,7 @@ import Foundation
 /// result state.
 struct BuildArtifactScanState {
     var isScanning = false
+    var scanStage = "Finding projects…"
     var projects: [ProjectInfo] = []
     var projectCleanupItems: [CleanupItem] = []
     var systemArtifacts: [CleanupItem] = []

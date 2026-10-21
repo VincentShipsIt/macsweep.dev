@@ -36,7 +36,7 @@ struct PrivacyModule: ScanModule {
         type: CleanupItem.ItemType,
         moduleName: String
     ) -> CleanupItem {
-        let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+        let resourceValues = try? url.scanResourceValues(forKeys: [.contentModificationDateKey])
         return CleanupItem(
             id: UUID(),
             path: url,
@@ -55,7 +55,7 @@ struct PrivacyModule: ScanModule {
     /// reused here: it sizes directories and drops zero-size results, while
     /// these single files must be listed even when empty.
     private func scanSingleFile(_ url: URL, moduleName: String) async -> CleanupItem? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard ScanFileSystem.exists(atPath: url.path) else { return nil }
         let size = (try? await DiskAnalyzer.size(of: url)) ?? 0
         return makeCleanupItem(
             at: url,
@@ -112,9 +112,9 @@ struct PrivacyModule: ScanModule {
         let savedStateDir = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Saved Application State")
 
-        guard FileManager.default.fileExists(atPath: savedStateDir.path) else { return [] }
+        guard ScanFileSystem.exists(atPath: savedStateDir.path) else { return [] }
 
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let contents = try? ScanFileSystem.contentsOfDirectory(
             at: savedStateDir,
             includingPropertiesForKeys: nil
         ) else { return [] }
@@ -250,7 +250,7 @@ struct PrivacyActions {
         var firstError: Error?
         for file in historyFiles {
             let path = home.appending(path: file)
-            if FileManager.default.fileExists(atPath: path.path) {
+            if ScanFileSystem.exists(atPath: path.path) {
                 do {
                     // Recoverable: shell history is not regenerable, so route
                     // through the Trash to make an accidental clear undoable.

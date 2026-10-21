@@ -50,6 +50,6 @@ struct CacheFinding: Identifiable, Codable {
         self.regeneratesAutomatically = regeneratesAutomatically
         self.source = source
         self.reason = reason
-        self.isSelected = true
+        self.isSelected = false
     }
 }

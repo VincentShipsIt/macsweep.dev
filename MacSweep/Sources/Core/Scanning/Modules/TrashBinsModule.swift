@@ -23,7 +23,7 @@ struct TrashBinsModule: ScanModule {
     }
 
     func scanTrashBin(at url: URL, name: String) async throws -> [CleanupItem] {
-        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        guard ScanFileSystem.exists(atPath: url.path) else { return [] }
 
         var items: [CleanupItem] = []
 
@@ -32,7 +32,7 @@ struct TrashBinsModule: ScanModule {
         // them understates the reported size and leaves them behind on cleanup, so
         // the Trash looks only partially emptied. SafetyChecker still gates each
         // path by component.
-        let contents = try FileManager.default.contentsOfDirectory(
+        let contents = try ScanFileSystem.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .contentModificationDateKey],
             options: []
@@ -40,7 +40,7 @@ struct TrashBinsModule: ScanModule {
 
         for itemURL in contents {
             let size = (try? await DiskAnalyzer.size(of: itemURL)) ?? 0
-            let values = try? itemURL.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey])
+            let values = try? itemURL.scanResourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey])
 
             items.append(CleanupItem(
                 id: UUID(),
@@ -71,10 +71,10 @@ struct TrashBinsModule: ScanModule {
 
             // Check for .Trashes directory on volume
             let trashPath = volumeURL.appending(path: ".Trashes")
-            guard FileManager.default.fileExists(atPath: trashPath.path) else { continue }
+            guard ScanFileSystem.exists(atPath: trashPath.path) else { continue }
 
             // Get volume name
-            let volumeName = (try? volumeURL.resourceValues(forKeys: [.volumeNameKey]))?.volumeName
+            let volumeName = (try? volumeURL.scanResourceValues(forKeys: [.volumeNameKey]))?.volumeName
                 ?? volumeURL.lastPathComponent
 
             // Look for user-specific trash folder (named by UID)
@@ -163,7 +163,7 @@ struct TrashSummary {
         var userSize: Int64 = 0
         var userCount = 0
 
-        if let contents = try? FileManager.default.contentsOfDirectory(atPath: userTrash.path) {
+        if let contents = try? ScanFileSystem.contentsOfDirectory(atPath: userTrash.path) {
             userCount = contents.count
             userSize = (try? await DiskAnalyzer.directorySize(at: userTrash)) ?? 0
         }

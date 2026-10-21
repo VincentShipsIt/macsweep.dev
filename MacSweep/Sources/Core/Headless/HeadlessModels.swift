@@ -156,17 +156,22 @@ public struct HeadlessCleanupResult: Codable, Sendable {
     public let itemsProcessed: Int
     public let bytesFreed: Int64
     public let errors: [HeadlessCleanupError]
+    public let accounting: CleanupAccounting?
+    public let bytesFreedIsEstimate: Bool
 
     public init(
         dryRun: Bool,
         itemsProcessed: Int,
         bytesFreed: Int64,
-        errors: [HeadlessCleanupError]
+        errors: [HeadlessCleanupError],
+        accounting: CleanupAccounting? = nil
     ) {
         self.dryRun = dryRun
         self.itemsProcessed = itemsProcessed
         self.bytesFreed = bytesFreed
         self.errors = errors
+        self.accounting = accounting
+        self.bytesFreedIsEstimate = true
     }
 }
 
@@ -587,6 +592,9 @@ public struct HeadlessMalwareScanReport: Codable, Sendable {
     public let scannedAt: Date
     public let totalScanned: Int
     public let isClean: Bool
+    public let isComplete: Bool
+    public let coverageDescription: String
+    public let collectionErrors: [String]
     public let xprotectStatus: String
     public let aiAnalysisRequested: Bool
     public let findings: [HeadlessThreatFinding]
@@ -597,11 +605,15 @@ public struct HeadlessMalwareScanReport: Codable, Sendable {
         isClean: Bool,
         xprotectStatus: String,
         aiAnalysisRequested: Bool,
-        findings: [HeadlessThreatFinding]
+        findings: [HeadlessThreatFinding],
+        collectionErrors: [String] = []
     ) {
         self.scannedAt = scannedAt
         self.totalScanned = totalScanned
         self.isClean = isClean
+        self.isComplete = collectionErrors.isEmpty && totalScanned > 0
+        self.coverageDescription = ScanResult.coverageDescription
+        self.collectionErrors = collectionErrors
         self.xprotectStatus = xprotectStatus
         self.aiAnalysisRequested = aiAnalysisRequested
         self.findings = findings

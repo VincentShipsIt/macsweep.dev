@@ -287,7 +287,7 @@ struct SSHKnownHostsManager {
     static func removeHost(_ host: SSHKnownHost, from path: URL) throws {
         // Nothing to remove if the file doesn't exist yet — don't create a lock
         // file or throw in that case.
-        guard FileManager.default.fileExists(atPath: path.path) else { return }
+        guard ScanFileSystem.exists(atPath: path.path) else { return }
 
         let lockPath = path.deletingLastPathComponent().appending(path: ".known_hosts.macsweep.lock")
         let fd = open(lockPath.path, O_CREAT | O_RDWR, 0o600)
@@ -341,7 +341,7 @@ typealias DNSCacheCommandRunner =
 struct DNSCacheManager {
     /// Check if we can flush DNS
     static var canFlush: Bool {
-        return FileManager.default.fileExists(atPath: "/usr/bin/dscacheutil")
+        return ScanFileSystem.exists(atPath: "/usr/bin/dscacheutil")
     }
 
     /// Flush the DNS cache
@@ -499,7 +499,7 @@ struct NetworkCleanupSummary {
         ]
 
         for path in networkCachePaths {
-            if FileManager.default.fileExists(atPath: path.path) {
+            if ScanFileSystem.exists(atPath: path.path) {
                 let size = (try? await DiskAnalyzer.size(of: path)) ?? 0
                 summary.cacheSize += size
             }

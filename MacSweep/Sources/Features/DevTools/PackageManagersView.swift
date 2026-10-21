@@ -230,12 +230,16 @@ struct PackageManagersView: View {
 
         defer { isScanning = false }
 
-        async let cacheScan = PackageManagerModule().scan()
-        async let dockerScan = DockerModule().scan()
+        async let cacheScan = ScanEngine(modules: [PackageManagerModule()]).scanWithDiagnostics()
+        async let dockerScan = ScanEngine(modules: [DockerModule()]).scanWithDiagnostics()
         async let currentDockerInfo = DockerInfo.current()
 
-        cacheItems = (try? await cacheScan) ?? []
-        dockerItems = ((try? await dockerScan) ?? []).filter {
+        let caches = await cacheScan
+        let docker = await dockerScan
+        cacheItems = caches.items
+        let failures = caches.failures + docker.failures
+        errorMessage = failures.isEmpty ? nil : failures.map(\.message).joined(separator: "; ")
+        dockerItems = docker.items.filter {
             if case .action(.docker) = $0.target { return true }
             return false
         }
