@@ -30,7 +30,7 @@ struct MacSweepApp: App {
 
         // Menu bar widget
         MenuBarExtra(isInserted: $showMenuBarIcon) {
-            MenuBarView()
+            MenuBarView(monitor: appDelegate.appState.systemMonitor)
                 .environmentObject(appDelegate.appState)
         } label: {
             MacSweepMenuBarLabel()

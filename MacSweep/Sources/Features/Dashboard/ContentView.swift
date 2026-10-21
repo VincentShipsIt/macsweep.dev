@@ -156,7 +156,7 @@ struct ContentView: View {
         switch feature {
         // Main
         case .smartScan:
-            staticDetail(DashboardView())
+            staticDetail(DashboardView(monitor: appState.systemMonitor))
         case .assistant:
             staticDetail(AssistantView())
         case .share:
@@ -192,9 +192,9 @@ struct ContentView: View {
 
         // Speed
         case .optimization:
-            staticDetail(OptimizationView())
+            staticDetail(OptimizationView(processMonitor: appState.processMonitor, systemMonitor: appState.systemMonitor))
         case .batteryMonitor:
-            staticDetail(BatteryMonitorView())
+            staticDetail(BatteryMonitorView(monitor: appState.systemMonitor))
         case .maintenance:
             staticDetail(MaintenanceView())
 

@@ -4,8 +4,8 @@ import AppKit
 /// Optimization view with process list and memory management
 struct OptimizationView: View {
     @EnvironmentObject private var appState: AppState
-    @StateObject private var processMonitor = ProcessMonitor()
-    @StateObject private var systemMonitor = SystemMonitor()
+    // Uses AppState process + system monitors — single shared samplers app-wide.
+    @State private var monitoringConsumer = UUID()
     @State private var selectedProcesses: Set<pid_t> = []
     @State private var showingQuitConfirmation = false
     @State private var isFreezingRAM = false
@@ -43,12 +43,15 @@ struct OptimizationView: View {
             }
         }
         .task {
-            await processMonitor.startMonitoring()
+            await appState.processMonitor.startMonitoring(for: monitoringConsumer)
         }
         .onDisappear {
-            processMonitor.stopMonitoring()
+            appState.processMonitor.stopMonitoring(for: monitoringConsumer)
         }
     }
+
+    @ObservedObject var processMonitor: ProcessMonitor
+    @ObservedObject var systemMonitor: SystemMonitor
 
     // MARK: - System Stats Row
 
@@ -366,8 +369,9 @@ struct CPUStatRow: View {
 
 #if !SWIFT_PACKAGE
 #Preview {
-    OptimizationView()
-        .environmentObject(AppState())
+    let state = AppState()
+    OptimizationView(processMonitor: state.processMonitor, systemMonitor: state.systemMonitor)
+        .environmentObject(state)
         .frame(width: 800, height: 600)
 }
 

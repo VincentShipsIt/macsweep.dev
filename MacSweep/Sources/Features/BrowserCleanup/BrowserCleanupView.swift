@@ -170,7 +170,7 @@ struct BrowserCleanupView: View {
         CleanupFooter(
             selectedCount: selectedItems.count,
             countNoun: "items",
-            summary: "Will free \(selectedSize)",
+            summary: "Estimated size: \(selectedSize)",
             onSelectAll: { selectAll() },
             actionTitle: "Clean",
             actionDisabled: selectedItems.isEmpty,

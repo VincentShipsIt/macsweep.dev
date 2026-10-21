@@ -44,6 +44,27 @@ final class LoginItemControllerTests {
         return url
     }
 
+    @Test func exactPlistDisambiguatesDuplicateLabelsAndRejectsReplacement() async throws {
+        let selected = try writePlist(label: "com.example.dup", in: userDir)
+        let other = try writePlist(label: "com.example.dup", in: systemDir)
+        let controller = controller()
+        let outcome = try await controller.setEnabled(false, label: "com.example.dup", plistURL: selected)
+        #expect(outcome.plistPath == selected.standardizedFileURL.path)
+        let otherPlist = try #require(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: other), format: nil) as? [String: Any]
+        )
+        #expect(otherPlist["Disabled"] == nil)
+        try writePlist(label: "com.example.changed", in: userDir, fileName: "com.example.dup")
+        await #expect(throws: LoginItemController.MutationError.self) {
+            try await controller.setEnabled(true, label: "com.example.dup", plistURL: selected)
+        }
+        try FileManager.default.removeItem(at: selected)
+        try FileManager.default.createSymbolicLink(at: selected, withDestinationURL: other)
+        await #expect(throws: LoginItemController.MutationError.self) {
+            try await controller.remove(label: "com.example.dup", plistURL: selected)
+        }
+    }
+
     @Test func setEnabledThrowsNotFoundForUnknownLabel() async throws {
         try writePlist(label: "com.example.present", in: userDir)
         let controller = controller()

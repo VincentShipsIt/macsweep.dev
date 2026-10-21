@@ -179,10 +179,10 @@ struct SnapshotRenderer {
                 CleanupHistoryView(snapshotRuns: sampleCleanupHistory()),
                 appState: AppState()
             )),
-            ("smart-care-partial-results", wrap(DashboardView(), appState: partialState)),
-            ("smart-care-results", wrap(DashboardView(), appState: smartCareState)),
+            ("smart-care-partial-results", wrap(DashboardView(monitor: partialState.systemMonitor), appState: partialState)),
+            ("smart-care-results", wrap(DashboardView(monitor: smartCareState.systemMonitor), appState: smartCareState)),
             ("smart-care-missing-full-disk-access", wrap(
-                DashboardView(),
+                DashboardView(monitor: AppState().systemMonitor),
                 appState: AppState(initialFullDiskAccess: false)
             )),
             ("system-junk-results", wrap(SystemCleanupView(), appState: cleanupState)),

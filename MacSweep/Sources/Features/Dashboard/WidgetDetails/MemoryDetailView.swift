@@ -6,8 +6,10 @@ struct MemoryDetailView: View {
     /// Shared with CPUDetailView via the parent, so only one 5s `ps` sampling
     /// loop runs regardless of how many detail views have been opened (issue #103).
     @ObservedObject var processMonitor: ProcessMonitor
+    @State private var monitoringConsumer = UUID()
     @State private var isFreeing = false
     @State private var pulseAnimation = false
+    @State private var freeRAMError: String?
 
     private var alertLevel: MetricAlertLevel {
         MetricThresholds.memory(usagePercent: monitor.memoryUsage.usedPercentage)
@@ -33,15 +35,21 @@ struct MemoryDetailView: View {
 
             // Free up RAM button
             freeUpButton
+
+            if let freeRAMError {
+                MacSweepErrorBanner(message: freeRAMError) {
+                    self.freeRAMError = nil
+                }
+            }
         }
         .padding()
         .task {
-            await processMonitor.startMonitoring()
+            await processMonitor.startMonitoring(for: monitoringConsumer)
         }
         .onDisappear {
             // Stop the 5s ps-sampling timer when the popover closes (otherwise it
             // leaks and keeps spawning subprocesses).
-            processMonitor.stopMonitoring()
+            processMonitor.stopMonitoring(for: monitoringConsumer)
         }
     }
 
@@ -170,8 +178,13 @@ struct MemoryDetailView: View {
         Button {
             Task {
                 isFreeing = true
-                defer { isFreeing = false }   // reset even if cancelled / thrown
-                try? await monitor.freeUpMemory()
+                defer { isFreeing = false }
+                freeRAMError = nil
+                do {
+                    _ = try await monitor.freeUpMemory()
+                } catch {
+                    freeRAMError = error.localizedDescription
+                }
             }
         } label: {
             if isFreeing {

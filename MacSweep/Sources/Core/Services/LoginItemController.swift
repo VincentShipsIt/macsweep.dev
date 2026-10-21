@@ -55,8 +55,10 @@ actor LoginItemController {
 
     /// Set the `Disabled` key in the matched plist. launchd treats a missing or
     /// `false` `Disabled` as enabled, so disabling writes `Disabled = true`.
-    func setEnabled(_ enabled: Bool, label: String) throws -> Outcome {
-        let match = try locate(label: label)
+    func setEnabled(
+        _ enabled: Bool, label: String, plistURL: URL? = nil
+    ) throws -> Outcome {
+        let match = try locate(label: label, plistURL: plistURL)
 
         // Capture the plist's on-disk format so we can write it back unchanged.
         // Reading with `format: nil` always succeeds for either xml or binary, but
@@ -71,7 +73,9 @@ actor LoginItemController {
 
         plist["Disabled"] = !enabled
 
-        guard let newData = try? PropertyListSerialization.data(fromPropertyList: plist, format: format, options: 0) else {
+        guard let newData = try? PropertyListSerialization.data(
+            fromPropertyList: plist, format: format, options: 0
+        ) else {
             throw MutationError.failed("Could not serialize plist at \(match.url.path).")
         }
 
@@ -87,8 +91,8 @@ actor LoginItemController {
     /// Move the matched plist to the Trash (recoverable), mirroring the
     /// `trashItem` convention used across the cleanup modules rather than a
     /// hard `removeItem`.
-    func remove(label: String) throws -> Outcome {
-        let match = try locate(label: label)
+    func remove(label: String, plistURL: URL? = nil) throws -> Outcome {
+        let match = try locate(label: label, plistURL: plistURL)
 
         do {
             try CleanupFileRemover.recoverable(match.url, module: "login-items")
@@ -114,12 +118,32 @@ actor LoginItemController {
     /// editable plist here, so they cannot be mutated through this path. The only
     /// residual risk is a launchd Label that *coincidentally* equals an appService
     /// name; exact-Label matching above is the mitigation that minimizes it.
-    private func locate(label: String) throws -> (url: URL, kind: HeadlessLoginItemKind) {
+    private func locate(
+        label: String, plistURL: URL? = nil
+    ) throws -> (url: URL, kind: HeadlessLoginItemKind) {
         let searchOrder: [(URL, HeadlessLoginItemKind)] = [
             (userLaunchAgents, .launchAgent),
             (systemLaunchAgents, .launchAgent),
             (systemLaunchDaemons, .launchDaemon)
         ]
+
+        if let plistURL {
+            let url = plistURL.standardizedFileURL
+            guard let (_, kind) = searchOrder.first(where: {
+                $0.0.resolvingSymlinksInPath() == url.deletingLastPathComponent().resolvingSymlinksInPath()
+            }), url.pathExtension == "plist",
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                values.isRegularFile == true, values.isSymbolicLink != true,
+                let data = try? Data(contentsOf: url),
+                let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+                (plist["Label"] as? String ?? url.deletingPathExtension().lastPathComponent) == label
+            else {
+                throw MutationError.failed(
+                    "Selected plist changed or is outside supported launch-item directories. Rescan and try again."
+                )
+            }
+            return (url, kind)
+        }
 
         var exactMatches: [(url: URL, kind: HeadlessLoginItemKind)] = []
         var caseInsensitiveMatches: [(url: URL, kind: HeadlessLoginItemKind)] = []
