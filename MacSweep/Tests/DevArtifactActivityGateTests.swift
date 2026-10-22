@@ -71,7 +71,9 @@ final class DevArtifactActivityGateTests {
         try artifact()
         let module = module()
         let selected = try await item(module)
-        #expect(selected.devArtifactReceipt?.isEligible == true)
+        #expect(
+            selected.devArtifactReceipt?.isEligible == true,
+            Comment(rawValue: selected.devArtifactReceipt?.reason ?? ""))
         #expect(selected.devArtifactReceipt?.identity != nil)
         #expect(selected.cleanupReviewReason == nil)
         let result = try await module.clean(items: [selected], dryRun: false)
@@ -102,7 +104,9 @@ final class DevArtifactActivityGateTests {
         let ledger = SafetyRemovalLedger()
         let module = module(snapshot: { await state.get() }, ledger: ledger)
         let selected = try await item(module)
-        try #require(selected.devArtifactReceipt?.isEligible == true)
+        try #require(
+            selected.devArtifactReceipt?.isEligible == true,
+            Comment(rawValue: selected.devArtifactReceipt?.reason ?? ""))
         await state.set(DevProcessSnapshot(jobs: [job()]))
         let result = try await module.clean(items: [selected], dryRun: false)
         #expect(result.itemsProcessed == 0)
@@ -176,7 +180,9 @@ final class DevArtifactActivityGateTests {
         let selected = try await item(module, named: "tsconfig.tsbuildinfo")
         #expect(selected.type == .file)
         #expect(selected.size < 1_048_576)
-        #expect(selected.devArtifactReceipt?.isEligible == true)
+        #expect(
+            selected.devArtifactReceipt?.isEligible == true,
+            Comment(rawValue: selected.devArtifactReceipt?.reason ?? ""))
         let names = Set(try await module.scan().map { $0.path.lastPathComponent })
         #expect(!names.contains("tsconfig.json"))
         #expect(!names.contains("package.json"))
@@ -261,7 +267,9 @@ extension DevArtifactActivityGateTests {
         let ledger = SafetyRemovalLedger()
         let module = module(ledger: ledger)
         let selected = try await item(module)
-        try #require(selected.devArtifactReceipt?.isEligible == true)
+        try #require(
+            selected.devArtifactReceipt?.isEligible == true,
+            Comment(rawValue: selected.devArtifactReceipt?.reason ?? ""))
         try Data("new content".utf8).write(to: target.appendingPathComponent("new.bin"))
         let changed = try await module.clean(items: [selected], dryRun: false)
         #expect(changed.itemsProcessed == 0)

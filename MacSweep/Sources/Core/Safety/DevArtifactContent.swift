@@ -97,6 +97,58 @@ enum DevArtifactContent {
         if let failure { throw failure }
     }
 
+    struct Measurement: Sendable {
+        let size: Int64
+        let modified: Date
+    }
+
+    static func measure(
+        _ target: URL, maximumEntries: Int = entryLimit,
+        deadline: TimeInterval = ProcessInfo.processInfo.systemUptime + 3
+    ) throws -> Measurement {
+        var root = stat()
+        guard Darwin.lstat(target.path, &root) == 0 else {
+            throw DevArtifactSafetyError("Artifact size metadata could not be inspected.")
+        }
+        let modified = Date(timeIntervalSince1970: Double(root.st_mtimespec.tv_sec))
+        if root.st_mode & S_IFMT != S_IFDIR {
+            return Measurement(size: root.st_mode & S_IFMT == S_IFREG ? Int64(root.st_size) : 0, modified: modified)
+        }
+        var failure: Error?
+        guard
+            let entries = FileManager.default.enumerator(
+                at: target, includingPropertiesForKeys: nil,
+                errorHandler: { _, error in
+                    failure = error
+                    return false
+                })
+        else {
+            throw DevArtifactSafetyError("Artifact size could not be enumerated.")
+        }
+        var count = 0
+        var size: Int64 = 0
+        for case let child as URL in entries {
+            count += 1
+            guard count <= maximumEntries, ProcessInfo.processInfo.systemUptime < deadline else {
+                throw DevArtifactSafetyError("Artifact sizing exceeded its safety limit; target retained.")
+            }
+            var node = stat()
+            guard Darwin.lstat(child.path, &node) == 0 else {
+                throw DevArtifactSafetyError("Artifact changed while measuring its size.")
+            }
+            if node.st_mode & S_IFMT == S_IFREG {
+                let bytes = max(Int64(node.st_blocks), 0).multipliedReportingOverflow(by: 512)
+                let sum = size.addingReportingOverflow(bytes.partialValue)
+                guard !bytes.overflow, !sum.overflow else {
+                    throw DevArtifactSafetyError("Artifact size exceeded its accounting limit.")
+                }
+                size = sum.partialValue
+            }
+        }
+        if let failure { throw failure }
+        return Measurement(size: size, modified: modified)
+    }
+
     static func validateTree(_ target: URL, genericOutput: Bool, checker: SafetyChecker) throws -> [DevArtifactNode] {
         let deadline = ProcessInfo.processInfo.systemUptime + 3
         var count = 0

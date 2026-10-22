@@ -5,16 +5,19 @@ struct DevArtifactSafety: Sendable {
     var processSnapshot: @Sendable () async throws -> DevProcessSnapshot = { try await DevProcessActivity.snapshot() }
     var git: @Sendable ([String], URL) async -> ProcessResult = { arguments, directory in
         if arguments.first == "ls-files" {
+            guard let executable = GitArtifactScanner.executablePath(for: "git") else {
+                return ProcessResult(status: 127, output: "", error: "Git is unavailable.")
+            }
             do {
                 return try await ProcessRunner.runPipeline(
                     stages: [
                         ProcessPipelineStage(
-                            executable: "/usr/bin/git",
+                            executable: executable,
                             arguments: ["--literal-pathspecs", "-C", directory.path] + arguments),
                         ProcessPipelineStage(executable: "/usr/bin/head", arguments: ["-c", "1"])
                     ], timeout: 5)
             } catch {
-                return ProcessResult(status: -1, output: "", error: error.localizedDescription)
+                return ProcessResult(status: -1, output: "", error: String(describing: error))
             }
         }
         return await GitArtifactScanner.run(["git", "-C", directory.path] + arguments, timeout: 5)
@@ -152,7 +155,11 @@ struct DevArtifactSafety: Sendable {
             ["ls-files", "-z", "--others", "--exclude-standard", "--", relative]
         ] {
             let result = await git(args, root)
-            guard result.didSucceed, result.outputWasValidUTF8, result.output.isEmpty else {
+            guard result.didSucceed else {
+                throw DevArtifactSafetyError(
+                    "Git content inspection is unavailable: " + String(result.error.prefix(300)))
+            }
+            guard result.outputWasValidUTF8, result.output.isEmpty else {
                 throw DevArtifactSafetyError(
                     "Tracked or uncommitted user content is retained; "
                         + "the target needs a clean generated-content boundary."

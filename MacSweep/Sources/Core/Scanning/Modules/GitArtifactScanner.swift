@@ -628,7 +628,7 @@ struct GitArtifactScanner: Sendable {
         return skipped.contains(name)
     }
 
-    private static func executablePath(for command: String) -> String? {
+    static func executablePath(for command: String) -> String? {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
         for directory in path.split(separator: ":") {
             let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(command).path

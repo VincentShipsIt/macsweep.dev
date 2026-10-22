@@ -79,16 +79,14 @@ struct DevToolsModule: ScanModule {
             guard ScanFileSystem.exists(atPath: url.path),
                 seen.insert(url.standardizedFileURL.path).inserted
             else { continue }
-            let receipt = await safety.assess(url, processes: processes)
-            let size: Int64
+            let measurement: DevArtifactContent.Measurement
             do {
-                size =
-                    type == .file
-                    ? Int64(try url.scanResourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
-                    : try await DiskAnalyzer.directorySize(at: url)
+                measurement = try await DevArtifactIO.run { try DevArtifactContent.measure(url) }
             } catch { ScanDiagnostics.current?.record(error, at: url); continue }
+            let size = measurement.size
             guard size > (type == .file ? 0 : minimumDirectorySize) else { continue }
-            let date = try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let receipt = await safety.assess(url, processes: processes)
+            let date = measurement.modified
             let item = CleanupItem(
                 id: UUID(), path: url, size: size, type: type, module: id, moduleName: title,
                 lastModified: date, contentModificationDate: date,
