@@ -34,19 +34,22 @@ struct ProcessRunnerPipelineTests {
         }
     }
 
-    @Test func cancellationTerminatesAndReapsEveryRunningStage() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func cancellationTerminatesAndReapsEveryRunningStage() async throws {
         let recorder = PipelinePIDRecorder()
+        let (starts, continuation) = AsyncStream<Void>.makeStream()
         let task = Task {
-            try await ProcessRunner.runPipeline(
+            defer { continuation.finish() }
+            return try await ProcessRunner.runPipeline(
                 stages: [
                     ProcessPipelineStage(executable: "/bin/sleep", arguments: ["30"]),
                     ProcessPipelineStage(executable: "/bin/cat")
-                ], timeout: 3, onStageStartedForTesting: { _, pid in recorder.append(pid) })
+                ], timeout: 3, onStageStartedForTesting: { _, pid in
+                    recorder.append(pid)
+                    if recorder.pids.count == 2 { continuation.yield() }
+                })
         }
-        let deadline = ProcessInfo.processInfo.systemUptime + 2
-        while recorder.pids.count < 2 && ProcessInfo.processInfo.systemUptime < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        for await _ in starts { break }
         #expect(recorder.pids.count == 2)
         task.cancel()
         do {
