@@ -51,7 +51,7 @@ struct DevArtifactIOTests {
     }
 
     @Test func globalStyleBudgetBoundsConcurrentWorkersAndReleasesAfterErrors() async throws {
-        let budget = DevArtifactIOBudget(limit: 2)
+        let budget = AsyncPermitPool(limit: 2)
         let probe = IOTestProbe()
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<12 {
@@ -76,7 +76,7 @@ struct DevArtifactIOTests {
     }
 
     @Test func mixedAsyncAndSynchronousWorkersShareOneBudget() async throws {
-        let budget = DevArtifactIOBudget(limit: 2)
+        let budget = AsyncPermitPool(limit: 2)
         let probe = IOTestProbe()
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<16 {
@@ -103,7 +103,7 @@ struct DevArtifactIOTests {
     }
 
     @Test func queuedAsyncCancellationNeverDispatchesAndActiveAsyncCancellationReleases() async throws {
-        let budget = DevArtifactIOBudget(limit: 1)
+        let budget = AsyncPermitPool(limit: 1)
         let probe = IOTestProbe()
         let first = Task {
             try await DevArtifactIO.runAsync(budget: budget) {
@@ -149,7 +149,7 @@ struct DevArtifactIOTests {
     }
 
     @Test func activeCancellationReachesTheSynchronousWorker() async throws {
-        let budget = DevArtifactIOBudget(limit: 1)
+        let budget = AsyncPermitPool(limit: 1)
         let probe = IOTestProbe()
         let task = Task {
             try await DevArtifactIO.run(budget: budget) {
@@ -175,7 +175,7 @@ struct DevArtifactIOTests {
     }
 
     @Test func cancelledQueuedWorkIsRemovedWithoutDispatch() async throws {
-        let budget = DevArtifactIOBudget(limit: 1)
+        let budget = AsyncPermitPool(limit: 1)
         let probe = IOTestProbe()
         let first = Task {
             try await DevArtifactIO.run(budget: budget) {
@@ -209,8 +209,30 @@ struct DevArtifactIOTests {
         #expect(await budget.state().active == 0)
     }
 
+    @Test func completedCommitReturnsItsReceiptAfterCancellation() async throws {
+        let budget = AsyncPermitPool(limit: 1)
+        let probe = IOTestProbe()
+        let operation = Task {
+            try await DevArtifactIO.commit(budget: budget) {
+                // The mutation is complete at this boundary; cancellation cannot undo it.
+                probe.enter()
+                defer { probe.leave() }
+                let deadline = ProcessInfo.processInfo.systemUptime + 3
+                while !Task.isCancelled {
+                    guard ProcessInfo.processInfo.systemUptime < deadline else { throw FixtureError.timeout }
+                    Thread.sleep(forTimeInterval: 0.001)
+                }
+                return 42
+            }
+        }
+        try await waitUntil { probe.counts.started == 1 }
+        operation.cancel()
+        #expect(try await operation.value == 42)
+        #expect(await budget.state().active == 0)
+    }
+
     @Test func nestedSubmissionCanReenterAfterLeaseReleaseAndDiagnosticsStayTaskLocal() async throws {
-        let budget = DevArtifactIOBudget(limit: 1)
+        let budget = AsyncPermitPool(limit: 1)
         let collector = ScanDiagnostics.Collector()
         let value = try await ScanDiagnostics.$current.withValue(collector) {
             let nested = try await DevArtifactIO.run(budget: budget) {
