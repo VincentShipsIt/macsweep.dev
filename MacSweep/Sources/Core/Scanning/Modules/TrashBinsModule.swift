@@ -3,6 +3,9 @@ import AppKit
 
 /// Module for managing and emptying trash bins
 struct TrashBinsModule: ScanModule {
+    static let cleanupReviewReason = "Already in Trash. Emptying removes this item permanently; "
+        + "use Put Back first if you want to keep it."
+
     let id = "trash-bins"
     let name = "Trash Bins"
     let description = "Empty system and volume trash bins"

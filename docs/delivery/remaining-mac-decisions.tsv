@@ -1,0 +1,7 @@
+ts	phase	decision	why	evidence	result
+2026-10-22T09:45:00Z	frame	Keep iOS epic #26 open and untouched	User explicitly requested Mac-only delivery	#26	deferred by user
+2026-10-22T09:45:00Z	frame	Deliver fourteen Mac issues as independently verified feature units	A large unverified batch would obscure safety regressions	docs/delivery/remaining-mac-issues.md	implementation active
+2026-10-22T09:45:00Z	foundation	Move actual application coordination into the package instead of duplicating pure test proxies	The audit requires behavior coverage of production orchestration	#120	implementation active
+2026-10-22T09:45:00Z	parallel	Isolate Xcode and toolchain implementations from shared registry changes	Independent claimed surfaces avoid concurrent writers	#165; #166	implementation active
+2026-10-22T09:50:56.298434+00:00	audit	Correct initial timestamp precision	Initial four rows used a planning placeholder time; decision content remains valid	rows 1-4	Superseded timestamps; subsequent rows use observed UTC
+2026-10-22T10:00:13.435060+00:00	foundation	Accept tested production coordinator extraction and evidence rows	Submitted selection and cancellation generation guard async completion	803 package tests; coverage floors; Release CLI/GUI; E2E; 48 snapshots	verified locally; CI pending; review not_requested

@@ -455,9 +455,9 @@ final class AssistantCoordinator: ObservableObject {
     private var watcher: DispatchSourceFileSystemObject?
     private var watchedDescriptor: CInt = -1
 
-    init(repository: AssistantConfigRepository = AssistantConfigRepository()) {
+    init(repository: AssistantConfigRepository = AssistantConfigRepository(), automaticallyReload: Bool = true) {
         self.repository = repository
-
+        guard automaticallyReload else { return }
         Task {
             await reload()
             await startWatchingConfigDirectory()

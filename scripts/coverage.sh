@@ -39,6 +39,11 @@ SCOPE = {
     # Scan/clean orchestration.
     "Sources/Core/Scanning/ScanEngine.swift": 75,
     "Sources/Core/Scanning/Modules/SystemCacheModule.swift": 90,
+    # Actual GUI coordination and background services now belong to the package.
+    "Sources/Core/Scanning/AppState.swift": 60,
+    "Sources/Core/Scanning/AppStateScanning.swift": 80,
+    "Sources/Core/Services/ScanScheduler.swift": 75,
+    "Sources/Core/Services/NotificationManager.swift": 60,
     # Headless service boundary + serialization: tracked, not yet enforced.
     "Sources/Core/Headless/HeadlessService.swift": 0,
     "Sources/Core/Headless/HeadlessModels.swift": 0,

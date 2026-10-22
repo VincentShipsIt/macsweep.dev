@@ -16,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var appState: AppState { Self.sharedAppState }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationManager.shared.openApplication = { AppDelegate.openMainWindowIfNeeded() }
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
 
