@@ -255,11 +255,13 @@ private struct CleanupReviewSheet: View {
                 .foregroundStyle(result.errors.isEmpty ? .green : .orange)
             Text(result.errors.isEmpty ? "Cleanup Complete" : "Cleanup Finished with Issues")
                 .font(.title2.weight(.semibold))
-            Text("Processed target size: \(result.formattedBytesFreed) (estimate)")
+            Text(result.processedTargetSizeText(estimateAvailable: showsSpaceMetric))
                 .font(.title3)
             if let accounting = result.accounting {
-                Text("Moved to Trash: \(accounting.movedToTrashBytes.formattedFileSize) · Permanently removed targets: \(accounting.permanentlyRemovedTargetBytes.formattedFileSize)")
-                    .font(.caption)
+                if showsSpaceMetric {
+                    Text("Moved to Trash: \(accounting.movedToTrashBytes.formattedFileSize) · Permanently removed targets: \(accounting.permanentlyRemovedTargetBytes.formattedFileSize)")
+                        .font(.caption)
+                }
                 ForEach(accounting.volumeObservations, id: \.before.volumePath) { observation in
                     if let change = observation.observedAvailableChange {
                         Text("Observed available-space change: \(change >= 0 ? "+" : "−")\(change.magnitude.formatted()) bytes")

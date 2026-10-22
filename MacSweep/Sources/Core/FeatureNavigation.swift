@@ -28,7 +28,7 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .files:
             return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         case .developer:
-            return [.developerLogs]
+            return [.developerLogs, .environmentDoctor]
         }
     }
 }
@@ -66,6 +66,7 @@ enum Feature: String, CaseIterable, Identifiable {
     case shredder = "Shredder"
 
     case developerLogs = "Logs"
+    case environmentDoctor = "Environment Doctor"
 
     var id: String { rawValue }
 
@@ -97,6 +98,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .similarPhotos: return "photo.stack"
         case .shredder: return "scissors"
         case .developerLogs: return "list.bullet.rectangle"
+        case .environmentDoctor: return "stethoscope"
         }
     }
 
@@ -108,7 +110,7 @@ enum Feature: String, CaseIterable, Identifiable {
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .homebrewUpdater: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
-        case .developerLogs: return .developer
+        case .developerLogs, .environmentDoctor: return .developer
         }
     }
 }

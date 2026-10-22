@@ -84,6 +84,12 @@ public struct CleanupAccounting: Codable, Equatable, Sendable {
 }
 
 extension CleanupResult {
+    func processedTargetSizeText(estimateAvailable: Bool) -> String {
+        let estimate = accounting?.estimatedProcessedBytes ?? bytesFreed
+        return estimateAvailable
+            ? "Processed target size: \(estimate.formattedFileSize) (estimate)" : "Processed target size unavailable"
+    }
+
     func accounting(for items: [CleanupItem], observations: [VolumeSpaceObservation] = []) -> CleanupResult {
         CleanupResult(itemsProcessed: itemsProcessed, bytesFreed: bytesFreed, errors: errors,
             historyActions: historyActions, accounting: .make(items: items, result: self, observations: observations))

@@ -42,7 +42,7 @@ struct ContentView: View {
             MacSweepSidebarFocus(isFocused: $isSidebarFocused, columnVisibility: $columnVisibility)
         )
         .onChange(of: developerModeEnabled) { _, enabled in
-            if !enabled, appState.selectedFeature == .developerLogs {
+            if !enabled, appState.selectedFeature.section == .developer {
                 appState.selectedFeature = .smartScan
             }
         }
@@ -219,6 +219,8 @@ struct ContentView: View {
         // Developer
         case .developerLogs:
             staticDetail(DeveloperLogsView())
+        case .environmentDoctor:
+            staticDetail(EnvironmentDoctorView())
         }
     }
 
@@ -260,7 +262,8 @@ private extension Feature {
              .uninstaller,
              .homebrewUpdater,
              .shredder,
-             .developerLogs:
+             .developerLogs,
+             .environmentDoctor:
             return false
         }
     }

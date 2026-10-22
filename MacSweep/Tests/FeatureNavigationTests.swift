@@ -16,7 +16,8 @@ struct FeatureNavigationTests {
     }
 
     @Test func developerLogsStayInTheirGatedSection() {
-        #expect(FeatureSection.developer.features == [.developerLogs])
+        #expect(FeatureSection.developer.features == [.developerLogs, .environmentDoctor])
         #expect(Feature.developerLogs.section == .developer)
+        #expect(Feature.environmentDoctor.section == .developer)
     }
 }

@@ -195,3 +195,8 @@ public enum CLIExitCode: Int32 {
     // operational failure — nothing went wrong, the operation just didn't run.
     case cancelled = 8
 }
+
+struct CLIDoctorOutput: Codable {
+    let metadata: CLICommandMetadata
+    let report: HeadlessDoctorReport
+}
