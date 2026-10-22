@@ -52,6 +52,14 @@ struct FreshInstallProbe {
         print("Window predicate fixtures passed; no application was launched or inspected.")
     }
 
+    private static func write(_ result: FreshInstallObservation, to output: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(result)
+        try data.write(to: output)
+        if let text = String(data: data, encoding: .utf8) { print(text) }
+    }
+
     @MainActor static func main() throws {
         if CommandLine.arguments == [CommandLine.arguments[0], "--self-test"] {
             verifyFixtures()
@@ -71,7 +79,7 @@ struct FreshInstallProbe {
         var result = FreshInstallObservation(
             processID: nil, bundlePathMatches: false, finishedLaunching: false, windows: [],
             observedForSeconds: 0, visibleWindowStable: false,
-            interactiveGatekeeperApproval: "Not automatically approved; inspect actual runner outcome.",
+            interactiveGatekeeperApproval: "See exact first-open confirmation receipt; inspect actual runner outcome.",
             onboardingVisualReview: "Required using the actual first-launch screenshot.")
         repeat {
             let applications = NSRunningApplication.runningApplications(withBundleIdentifier: "dev.macsweep.app")
@@ -86,17 +94,14 @@ struct FreshInstallProbe {
                     finishedLaunching: running.isFinishedLaunching, windows: windows,
                     observedForSeconds: Date().timeIntervalSince(start),
                     visibleWindowStable: firstVisible.map { Date().timeIntervalSince($0) >= 5 } ?? false,
-                    interactiveGatekeeperApproval: "No automated approval or security override was performed.",
+                    interactiveGatekeeperApproval:
+                        "Exact normal Open confirmation is recorded separately; no security override was performed.",
                     onboardingVisualReview: "Required using the actual first-launch screenshot.")
             } else { firstVisible = nil }
             if result.visibleWindowStable { break }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         } while Date().timeIntervalSince(start) < 45
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(result)
-        try data.write(to: output)
-        if let text = String(data: data, encoding: .utf8) { print(text) }
+        try write(result, to: output)
         guard result.visibleWindowStable else {
             fputs(
                 "No stable installed-app window observed. "

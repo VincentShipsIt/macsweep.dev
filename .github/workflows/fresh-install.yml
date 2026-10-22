@@ -7,6 +7,8 @@ on:
       - .github/workflows/release.yml
       - scripts/*acceptance*
       - scripts/FreshInstallProbe.swift
+      - scripts/FirstOpen**
+      - scripts/first-open.py
       - docs/releases/**
   workflow_dispatch:
     inputs:
@@ -35,6 +37,10 @@ jobs:
           bash -n scripts/fresh-install-acceptance.sh
           xcrun swiftc -parse-as-library scripts/FreshInstallProbe.swift -o "$RUNNER_TEMP/window-probe-tests"
           "$RUNNER_TEMP/window-probe-tests" --self-test
+          xcrun swiftc -parse-as-library scripts/FirstOpenPolicy.swift scripts/FirstOpenPolicyTests.swift -o "$RUNNER_TEMP/first-open-policy-tests"
+          "$RUNNER_TEMP/first-open-policy-tests"
+          xcrun swiftc -parse-as-library scripts/FirstOpenPolicy.swift scripts/FirstOpenAX.swift -o "$RUNNER_TEMP/first-open-ax"
+          xcodebuild build-for-testing -project scripts/FirstOpenUI/FirstOpenUI.xcodeproj -scheme FirstOpenUITests -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/first-open-ui-build"
   fresh-install:
     if: github.event_name != 'pull_request'
     needs: acceptance-tools

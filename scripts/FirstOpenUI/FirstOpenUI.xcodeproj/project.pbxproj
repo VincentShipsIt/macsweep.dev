@@ -1,0 +1,25 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+  A00000000000000000000001 = {isa = PBXProject; attributes = {LastUpgradeCheck = 2600;}; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000005);};
+  A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
+  A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000007, A00000000000000000000008, A00000000000000000000004); sourceTree = "<group>";};
+  A00000000000000000000004 = {isa = PBXGroup; children = (A00000000000000000000009); name = Products; sourceTree = "<group>";};
+  A00000000000000000000005 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000010; buildPhases = (A00000000000000000000011, A00000000000000000000012, A00000000000000000000013); buildRules = (); dependencies = (); name = FirstOpenUITests; productName = FirstOpenUITests; productReference = A00000000000000000000009; productType = "com.apple.product-type.bundle.ui-testing";};
+  A00000000000000000000006 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; SDKROOT = macosx; SWIFT_VERSION = 5.0;}; name = Debug;};
+  A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstOpenUITests.swift; sourceTree = "<group>";};
+  A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirstOpenPolicy.swift; path = ../FirstOpenPolicy.swift; sourceTree = "<group>";};
+  A00000000000000000000009 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FirstOpenUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;};
+  A00000000000000000000010 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000014); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
+  A00000000000000000000011 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000015, A00000000000000000000016); runOnlyForDeploymentPostprocessing = 0;};
+  A00000000000000000000012 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+  A00000000000000000000013 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+  A00000000000000000000014 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Manual; ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = YES; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@loader_path/../Frameworks", "@executable_path/../Frameworks"); PRODUCT_BUNDLE_IDENTIFIER = dev.macsweep.acceptance.FirstOpenUITests; PRODUCT_NAME = "$(TARGET_NAME)"; TEST_TARGET_NAME = "";}; name = Debug;};
+  A00000000000000000000015 = {isa = PBXBuildFile; fileRef = A00000000000000000000007;};
+  A00000000000000000000016 = {isa = PBXBuildFile; fileRef = A00000000000000000000008;};
+ };
+ rootObject = A00000000000000000000001;
+}
