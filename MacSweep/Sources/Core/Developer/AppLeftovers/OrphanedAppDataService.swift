@@ -21,11 +21,10 @@ struct OrphanedAppDataService {
         guard !Task.isCancelled else { return AppLeftoversReport(issues: ["Scan cancelled; rescan required."]) }
         let installed = await ownership()
         let processes = await activity()
-        let inspection = Task.detached(priority: .utility) { inspect(installed, activity: processes) }
-        return await withTaskCancellationHandler {
-            await inspection.value
-        } onCancel: {
-            inspection.cancel()
+        do {
+            return try await DevArtifactIO.run { inspect(installed, activity: processes) }
+        } catch {
+            return AppLeftoversReport(issues: ["Scan cancelled or disk work unavailable; rescan required."])
         }
     }
 

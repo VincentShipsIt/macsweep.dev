@@ -17,38 +17,37 @@ struct EditorCachesService {
         let apps = await applications()
         let processes = await activity()
         let checker = protectionRules()
-        let inspection = Task.detached(priority: .utility) {
-            var discovery = EditorCacheDiscovery(home: canonicalHome, applications: apps, checker: checker)
-            let candidates = discovery.candidates()
-            var report = EditorCachesReport(issues: Array(Set(apps.issues + discovery.issues)).sorted())
-            let deadline = ProcessInfo.processInfo.systemUptime + 12
-            for candidate in candidates {
-                guard report.findings.count < 4000, ProcessInfo.processInfo.systemUptime < deadline,
-                    !Task.isCancelled
-                else {
-                    report.issues.append("Editor cache inspection exceeded its budget or was cancelled.")
-                    break
+        do {
+            return try await DevArtifactIO.run {
+                var discovery = EditorCacheDiscovery(home: canonicalHome, applications: apps, checker: checker)
+                let candidates = discovery.candidates()
+                var report = EditorCachesReport(issues: Array(Set(apps.issues + discovery.issues)).sorted())
+                let deadline = ProcessInfo.processInfo.systemUptime + 12
+                for candidate in candidates {
+                    guard report.findings.count < 4000, ProcessInfo.processInfo.systemUptime < deadline,
+                        !Task.isCancelled
+                    else {
+                        report.issues.append("Editor cache inspection exceeded its budget or was cancelled.")
+                        break
+                    }
+                    report.findings.append(
+                        inspect(
+                            candidate, apps: apps, processes: processes,
+                            checker: checker, incomplete: !report.issues.isEmpty))
                 }
-                report.findings.append(
-                    inspect(
-                        candidate, apps: apps, processes: processes,
-                        checker: checker, incomplete: !report.issues.isEmpty))
-            }
-            if !report.issues.isEmpty {
-                report.findings = report.findings.map { finding in
-                    EditorCacheFinding(
-                        candidate: finding.candidate, identity: finding.identity, nodes: finding.nodes,
-                        modified: finding.modified, size: finding.size,
-                        retentionReason: "Inventory incomplete; resolve the reported gaps and rescan.")
+                if !report.issues.isEmpty {
+                    report.findings = report.findings.map { finding in
+                        EditorCacheFinding(
+                            candidate: finding.candidate, identity: finding.identity, nodes: finding.nodes,
+                            modified: finding.modified, size: finding.size,
+                            retentionReason: "Inventory incomplete; resolve the reported gaps and rescan.")
+                    }
                 }
+                report.findings.sort { $0.id < $1.id }
+                return report
             }
-            report.findings.sort { $0.id < $1.id }
-            return report
-        }
-        return await withTaskCancellationHandler {
-            await inspection.value
-        } onCancel: {
-            inspection.cancel()
+        } catch {
+            return EditorCachesReport(issues: ["Scan cancelled or disk work unavailable; rescan required."])
         }
     }
 
