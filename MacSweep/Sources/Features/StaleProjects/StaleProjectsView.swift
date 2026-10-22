@@ -33,6 +33,7 @@ struct StaleProjectsView: View {
     }
 
     private var roots: [URL] {
+        if isSnapshot { return [URL(fileURLWithPath: "/Users/you/Projects")] }
         let paths = (try? JSONDecoder().decode([String].self, from: Data(storedRoots.utf8))) ?? []
         return paths.isEmpty
             ? [FileManager.default.homeDirectoryForCurrentUser]
