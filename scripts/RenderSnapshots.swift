@@ -263,6 +263,14 @@ struct SnapshotRenderer {
                 ),
                 appState: AppState()
             )),
+            ("environment-doctor-results", wrap(
+                EnvironmentDoctorView(snapshotInventory: sampleDoctorInventory()), appState: AppState()
+            )),
+            ("environment-doctor-partial", wrap(
+                EnvironmentDoctorView(snapshotInventory: DoctorInventory(issues: [
+                    "Login PATH inspection timed out; PATH coverage is incomplete. No shell configuration was changed."
+                ])), appState: AppState()
+            )),
             ("package-and-cli-log-retention", wrap(
                 PackageManagersView(snapshotItems: managedCleanupFixtures()), appState: AppState()
             )),
@@ -406,6 +414,27 @@ struct SnapshotRenderer {
             item("Pictures/duplicate.jpg", 18_000_000, "duplicates", "Duplicate Files"),
             item("Pictures/similar.jpg", 16_000_000, "similar-photos", "Similar Photos"),
         ]
+    }
+
+    static func sampleDoctorInventory() -> DoctorInventory {
+        DoctorInventory(findings: [
+            DoctorFinding(category: .launchItems,
+                path: URL(fileURLWithPath: "/Users/you/Library/LaunchAgents/com.example.oldtool.plist"),
+                evidence: "The configured executable is missing: /usr/local/bin/old-tool",
+                remediation: "Restore the tool or review this exact orphaned launch plist. Loaded jobs are not stopped.",
+                requiresAdministrator: false, repair: .orphanedLaunchItem(program: "/usr/local/bin/old-tool"), stamp: nil),
+            DoctorFinding(category: .links, path: URL(fileURLWithPath: "/usr/local/bin/old-tool"),
+                evidence: "Broken link → ../Cellar/old-tool/1.0/bin/old-tool",
+                remediation: "Move the link itself to Trash or reinstall its owner.", requiresAdministrator: true,
+                repair: .brokenLink(destination: "../Cellar/old-tool/1.0/bin/old-tool"), stamp: nil),
+            DoctorFinding(category: .path, path: nil, evidence: "Duplicate PATH directory: /opt/homebrew/bin.",
+                remediation: "Review .zprofile manually. MacSweep never edits shell configuration.",
+                requiresAdministrator: false, repair: nil, stamp: nil),
+            DoctorFinding(category: .homebrew, path: nil,
+                evidence: "Warning: Some installed formulae are deprecated.",
+                remediation: "Review brew doctor in Terminal and follow its specific instructions.",
+                requiresAdministrator: false, repair: nil, stamp: nil)
+        ])
     }
 
     /// System-junk rows for the SystemCleanup results layout: a realistic spread
@@ -816,6 +845,7 @@ extension Feature {
         case .similarPhotos: return "similar-photos"
         case .shredder: return "shredder"
         case .developerLogs: return "developer-logs"
+        case .environmentDoctor: return "environment-doctor"
         }
     }
 }

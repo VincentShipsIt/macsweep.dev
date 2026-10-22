@@ -105,6 +105,12 @@ public enum CLIExecutor {
             try emit(output, format: format)
             return CLIExitCode.success.rawValue
 
+        case .doctor(let format):
+            let report = await service.doctor()
+            try emit(CLIDoctorOutput(metadata: CLICommandMetadata(command: "doctor", timestamp: Date(),
+                executedModules: []), report: report), format: format)
+            return report.issues.isEmpty ? CLIExitCode.success.rawValue : CLIExitCode.generic.rawValue
+
         case .space(let format):
             let disk = await service.diskUsage()
             let output = CLISpaceOutput(
@@ -592,6 +598,15 @@ public enum CLIExecutor {
 
         case let output as CLIVersionOutput:
             return "\(MacSweepVersion.productName) \(output.version)"
+
+        case let output as CLIDoctorOutput:
+            var lines = ["Environment Doctor: \(output.report.findings.count) findings"]
+            lines += output.report.findings.map { finding in
+                "[\(finding.category)] \(finding.path ?? "Suggestion")\n\(finding.evidence)\n\(finding.remediation)"
+                    + (finding.requiresAdministrator ? "\nAdministrator authorization required." : "")
+            }
+            lines += output.report.issues.map { "Coverage issue: " + $0 }
+            return lines.joined(separator: "\n\n")
 
         case let output as CLISpaceOutput:
             let formatter = ByteCountFormatter()

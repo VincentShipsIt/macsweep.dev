@@ -15,6 +15,7 @@ public enum CLICommand: Sendable, Equatable {
     case permissionsStatus(CLIOutputFormat)
     case modulesList(CLIOutputFormat)
     case version(CLIOutputFormat)
+    case doctor(CLIOutputFormat)
     case space(CLIOutputFormat)
     case spaceLens(path: String?, depth: Int, minSize: Int64, format: CLIOutputFormat)
     case loginItemsList(CLIOutputFormat)
@@ -93,6 +94,8 @@ public enum CLICommandParser {
             return try parseModules(arguments.dropFirst())
         case "version", "--version", "-v":
             return try parseVersion(arguments.dropFirst())
+        case "doctor":
+            return .doctor(try parseTrailingFormat(arguments.dropFirst()))
         case "space":
             return try parseSpace(arguments.dropFirst())
         case "login-items":
@@ -807,6 +810,7 @@ public enum CLIHelp {
       macsweep maintenance list [--format json|text]
       macsweep permissions status [--format json|text]
       macsweep modules list [--format json|text]
+      macsweep doctor [--format text|json]
       macsweep space [--format json|text]
       macsweep space lens [path] [--depth 1-6] [--min-size SIZE] [--format json|text]
       macsweep login-items list [--format json|text]
