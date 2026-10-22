@@ -77,6 +77,8 @@ public struct HeadlessFinding: Codable, Sendable {
     public let lastModified: Date?
     public let recommended: Bool
     public let reviewReason: String?
+    public let actionDetails: String?
+    public let disposition: String?
 
     public init(
         id: String,
@@ -87,7 +89,9 @@ public struct HeadlessFinding: Codable, Sendable {
         type: String,
         lastModified: Date?,
         recommended: Bool,
-        reviewReason: String? = nil
+        reviewReason: String? = nil,
+        actionDetails: String? = nil,
+        disposition: String? = nil
     ) {
         self.id = id
         self.module = module
@@ -98,6 +102,8 @@ public struct HeadlessFinding: Codable, Sendable {
         self.lastModified = lastModified
         self.recommended = recommended
         self.reviewReason = reviewReason
+        self.actionDetails = actionDetails
+        self.disposition = disposition
     }
 }
 

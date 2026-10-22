@@ -130,7 +130,10 @@ public actor MacSweepHeadlessService {
                 type: item.type.rawValue,
                 lastModified: item.lastModified,
                 recommended: recommendedIDs.contains(item.id),
-                reviewReason: item.cleanupReviewReason
+                reviewReason: item.cleanupReviewReason,
+                actionDetails: item.managedCleanupReceipt?.preview,
+                disposition: item.managedCleanupReceipt?.isEligible == false
+                    ? nil : CleanupHistoryAction.action(for: item).rawValue
             )
         }
 

@@ -11,7 +11,7 @@ struct DeveloperActivityPanel: View {
 
     private var jobs: [DevProcessJob] {
         var seen = Set<DevProcessIdentity>()
-        return items.flatMap { $0.devArtifactReceipt?.blockers ?? [] }
+        return items.flatMap { $0.devArtifactReceipt?.blockers ?? $0.managedCleanupReceipt?.blockers ?? [] }
             .filter { seen.insert($0.identity).inserted }.sorted { $0.identity.pid < $1.identity.pid }
     }
 

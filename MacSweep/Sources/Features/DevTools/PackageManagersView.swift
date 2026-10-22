@@ -8,8 +8,17 @@ struct PackageManagersView: View {
     @State private var dockerItems: [CleanupItem] = []
     @State private var selectedItems: Set<UUID> = []
     @State private var showingConfirmation = false
+    @State private var logMinimumDays = 30
+    @State private var logRetainedMiB = 256
     @State private var dockerInfo: DockerInfo?
     @State private var errorMessage: String?
+
+    private let isSnapshot: Bool
+
+    init(snapshotItems: [CleanupItem]? = nil) {
+        isSnapshot = snapshotItems != nil
+        _cacheItems = State(initialValue: snapshotItems ?? [])
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,8 +46,10 @@ struct PackageManagersView: View {
             }
         }
         .background(Color.clear)
+        .onChange(of: logMinimumDays) { cacheItems = []; selectedItems = [] }
+        .onChange(of: logRetainedMiB) { cacheItems = []; selectedItems = [] }
         .task {
-            await scan()
+            if !isSnapshot { await scan() }
         }
     }
 
@@ -51,7 +62,7 @@ struct PackageManagersView: View {
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("Review cache folders and exact Docker prune commands before cleaning")
+                Text("Review cache actions, retained CLI logs and exact prune commands")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -77,6 +88,21 @@ struct PackageManagersView: View {
     private var contentView: some View {
         ScrollView {
             VStack(spacing: 24) {
+                DeveloperActivityPanel(items: cacheItems, rescan: scan)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("gcloud log retention").font(.headline)
+                    Picker("Minimum age", selection: $logMinimumDays) {
+                        Text("30 days").tag(30)
+                        Text("90 days").tag(90)
+                    }
+                    Picker("Keep newest logs", selection: $logRetainedMiB) {
+                        Text("256 MiB").tag(256)
+                        Text("1 GiB").tag(1024)
+                    }
+                    Text("Scan again after changing retention. Recent logs and active writers are retained.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .padding().macSweepCard()
                 // Package managers section
                 if !cacheItems.isEmpty {
                     packageManagersSection
@@ -204,8 +230,10 @@ struct PackageManagersView: View {
     private var footer: some View {
         CleanupFooter(
             selectedCount: selectedItems.count,
-            summary: "Will reclaim \(selectedSize)",
-            onSelectAll: { selectedItems = Set(allCleanupItems.map(\.id)) },
+            summary: "Selected scope: \(selectedSize)",
+            onSelectAll: {
+                selectedItems = Set(allCleanupItems.filter { $0.managedCleanupReceipt?.isEligible != false }.map(\.id))
+            },
             actionTitle: "Clean Selected",
             actionDisabled: selectedItems.isEmpty,
             onAction: { showingConfirmation = true }
@@ -230,7 +258,7 @@ struct PackageManagersView: View {
 
         defer { isScanning = false }
 
-        async let cacheScan = ScanEngine(modules: [PackageManagerModule()]).scanWithDiagnostics()
+        async let cacheScan = ScanEngine(modules: [PackageManagerModule(), configuredLogs]).scanWithDiagnostics()
         async let dockerScan = ScanEngine(modules: [DockerModule()]).scanWithDiagnostics()
         async let currentDockerInfo = DockerInfo.current()
 
@@ -252,7 +280,7 @@ struct PackageManagersView: View {
         // Route through ScanEngine so the full safety pipeline (per-item
         // SafetyChecker + aggregate DeletionGuard cap) applies, not just the
         // module's own delete.
-        let engine = ScanEngine()
+        let engine = ScanEngine(modules: [PackageManagerModule(), configuredLogs, DockerModule()])
         var cleanupError: String?
         var cleanupResult: CleanupResult?
         do {
@@ -281,6 +309,13 @@ private extension PackageManagersView {
         return String(parts.first ?? "Other")
     }
 
+    private var configuredLogs: DeveloperCLILogsModule {
+        var module = DeveloperCLILogsModule()
+        module.retention = DeveloperLogRetention(minimumAge: Double(logMinimumDays * 86_400),
+            retainedBytes: Int64(logRetainedMiB) * 1_048_576)
+        return module
+    }
+
     private var totalSize: String {
         cacheItems.formattedTotalSize()
     }
@@ -301,11 +336,9 @@ private extension PackageManagersView {
         var sections: [String] = []
         let selectedCaches = cacheItems.filter { selectedItems.contains($0.id) }
         if !selectedCaches.isEmpty {
-            let noun = selectedCaches.count == 1 ? "folder" : "folders"
-            sections.append(
-                "\(selectedCaches.count) package cache \(noun) will move to Trash. " +
-                "Package managers recreate them as needed."
-            )
+            sections.append(contentsOf: selectedCaches.compactMap { item in
+                item.managedCleanupReceipt.map { "\(item.moduleName) — \($0.preview)" }
+            })
         }
 
         let commands = dockerItems
@@ -321,7 +354,7 @@ private extension PackageManagersView {
             )
         }
 
-        sections.append("Total estimated reclaimable space: \(selectedSize).")
+        sections.append("Total selected scope: \(selectedSize). Actual native removal may be smaller.")
         return sections.joined(separator: "\n\n")
     }
 
@@ -346,7 +379,8 @@ struct PackageManagerCard: View {
     }
 
     private var allSelected: Bool {
-        items.allSatisfy { selectedItems.contains($0.id) }
+        let eligible = items.filter { $0.managedCleanupReceipt?.isEligible != false }
+        return !eligible.isEmpty && eligible.allSatisfy { selectedItems.contains($0.id) }
     }
 
     private var icon: String {
@@ -357,6 +391,7 @@ struct PackageManagerCard: View {
         case "pnpm": return "shippingbox"
         case "bun": return "bolt"
         case "pip", "pipx": return "cube"
+        case "uv": return "bolt.circle"
         case "cargo": return "gearshape.2"
         case "go": return "figure.run"
         case "composer": return "music.note"
@@ -377,6 +412,7 @@ struct PackageManagerCard: View {
         case "pnpm": return .yellow
         case "bun": return .pink
         case "pip", "pipx": return .blue
+        case "uv": return .purple
         case "cargo": return .orange
         case "go": return .cyan
         case "rubygems": return .red
@@ -434,7 +470,9 @@ struct PackageManagerCard: View {
                                 .truncationMode(.head)
 
                             HStack(spacing: 6) {
-                                Text("Moves cache to Trash")
+                                Text(item.cleanupReviewReason ?? item.managedCleanupReceipt?.preview
+                                     ?? "Rescan for cleanup evidence")
+                                    .fixedSize(horizontal: false, vertical: true)
 
                                 if let date = item.lastModified {
                                     Text("•")
@@ -455,8 +493,9 @@ struct PackageManagerCard: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
+                .disabled(item.managedCleanupReceipt?.isEligible == false)
                 .accessibilityLabel("\(item.moduleName), \(item.formattedSize)")
-                .accessibilityHint(selectedItems.contains(item.id) ? "Deselect cache" : "Select cache to move to Trash")
+                .accessibilityHint(selectedItems.contains(item.id) ? "Deselect cache" : "Select cleanup action for review")
             }
         }
         .padding()
@@ -469,7 +508,7 @@ struct PackageManagerCard: View {
                 selectedItems.remove(item.id)
             }
         } else {
-            for item in items {
+            for item in items where item.managedCleanupReceipt?.isEligible != false {
                 selectedItems.insert(item.id)
             }
         }

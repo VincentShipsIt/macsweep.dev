@@ -263,7 +263,43 @@ struct SnapshotRenderer {
                 ),
                 appState: AppState()
             )),
+            ("package-and-cli-log-retention", wrap(
+                PackageManagersView(snapshotItems: managedCleanupFixtures()), appState: AppState()
+            )),
         ]
+    }
+
+    static func managedCleanupFixtures() -> [CleanupItem] {
+        let identity = DevArtifactIdentity(device: 1, inode: 1, type: 0, parentDevice: 1,
+            parentInode: 2, parentPath: "/Users/example/.cache")
+        struct Fixture {
+            let name: String
+            let path: String
+            let reason: String?
+            let preview: String
+            let operation: ManagedCleanupOperation
+        }
+        let fixtures: [Fixture] = [
+            Fixture(name: "UV Cache", path: ".cache/uv", reason: nil,
+             preview: "Owner: uv. Native prune permanently removes eligible cache entries; no Trash recovery. "
+                + "Selected size is an upper bound. Command: uv cache prune --cache-dir <reviewed root> --no-config --offline",
+             operation: .uvPrune(executable: "/tools/uv", version: "uv 0.13.5")),
+            Fixture(name: "gcloud CLI Log", path: ".config/gcloud/logs/2026.01.01/12.30.00.123456.log", reason: nil,
+             preview: "Owner: gcloud. Keep logs newer than 30 days and at least 256 MiB of newest logs. "
+                + "Selected old files move to Trash; restore until Trash is emptied.", operation: .trash),
+            Fixture(name: "gcloud CLI Log", path: ".config/gcloud/logs/2026.10.21/12.30.00.123456.log",
+             reason: "Recent log retained by age policy.", preview: "Owner: gcloud. Retention: 30 days / 256 MiB.",
+             operation: .trash)
+        ]
+        return fixtures.enumerated().map { index, fixture in
+            let receipt = ManagedCleanupReceipt(identity: identity, nodes: [], operation: fixture.operation,
+                preview: fixture.preview, blockers: [], retentionReason: fixture.reason)
+            return CleanupItem(id: UUID(), path: URL(fileURLWithPath: "/Users/example/" + fixture.path),
+                size: Int64(256 - index * 64) * 1_048_576, type: index == 0 ? .directory : .file,
+                module: index == 0 ? "package-managers" : "developer-cli-logs", moduleName: fixture.name,
+                lastModified: Date(timeIntervalSince1970: 1_792_000_000),
+                cleanupReviewReason: fixture.reason, managedCleanupReceipt: receipt)
+        }
     }
 
     static func developerActivityFixture() -> CleanupItem {
