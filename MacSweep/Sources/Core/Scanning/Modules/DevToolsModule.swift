@@ -10,6 +10,8 @@ struct DevToolsModule: ScanModule {
     var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     var maxDepth: Int = Self.defaultMaxDepth
     var maximumDiscoveryEntries = 500_000
+    var maximumInspectionTargets = 4096
+    var inspectionTimeLimit: TimeInterval = 60
     var minimumDirectorySize: Int64 = 1_048_576
     var includesSystemCaches = true
     var safety = DevArtifactSafety()
@@ -33,7 +35,16 @@ struct DevToolsModule: ScanModule {
                 DeveloperRepositoryDiscovery.Artifact(url: $0.path, name: $0.name, type: .directory)
             }
         }
-        for target in targets {
+        let inspectionDeadline = ProcessInfo.processInfo.systemUptime + max(0, inspectionTimeLimit)
+        for (index, target) in targets.enumerated() {
+            guard index < max(0, maximumInspectionTargets),
+                ProcessInfo.processInfo.systemUptime < inspectionDeadline else {
+                ScanDiagnostics.current?.record(
+                    DevArtifactSafetyError(
+                        "Developer artifact inspection reached its safety limit; results are partial."),
+                    at: searchPaths.first ?? homeDirectory)
+                break
+            }
             let (url, title, type) = (target.url, target.name, target.type)
             try Task.checkCancellation()
             guard ScanFileSystem.exists(atPath: url.path),
@@ -93,7 +104,7 @@ struct DevArtifactPattern: Sendable {
     let name: String
     let directoryName: String
     let siblingIndicators: [String]  // Files that indicate this is a project root
-    /// Which per-project browser bucket (ProjectScanner.discoverProjects) this
+    /// Which per-project browser bucket (ProjectScanner.projects) this
     /// artifact belongs to. `nil` marks machine-global caches (ms-playwright,
     /// .pnpm-store) that aren't tied to a single project root and so never appear
     /// in the per-project breakdown.
@@ -141,47 +152,6 @@ struct DevArtifactPattern: Sendable {
         let suffix = String(indicator[indicator.index(after: wildcard)...])
         return filename.count >= prefix.count + suffix.count && filename.hasPrefix(prefix) && filename.hasSuffix(suffix)
     }
-
-    /// Project type for a file that marks a project root, derived from
-    /// `allPatterns` so the per-project browser (ProjectScanner.discoverProjects)
-    /// can never drift from the cleanup scan's table again. Returns nil for
-    /// filenames that are no pattern's sibling indicator.
-    static func projectType(forRootIndicator filename: String) -> ProjectType? {
-        for pattern in allPatterns {
-            guard let type = pattern.projectType else { continue }
-            if pattern.siblingIndicators.contains(where: { indicator($0, matchesFilename: filename) }) {
-                return type
-            }
-        }
-        return nil
-    }
-
-    /// Every artifact directory to check inside a project root of the given type,
-    /// derived from `allPatterns` (order-preserving, deduplicated). Includes
-    /// empty-indicator patterns like `__pycache__` — they can't act as root
-    /// indicators but still belong to their ecosystem's artifact list — plus the
-    /// path-shaped extras `matches(_:)`'s lastPathComponent comparison can't
-    /// express (Ruby's vendor/bundle).
-    static func artifactDirectories(for type: ProjectType) -> [String] {
-        var seen = Set<String>()
-        var directories: [String] = []
-        for pattern in allPatterns where pattern.projectType == type && pattern.fileExtension == nil {
-            if seen.insert(pattern.directoryName).inserted {
-                directories.append(pattern.directoryName)
-            }
-        }
-        for extra in extraArtifactDirectories[type] ?? [] where seen.insert(extra).inserted {
-            directories.append(extra)
-        }
-        return directories
-    }
-
-    /// Artifact locations that are relative paths rather than directory names, so
-    /// they can't live in `allPatterns` (whose `matches(_:)` compares a single
-    /// path component).
-    private static let extraArtifactDirectories: [ProjectType: [String]] = [
-        .ruby: ["vendor/bundle"]
-    ]
 
     static let allPatterns: [DevArtifactPattern] = [
         DevArtifactPattern(name: "TypeScript build info", directoryName: "tsbuildinfo",
@@ -579,9 +549,7 @@ enum ProjectType: String, CaseIterable {
     }
 }
 
-actor ProjectScanner {
-    static let defaultMaxDepth = DevToolsModule.defaultMaxDepth
-
+enum ProjectScanner {
     /// Discover projects with cleanable artifacts.
     ///
     /// Root indicators and per-type artifact directories are derived from
@@ -605,94 +573,4 @@ actor ProjectScanner {
         }.sorted { $0.artifactSize > $1.artifactSize }
     }
 
-    func discoverProjects(
-        in baseURL: URL,
-        maxDepth: Int = ProjectScanner.defaultMaxDepth
-    ) async -> [ProjectInfo] {
-        var all: [ProjectInfo] = []
-        for root in DeveloperScanRoots.paths(in: baseURL) {
-            all.append(contentsOf: await discoverProjectsAtRoot(in: root, maxDepth: maxDepth))
-        }
-        var seen = Set<String>()
-        return all.filter { seen.insert($0.path.standardizedFileURL.path + $0.type.rawValue).inserted }
-    }
-
-    private func discoverProjectsAtRoot(in baseURL: URL, maxDepth: Int) async -> [ProjectInfo] {
-        var projects: [ProjectInfo] = []
-        var seenProjects = Set<String>()
-        let checker = SafetyChecker()
-
-        guard let enumerator = ScanFileSystem.enumerator(
-            at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
-
-        while let url = enumerator.nextObject() as? URL {
-            if Task.isCancelled { return projects }
-            let depth = url.pathComponents.count - baseURL.pathComponents.count
-            if depth > maxDepth {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            // Skip node_modules, vendor, etc.
-            let name = url.lastPathComponent
-            if name == "node_modules" || name == "vendor" || name == ".git" || name == "Library" {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            guard let projectType = DevArtifactPattern.projectType(forRootIndicator: name) else { continue }
-
-            let projectPath = url.deletingLastPathComponent()
-            let projectKey = "\(projectPath.path)|\(projectType.rawValue)"
-            guard !seenProjects.contains(projectKey) else { continue }
-
-            // Find artifact directories
-            var artifacts: [URL] = []
-            var totalSize: Int64 = 0
-            var mostRecentModification: Date?
-
-            for artifactDir in DevArtifactPattern.artifactDirectories(for: projectType) {
-                let artifactPath = projectPath.appending(path: artifactDir)
-                guard ScanFileSystem.exists(atPath: artifactPath.path) else { continue }
-                // Same gate scanForPatterns applies (DevToolsModule.scan): a
-                // protected path must not become listable/selectable in the
-                // per-project browser UI.
-                guard checker.validateForScan(artifactPath, moduleID: "dev-tools").isSafe else { continue }
-
-                artifacts.append(artifactPath)
-                totalSize += (try? await DiskAnalyzer.directorySize(at: artifactPath)) ?? 0
-
-                // Track most recent modification
-                if let modDate = try? artifactPath.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
-                    if mostRecentModification == nil || modDate > mostRecentModification! {
-                        mostRecentModification = modDate
-                    }
-                }
-            }
-
-            // Also check the project indicator file's modification date
-            if let indicatorModDate = try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
-                if mostRecentModification == nil || indicatorModDate > mostRecentModification! {
-                    mostRecentModification = indicatorModDate
-                }
-            }
-
-            if !artifacts.isEmpty {
-                seenProjects.insert(projectKey)
-                var project = ProjectInfo(
-                    path: projectPath,
-                    type: projectType,
-                    artifactPaths: artifacts
-                )
-                project.artifactSize = totalSize
-                project.lastModified = mostRecentModification
-                projects.append(project)
-            }
-        }
-
-        return projects.sorted { $0.artifactSize > $1.artifactSize }
-    }
 }

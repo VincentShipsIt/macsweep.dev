@@ -11,7 +11,7 @@ struct DeveloperRepositoryDiscoveryTests {
                                                     withIntermediateDirectories: true)
         }
         let result = try DeveloperRepositoryDiscovery.discover(
-            searchPaths: [temp.url], homeDirectory: temp.url, maximumEntries: 1)
+            searchPaths: [temp.url], homeDirectory: temp.url, maximumEntries: 2)
         #expect(result.roots.count == 1)
         #expect(result.issues.contains { $0.contains("partial") })
     }
@@ -39,6 +39,48 @@ struct DeveloperRepositoryDiscoveryTests {
             searchPaths: [temp.url, repo, temp.url.appending(path: "link")], homeDirectory: temp.url)
         #expect(result.roots.map { $0.resolvingSymlinksInPath().path } == [repo.resolvingSymlinksInPath().path])
         #expect(!result.issues.isEmpty)
+    }
+
+    @Test func explicitRepositoryRootsRespectGlobalBudgetAndTimeLimit() throws {
+        let temp = try TempTestDirectory(prefix: "DiscoveryExplicit")
+        try FileManager.default.createDirectory(at: temp.url.appending(path: ".git"), withIntermediateDirectories: true)
+        let entries = try DeveloperRepositoryDiscovery.discover(
+            searchPaths: [temp.url], maximumEntries: 0)
+        #expect(entries.roots.isEmpty)
+        #expect(!entries.issues.isEmpty)
+        let time = try DeveloperRepositoryDiscovery.discover(searchPaths: [temp.url], timeLimit: 0)
+        #expect(time.roots.isEmpty)
+        #expect(!time.issues.isEmpty)
+    }
+
+    @Test func protectedNonRepositoryRootsAreNotTraversed() throws {
+        let temp = try TempTestDirectory(prefix: "DiscoveryProtected")
+        try FileManager.default.createDirectory(at: temp.url.appending(path: "protected/repo/.git"),
+                                                withIntermediateDirectories: true)
+        let rules = UserProtectionRules(
+            ignoreContents: "", protectContents: temp.url.appending(path: "protected").path, homeURL: temp.url)
+        let result = try DeveloperRepositoryDiscovery.discover(
+            searchPaths: [temp.url], homeDirectory: temp.url, checker: SafetyChecker(userRules: rules))
+        #expect(result.roots.isEmpty)
+    }
+
+    @Test func artifactInspectionLimitReportsPartialCoverage() async throws {
+        let temp = try TempTestDirectory(prefix: "InspectionBounds")
+        try FileManager.default.createDirectory(at: temp.url.appending(path: "node_modules"),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: temp.url.appending(path: "package.json"))
+        var module = DevToolsModule()
+        module.searchPaths = [temp.url]
+        module.includesSystemCaches = false
+        module.maximumInspectionTargets = 0
+        module.safety.processSnapshot = { DevProcessSnapshot() }
+        do {
+            _ = try await ScanDiagnostics.collect { try await module.scan() }
+            Issue.record("Expected partial coverage at the target inspection limit.")
+        } catch let partial as PartialModuleScanError {
+            #expect(partial.items.isEmpty)
+            #expect(partial.issues.contains { $0.contains("inspection reached its safety limit") })
+        }
     }
 
     @Test func recognizesArtifactsWithoutTraversingTheirContents() throws {

@@ -84,6 +84,12 @@ enum DeveloperRepositoryDiscovery {
         var seenRoots = Set<String>()
         for root in roots.map(\.standardizedFileURL) where seenRoots.insert(root.path).inserted {
             try Task.checkCancellation()
+            result.inspected += 1
+            guard result.inspected <= max(0, limits.entries),
+                ProcessInfo.processInfo.systemUptime < context.deadline else {
+                result.issue("Developer discovery stopped at its safety limit (entry or time); results are partial.")
+                return result
+            }
             guard ScanFileSystem.exists(atPath: root.path) else { continue }
             guard let identity = try? DevArtifactIdentity.read(root), identity.type == S_IFDIR else {
                 result.issue("A developer search root could not be inspected safely; discovery is partial.")
@@ -103,9 +109,14 @@ enum DeveloperRepositoryDiscovery {
     }
 
     private static func enumerate(_ root: URL, context: Context, result: inout Walk) throws -> Bool {
-        guard let enumerator = ScanFileSystem.enumerator(
+        var unreadable = false
+        guard let enumerator = FileManager.default.enumerator(
             at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-            options: [.skipsPackageDescendants]) else {
+            options: [.skipsPackageDescendants], errorHandler: { path, error in
+                unreadable = true
+                ScanDiagnostics.current?.record(error, at: path)
+                return true
+            }) else {
             result.issue("A developer search root was unreadable; discovery is partial.")
             return true
         }
@@ -124,17 +135,22 @@ enum DeveloperRepositoryDiscovery {
             }
             if inspect(url, root: root, context: context, result: &result) { enumerator.skipDescendants() }
         }
+        if unreadable { result.issue("Developer discovery encountered unreadable paths; results are partial.") }
         return true
     }
 
     private static func inspect(_ url: URL, root: URL, context: Context, result: inout Walk) -> Bool {
         if context.specialRoots.contains(url.standardizedFileURL.path) { return true }
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        guard values?.isSymbolicLink == false else { return true }
+        guard let values else {
+            result.issue("Developer discovery could not inspect a path; results are partial.")
+            return true
+        }
+        guard values.isSymbolicLink == false else { return true }
         let pattern = context.mode == .artifacts ? DevArtifactPattern.allPatterns.first { $0.matches(url) } : nil
         if shouldSkip(url, pattern: pattern, mode: context.mode,
                       hiddenAllowed: context.specialRoots.contains(root.path)) { return true }
-        if context.mode == .repositories, values?.isDirectory == true, isRepository(url) {
+        if context.mode == .repositories, values.isDirectory == true, isRepository(url) {
             appendRepository(url, result: &result)
             return true
         }
@@ -158,8 +174,9 @@ enum DeveloperRepositoryDiscovery {
     }
 
     private static func permitsTraversal(_ url: URL, checker: SafetyChecker) -> Bool {
-        if case .none = checker.userRules.decision(for: url.path) { return true }
-        return false
+        guard case .none = checker.userRules.decision(for: url.path),
+            case .none = checker.userRules.decision(for: url.resolvingSymlinksInPath().path) else { return false }
+        return true
     }
 
     private static func shouldSkip(
