@@ -18,9 +18,15 @@ struct OrphanedAppDataService {
     var deletionGuard = DeletionGuard.fromPreferences()
 
     func scan() async -> AppLeftoversReport {
+        guard !Task.isCancelled else { return AppLeftoversReport(issues: ["Scan cancelled; rescan required."]) }
         let installed = await ownership()
         let processes = await activity()
-        return await Task.detached(priority: .utility) { inspect(installed, activity: processes) }.value
+        let inspection = Task.detached(priority: .utility) { inspect(installed, activity: processes) }
+        return await withTaskCancellationHandler {
+            await inspection.value
+        } onCancel: {
+            inspection.cancel()
+        }
     }
 
     private func inspect(_ inventory: AppOwnershipInventory, activity: DevProcessSnapshot) -> AppLeftoversReport {
@@ -172,11 +178,7 @@ struct OrphanedAppDataService {
                 if let reason = ManagedCleanupEvidence.activityReason(latestActivity, blockers: blockers) {
                     throw DevArtifactSafetyError(reason)
                 }
-                guard try ManagedCleanupEvidence.identity(old.path) == old.identity,
-                    try AppLeftoversInspection.nodes(old.path, checker: checker, library: library) == old.nodes,
-                    rootIsSafe(old.path)
-                else { throw DevArtifactSafetyError("Target changed before Trash dispatch.") }
-                try trash(old.path)
+                try moveToTrash(old)
                 processed += 1
                 movedBytes += old.size
             } catch {
@@ -192,4 +194,16 @@ struct OrphanedAppDataService {
                 permanentlyRemovedTargetBytes: 0, removedLocalCopyBytes: 0,
                 toolProcessedBytes: 0, volumeObservations: []))
     }
+    private func moveToTrash(_ old: OrphanedAppData) throws {
+        guard try ManagedCleanupEvidence.identity(old.path) == old.identity,
+            try AppLeftoversInspection.nodes(old.path, checker: checker, library: library) == old.nodes,
+            rootIsSafe(old.path)
+        else { throw DevArtifactSafetyError("Target changed before Trash dispatch.") }
+        try trash(old.path)
+        var remaining = stat()
+        guard lstat(old.path.path, &remaining) != 0, errno == ENOENT else {
+            throw DevArtifactSafetyError("Trash did not remove the source target; no success credited.")
+        }
+    }
+
 }

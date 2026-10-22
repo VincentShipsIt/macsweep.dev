@@ -135,7 +135,10 @@ struct AppLeftoversTests {
         service.trash = { _ in throw CocoaError(.fileWriteNoPermission) }
         let failed = await service.remove([fresh])
         #expect(failed.itemsProcessed == 0 && failed.errors.count == 1)
-        service.trash = { _ in dispatched += 1 }
+        service.trash = { path in
+            dispatched += 1
+            try FileManager.default.removeItem(at: path)
+        }
         let success = await service.remove([fresh, fresh])
         #expect(success.itemsProcessed == 1 && success.bytesFreed == 0 && dispatched == 1)
     }
@@ -240,6 +243,27 @@ struct AppLeftoversTests {
         }
         service.trash = { _ in Issue.record("Fresh protection rules bypassed") }
         #expect(await service.remove([finding]).itemsProcessed == 0)
+    }
+
+    @Test func noOpTrashIsAnErrorAndCancelledCallerCannotPublishCompleteInventory() async throws {
+        let fixture = try Fixture()
+        defer { fixture.destroy() }
+        _ = try fixture.data("Containers", "org.fixture.gone", container: true)
+        var service = fixture.service()
+        let finding = try #require(await service.scan().findings.first)
+        service.trash = { _ in }
+        let result = await service.remove([finding])
+        #expect(result.itemsProcessed == 0 && result.errors.count == 1)
+        #expect(result.accounting?.movedToTrashBytes == 0)
+        service.activity = {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return DevProcessSnapshot()
+        }
+        let task = Task { await service.scan() }
+        await Task.yield()
+        task.cancel()
+        let cancelled = await task.value
+        #expect(!cancelled.issues.isEmpty && cancelled.findings.allSatisfy { !$0.isSelectable })
     }
 
 }
