@@ -13,12 +13,16 @@ struct ProcessRunnerCancellationTests {
                 executable: "/bin/sh", arguments: ["-c", "echo $$ > \"$1\"; exec sleep 30", "fixture", pidFile.path],
                 timeout: 20)
         }
+        var readyPID: Int32?
         for _ in 0..<100 {
-            if FileManager.default.fileExists(atPath: pidFile.path) { break }
+            if let text = try? String(contentsOf: pidFile, encoding: .utf8),
+               let parsed = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                readyPID = parsed
+                break
+            }
             try await Task.sleep(for: .milliseconds(20))
         }
-        let pid = try #require(
-            Int32(try String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        let pid = try #require(readyPID)
         let start = Date()
         task.cancel()
         do {

@@ -441,7 +441,7 @@ struct SnapshotRenderer {
     /// of cache/log directories across browsers, dev tooling and the OS.
     @MainActor
     static func sampleCleanupItems() -> [CleanupItem] {
-        func item(_ name: String, _ size: Int64, _ moduleName: String, _ age: Double) -> CleanupItem {
+        func item(_ name: String, _ size: Int64, _ moduleName: String, _ age: Double?) -> CleanupItem {
             CleanupItem(
                 id: UUID(),
                 path: URL(fileURLWithPath: "/Users/you/Library/Caches/\(name)"),
@@ -449,7 +449,7 @@ struct SnapshotRenderer {
                 type: .directory,
                 module: "system-cleanup",
                 moduleName: moduleName,
-                lastModified: daysAgo(age)
+                lastModified: age.map { daysAgo($0) }
             )
         }
         return [
@@ -458,7 +458,7 @@ struct SnapshotRenderer {
             item("com.apple.dt.Xcode", 2_600_000_000, "Developer Cache", 5),
             item("Homebrew/downloads", 980_000_000, "Developer Cache", 9),
             item("com.apple.appstore", 312_000_000, "System Cache", 14),
-            item("CrashReporter/diagnostics", 94_000_000, "System Logs", 21),
+            item("CrashReporter/diagnostics", 94_000_000, "System Logs", nil),
         ]
     }
 
@@ -561,7 +561,7 @@ struct SnapshotRenderer {
     /// user Trash and an external-volume Trash) to exercise the grouped list.
     @MainActor
     static func sampleTrashItems() -> [CleanupItem] {
-        func item(_ path: String, _ size: Int64, _ bin: String, _ age: Double) -> CleanupItem {
+        func item(_ path: String, _ size: Int64, _ bin: String, _ age: Double?) -> CleanupItem {
             CleanupItem(
                 id: UUID(),
                 path: URL(fileURLWithPath: path),
@@ -569,13 +569,13 @@ struct SnapshotRenderer {
                 type: .file,
                 module: "trash-bins",
                 moduleName: bin,
-                lastModified: daysAgo(age)
+                lastModified: age.map { daysAgo($0) }
             )
         }
         return [
             item("/Users/you/.Trash/old-render.mov", 1_800_000_000, "Trash", 3),
             item("/Users/you/.Trash/Installer.dmg", 640_000_000, "Trash", 8),
-            item("/Users/you/.Trash/screenshot-archive.zip", 210_000_000, "Trash", 12),
+            item("/Users/you/.Trash/screenshot-archive.zip", 210_000_000, "Trash", nil),
             item("/Volumes/Backup/.Trashes/501/nightly.sparsebundle", 4_300_000_000, "Backup (External)", 26),
             item("/Volumes/Backup/.Trashes/501/logs.tar", 96_000_000, "Backup (External)", 41),
         ]
