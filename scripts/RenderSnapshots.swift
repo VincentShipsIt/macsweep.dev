@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Darwin
 
 // Headless visual-snapshot harness for the MacSweep GUI.
 //
@@ -99,7 +100,7 @@ struct SnapshotRenderer {
             .files: [.largeOldFiles],
             .protection: [.loginItems],
             .speed: [.maintenance],
-            .applications: [.homebrewUpdater]
+            .applications: [.updates]
         ]
 
         for (section, features) in expectedReachableFeatures {
@@ -169,14 +170,13 @@ struct SnapshotRenderer {
         let largeSelection = Set(largeItems.prefix(2).map(\.id))
 
         let apps = sampleApps()
-        let orphans = sampleOrphans()
 
         let trashItems = sampleTrashItems()
         let trashSelection = Set(trashItems.prefix(2).map(\.id))
 
         let protectedArtifact = developerActivityFixture()
 
-        return [
+        return developerStateVariants(size: size) + [
             ("developer-activity-protection", wrap(
                 VStack(alignment: .leading, spacing: 24) {
                     Text("Developer Tools").font(.largeTitle)
@@ -251,8 +251,7 @@ struct SnapshotRenderer {
             ("uninstaller-results", wrap(
                 AppUninstallerView(
                     snapshotApps: apps,
-                    snapshotSelectedApp: apps.first,
-                    snapshotOrphans: orphans
+                    snapshotSelectedApp: apps.first
                 ),
                 appState: AppState()
             )),
@@ -693,17 +692,6 @@ struct SnapshotRenderer {
         return [chrome, figma, slack]
     }
 
-    /// Orphaned leftovers (apps no longer installed) for the Uninstaller's
-    /// orphan-cleanup affordance.
-    @MainActor
-    static func sampleOrphans() -> [AppLeftover] {
-        [
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Application Support/Spotify"), size: 1_100_000_000, type: .applicationSupport),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Caches/com.zoom.xos"), size: 430_000_000, type: .caches),
-            AppLeftover(id: UUID(), path: URL(fileURLWithPath: "/Users/you/Library/Logs/Docker Desktop"), size: 58_000_000, type: .logs),
-        ]
-    }
-
     // MARK: - Output dir
 
     @MainActor
@@ -838,7 +826,7 @@ extension Feature {
         case .batteryMonitor: return "battery-monitor"
         case .maintenance: return "maintenance"
         case .uninstaller: return "uninstaller"
-        case .homebrewUpdater: return "homebrew-updater"
+        case .updates: return "updates"
         case .spaceLens: return "space-lens"
         case .largeOldFiles: return "large-old-files"
         case .duplicateFiles: return "duplicate-files"
@@ -846,6 +834,143 @@ extension Feature {
         case .shredder: return "shredder"
         case .developerLogs: return "developer-logs"
         case .environmentDoctor: return "environment-doctor"
+        case .appLeftovers: return "app-leftovers"
+        case .developerDiskMap: return "developer-disk-map"
+        case .staleProjects: return "stale-projects"
+        case .xcodeCleanup: return "xcode-cleanup"
+        case .toolchains: return "toolchains"
+        case .localSnapshots: return "local-snapshots"
+        case .virtualMachines: return "virtual-machines"
+        case .editorCaches: return "editor-caches"
         }
+    }
+}
+
+
+extension SnapshotRenderer {
+    @MainActor
+    static func developerStateVariants(size: CGSize) -> [(String, AnyView)] {
+        func wrap<V: View>(_ view: V) -> AnyView {
+            AnyView(view.environmentObject(AppState()).environment(\.colorScheme, .dark)
+                .frame(width: size.width, height: size.height))
+        }
+        func url(_ path: String) -> URL { URL(fileURLWithPath: path) }
+        func identity(_ path: String) -> DevArtifactIdentity {
+            DevArtifactIdentity(device: 1, inode: 2, type: mode_t(S_IFDIR), parentDevice: 1,
+                parentInode: 1, parentPath: url(path).deletingLastPathComponent().path)
+        }
+        func node(_ path: String) -> DevArtifactNode {
+            var metadata = stat()
+            metadata.st_mode = mode_t(S_IFDIR | 0o755)
+            metadata.st_size = 64_000_000
+            return DevArtifactNode(path: path, status: metadata)
+        }
+        let old = Date(timeIntervalSince1970: 1_735_689_600)
+        let xcode = XcodeCleanupInventory(targets: [
+            XcodeCleanupTarget(id: "runtime-current", category: .runtimes, name: "iOS 26 Runtime",
+                path: url("/Library/Developer/CoreSimulator/Volumes/iOS_26"), bytes: 8_000_000_000,
+                lastUsed: old, mechanism: .runtime(UUID()), retentionReason: "Available runtime is retained.", evidence: nil),
+            XcodeCleanupTarget(id: "old-symbols", category: .deviceSupport, name: "iOS 17 Device Support",
+                path: url("/Users/you/Library/Developer/Xcode/iOS DeviceSupport/17.0"), bytes: 2_000_000_000,
+                lastUsed: old, mechanism: .trash, evidence: XcodeCleanupEvidence(identity: nil, nodes: [], nativeSignature: nil))
+        ], selectedDeveloper: "/Applications/Xcode.app/Contents/Developer", nativeCommandsAvailable: true)
+        let runtimePath = "/Users/you/.pyenv/versions/3.10.0"
+        let toolchains = ToolchainInventory(installations: [
+            ToolchainInstallation(manager: .pyenv, tool: "python", version: "3.10.0", path: url(runtimePath),
+                size: 240_000_000, lastUsedSignal: old, status: .stale,
+                evidence: ["No project or global references in the complete reviewed scope."],
+                command: ToolchainCommand(executable: "/opt/homebrew/bin/pyenv", arguments: ["uninstall", "-f", "3.10.0"]),
+                identity: identity(runtimePath), executableIdentity: nil, executableStamp: nil, content: [], witnesses: []),
+            ToolchainInstallation(manager: .rustup, tool: "rust", version: "stable-aarch64-apple-darwin",
+                path: url("/Users/you/.rustup/toolchains/stable-aarch64-apple-darwin"), size: 600_000_000,
+                lastUsedSignal: old, status: .active, evidence: ["Selected globally; retained."], command: nil,
+                identity: nil, executableIdentity: nil, executableStamp: nil, content: [], witnesses: [])
+        ], referenceRoots: [url("/Users/you/Projects")])
+        let snapshots = LocalSnapshotInventory(snapshots: [
+            LocalTimeMachineSnapshot(name: "com.apple.TimeMachine.2026-10-21-120000.local",
+                dateToken: "2026-10-21-120000", created: old, isDataless: false)
+        ], volumeID: "example-startup-volume",
+            permissions: LocalSnapshotPermissions(hasFullDiskAccess: true, authorizationAvailable: true),
+            nativeSupported: true, isBackupRunning: false)
+        let vms = VirtualMachineInventory(targets: [
+            VirtualMachineTarget(id: "colima-default", manager: .colima, name: "default",
+                paths: [url("/Users/you/.colima/_lima/colima")], status: "Stopped",
+                measuredBytes: 4_000_000_000, virtualCapacity: 64_000_000_000, modified: old,
+                lastUsed: old, retentionReason: VirtualMachineManager.colima.retentionReason, evidence: nil,
+                nativeSignature: nil, nativeName: "default", persistentState: true)
+        ], installedManagers: [.colima, .docker])
+        let orphanPath = "/Users/you/Library/Containers/com.example.removed"
+        let leftovers = AppLeftoversReport(findings: [
+            OrphanedAppData(path: url(orphanPath), identifier: "com.example.removed", category: "Containers",
+                size: 64_000_000, modified: old, confidence: .grounded,
+                evidence: "Container metadata identifies an absent app; complete ownership inventory has no remaining owner.",
+                retentionReason: nil, nodes: [node(orphanPath)], identity: identity(orphanPath)),
+            OrphanedAppData(path: url("/Users/you/Library/Group Containers/group.example.shared"),
+                identifier: "group.example.shared", category: "Group Containers", size: 200_000_000,
+                modified: old, confidence: .uncertain, evidence: "Shared app group membership cannot be proven.",
+                retentionReason: "Shared-owner data retained.", nodes: [], identity: nil)
+        ])
+        let cachePath = "/Users/you/Library/Caches/JetBrains/OldIDE2023.1"
+        let editor = EditorCachesReport(findings: [
+            EditorCacheFinding(candidate: EditorCacheCandidate(path: url(cachePath),
+                safetyRoot: url("/Users/you/Library/Caches/JetBrains"), owner: "OldIDE2023.1", ownerIDs: [],
+                kind: .jetBrains, evidence: "No installed version selects this cache; no owner is running."),
+                identity: identity(cachePath), nodes: [node(cachePath)], modified: old, size: 64_000_000,
+                retentionReason: nil),
+            EditorCacheFinding(candidate: EditorCacheCandidate(path: url("/Users/you/Library/Caches/JetBrains/IDE2026.2"),
+                safetyRoot: url("/Users/you/Library/Caches/JetBrains"), owner: "IDE2026.2", ownerIDs: [],
+                kind: .jetBrains, evidence: "Installed product selects this cache."),
+                identity: nil, nodes: [], modified: old, size: 80_000_000,
+                retentionReason: "Current installed IDE version retained.")
+        ], issues: ["One inaccessible editor folder was retained; inventory is partial."])
+        let brew = url("/opt/homebrew/bin/brew")
+        let updates = UpdateInventory(packages: [
+            PackageUpdate(source: .brewFormula,
+                version: UpdateVersion(identifier: "example-tool", title: "example-tool", current: "1.0.0", latest: "1.1.0"),
+                command: UpdateCommand(executable: brew.path, arguments: ["upgrade", "--formula", "example-tool"]),
+                manager: brew, executableIdentity: identity(brew.path), executableStamp: nil,
+                writableRoots: [], rootIdentities: [], blockedReason: nil)
+        ], reports: [UpdateSourceReport(source: .mas, message: UpdateSource.mas.installHint, isError: false)])
+        let projects = StaleProjectInventory(projects: [
+            StaleProject(path: url("/Users/you/Projects/archived-example"), identity: identity("/Users/you/Projects/archived-example"),
+                totalBytes: 4_000_000_000, sourceBytes: 500_000_000, artifactBytes: 3_500_000_000,
+                lastFileModification: old,
+                git: StaleProjectGitState(lastCommit: old, lastCheckout: old, remote: "origin", isClean: true,
+                    unpushedCommits: 0, metadataIsContained: true, worktreeCount: 1),
+                age: .stale, artifacts: [], archiveBlocker: nil, issues: []),
+            StaleProject(path: url("/Users/you/Projects/work-in-progress"), identity: nil,
+                totalBytes: nil, sourceBytes: nil, artifactBytes: 0, lastFileModification: old,
+                git: StaleProjectGitState(lastCommit: old, remote: "origin", isClean: false, unpushedCommits: 2),
+                age: .unknown, artifacts: [], archiveBlocker: "Incomplete manifest; checkout retained.",
+                issues: ["One unreadable directory was retained."])
+        ], roots: [url("/Users/you/Projects")])
+        let map = DiskMapReport(roots: [
+            DiskMapNode(id: "/Users/you/Projects/example", url: url("/Users/you/Projects/example"),
+                name: "example", kind: .repository, owner: .developerTools,
+                logicalBytes: 2_000_000_000, allocatedBytes: 1_600_000_000,
+                generatedLogical: 1_700_000_000, generatedAllocated: 1_400_000_000),
+            DiskMapNode(id: "/Users/you/.lima/default", url: url("/Users/you/.lima/default"),
+                name: "Persistent VM", kind: .vmData, owner: .virtualMachines,
+                logicalBytes: 64_000_000_000, allocatedBytes: 4_000_000_000,
+                protectedReason: "Persistent native environment; inspect the dedicated VM review."),
+            DiskMapNode(id: "/Users/you/Library/Caches/JetBrains", url: url("/Users/you/Library/Caches/JetBrains"),
+                name: "IDE caches", kind: .cache, owner: .editorCaches,
+                logicalBytes: 800_000_000, allocatedBytes: 600_000_000, coverage: .partial,
+                protectedReason: "Current versions and Local History stay retained."),
+            DiskMapNode(id: "/private/var/vm", url: url("/private/var/vm"), name: "System swap",
+                kind: .swap, coverage: .unknown, protectedReason: "System-managed; no cleanup action.")
+        ], issues: ["One large root reached its inspection budget; shown sizes are lower bounds."],
+            cached: true, finished: false)
+        return [
+            ("xcode-cleanup-results", wrap(XcodeCleanupView(snapshotInventory: xcode))),
+            ("toolchains-results", wrap(ToolchainsView(snapshotInventory: toolchains))),
+            ("local-snapshots-results", wrap(LocalSnapshotsView(snapshotInventory: snapshots))),
+            ("virtual-machines-results", wrap(VirtualMachinesView(snapshotInventory: vms))),
+            ("app-leftovers-results", wrap(AppLeftoversView(snapshotReport: leftovers))),
+            ("editor-caches-partial", wrap(EditorCachesView(snapshotReport: editor))),
+            ("updates-results", wrap(UpdatesView(snapshotInventory: updates))),
+            ("stale-projects-results", wrap(StaleProjectsView(snapshotInventory: projects))),
+            ("developer-disk-map-partial", wrap(DeveloperDiskMapView(snapshotReport: map)))
+        ]
     }
 }

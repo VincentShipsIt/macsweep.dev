@@ -1,20 +1,22 @@
-import Foundation
 import Darwin
+import Foundation
 
 enum ProcessOutputStream: Sendable {
     case standardOutput
     case standardError
 }
 
-typealias ProcessOutputHandler = @Sendable (
-    _ stream: ProcessOutputStream,
-    _ chunk: Data
-) -> Void
+typealias ProcessOutputHandler =
+    @Sendable (
+        _ stream: ProcessOutputStream,
+        _ chunk: Data
+    ) -> Void
 
-typealias ProcessPipelineLaunchHandler = @Sendable (
-    _ stageIndex: Int,
-    _ processID: pid_t
-) -> Void
+typealias ProcessPipelineLaunchHandler =
+    @Sendable (
+        _ stageIndex: Int,
+        _ processID: pid_t
+    ) -> Void
 
 /// One argv-only command in a `ProcessRunner` pipeline.
 struct ProcessPipelineStage: Sendable, Equatable {
@@ -45,8 +47,8 @@ struct ProcessPipelineStageError: Error, Sendable, CustomStringConvertible {
 /// parsed output. Callers that genuinely want both can concatenate.
 struct ProcessResult: Sendable {
     let status: Int32
-    let output: String   // stdout
-    let error: String    // stderr
+    let output: String  // stdout
+    let error: String  // stderr
     /// Whether the captured stdout bytes were valid UTF-8. Deletion guards that
     /// consume NUL-delimited paths use this to fail closed on undecodable bytes.
     let outputWasValidUTF8: Bool
@@ -112,6 +114,10 @@ enum ProcessRunnerError: Error, Sendable, CustomStringConvertible {
 enum ProcessRunner {
     private static let terminationGrace: TimeInterval = 0.5
     private static let forcedCleanupGrace: TimeInterval = 0.5
+    // Each admitted lifecycle needs one waiting worker and two concurrent pipe
+    // readers. Bound bursts before dispatch so lifecycle waits cannot exhaust
+    // the shared dispatch pool and starve their own readers.
+    private static let executionBudget = AsyncPermitPool(limit: 8)
     private static let drainPollMilliseconds: Int32 = 20
     private static let maximumTimeout: TimeInterval = 31_536_000
 
@@ -205,17 +211,22 @@ enum ProcessRunner {
             return ProcessResult(status: 0, output: "", error: "")
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    continuation.resume(returning: try ProcessPipelineRunner.run(
-                        stages: stages,
-                        timeout: timeout,
-                        onStageStarted: onStageStartedForTesting
-                    ))
-                } catch {
-                    continuation.resume(throwing: error)
+        let cancellation = CancellationFlag()
+        return try await executionBudget.withPermit {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(
+                                returning: try ProcessPipelineRunner.run(
+                                    stages: stages, timeout: timeout,
+                                    onStageStarted: onStageStartedForTesting,
+                                    isCancelled: { cancellation.isCancelled }))
+                        } catch { continuation.resume(throwing: error) }
+                    }
                 }
+            } onCancel: {
+                cancellation.cancel()
             }
         }
     }
@@ -232,19 +243,21 @@ enum ProcessRunner {
 
         try Task.checkCancellation()
         let cancellation = CancellationFlag()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        continuation.resume(
-                            returning: try runSynchronously(
-                                executable: executable, arguments: arguments, options: options,
-                                cancellation: cancellation))
-                    } catch { continuation.resume(throwing: error) }
+        return try await executionBudget.withPermit {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(
+                                returning: try runSynchronously(
+                                    executable: executable, arguments: arguments, options: options,
+                                    cancellation: cancellation))
+                        } catch { continuation.resume(throwing: error) }
+                    }
                 }
+            } onCancel: {
+                cancellation.cancel()
             }
-        } onCancel: {
-            cancellation.cancel()
         }
     }
 
@@ -253,11 +266,11 @@ enum ProcessRunner {
         cooperativeTimeoutGrace: TimeInterval
     ) throws {
         guard timeout.isFinite,
-              timeout >= 0,
-              timeout <= maximumTimeout,
-              cooperativeTimeoutGrace.isFinite,
-              cooperativeTimeoutGrace >= 0,
-              cooperativeTimeoutGrace <= maximumTimeout
+            timeout >= 0,
+            timeout <= maximumTimeout,
+            cooperativeTimeoutGrace.isFinite,
+            cooperativeTimeoutGrace >= 0,
+            cooperativeTimeoutGrace <= maximumTimeout
         else {
             throw ProcessRunnerError.launchFailed(
                 "Timeout values must be finite and between 0 and \(maximumTimeout) seconds"
@@ -439,7 +452,8 @@ enum ProcessRunner {
         if options.cooperativeTimeoutGrace > 0 && !cancellation.isCancelled {
             let cooperativeDeadline = DispatchTime.now() + options.cooperativeTimeoutGrace
             if drains.wait(timeout: cooperativeDeadline) == .success,
-               let rawStatus = waitForChild(childPID, until: cooperativeDeadline) {
+                let rawStatus = waitForChild(childPID, until: cooperativeDeadline)
+            {
                 let stdout = stdoutBuffer.decodedUTF8
                 let stderr = stderrBuffer.decodedUTF8
                 let partial = ProcessResult(
@@ -595,14 +609,14 @@ enum ProcessRunner {
             for descriptor in descriptors {
                 let descriptorFlags = fcntl(descriptor, F_GETFD)
                 guard descriptorFlags >= 0,
-                      fcntl(descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC) == 0
+                    fcntl(descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC) == 0
                 else {
                     throw ProcessRunnerError.launchFailed(errorMessage(for: errno))
                 }
             }
             let statusFlags = fcntl(descriptors[0], F_GETFL)
             guard statusFlags >= 0,
-                  fcntl(descriptors[0], F_SETFL, statusFlags | O_NONBLOCK) == 0
+                fcntl(descriptors[0], F_SETFL, statusFlags | O_NONBLOCK) == 0
             else {
                 throw ProcessRunnerError.launchFailed(errorMessage(for: errno))
             }

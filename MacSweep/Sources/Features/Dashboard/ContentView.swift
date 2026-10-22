@@ -19,6 +19,7 @@ struct ContentView: View {
     @AppStorage(DeveloperModePreferences.enabledKey) private var developerModeEnabled = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
+    @State private var developerToolsTab: DevToolsView.DevToolsTab = .artifacts
     @State private var usesSlideTransition = true
     @FocusState private var isSidebarFocused: Bool
 
@@ -174,7 +175,7 @@ struct ContentView: View {
         case .trashBins:
             landingDetail(TrashBinsView())
         case .devTools:
-            landingDetail(DevToolsView())
+            landingDetail(DevToolsView(initialTab: developerToolsTab))
         case .aiAnalysis:
             landingDetail(AIAnalysisView())
         case .networkCleanup:
@@ -201,8 +202,15 @@ struct ContentView: View {
         // Applications
         case .uninstaller:
             staticDetail(AppUninstallerView())
-        case .homebrewUpdater:
-            staticDetail(HomebrewUpdaterView())
+        case .appLeftovers:
+            staticDetail(AppLeftoversView())
+        case .updates:
+            staticDetail(UpdatesView(administratorUpdate: { request, output in
+                try await PrivilegedRunner.updateMacStoreApp(
+                    executable: URL(fileURLWithPath: request.executable), appID: request.appID,
+                    expectedIdentity: request.executableIdentity, expectedStamp: request.executableStamp,
+                    onOutput: output)
+            }))
 
         // Files
         case .spaceLens:
@@ -221,6 +229,35 @@ struct ContentView: View {
             staticDetail(DeveloperLogsView())
         case .environmentDoctor:
             staticDetail(EnvironmentDoctorView())
+        case .developerDiskMap:
+            staticDetail(DeveloperDiskMapView(onOpenOwner: openDiskMapOwner))
+        case .staleProjects:
+            staticDetail(StaleProjectsView())
+        case .xcodeCleanup:
+            staticDetail(XcodeCleanupView())
+        case .toolchains:
+            staticDetail(ToolchainsView())
+        case .localSnapshots:
+            staticDetail(LocalSnapshotsView())
+        case .virtualMachines:
+            staticDetail(VirtualMachinesView(onReviewDocker: { openDiskMapOwner(.developerTools) }))
+        case .editorCaches:
+            staticDetail(EditorCachesView())
+        }
+    }
+
+    private func openDiskMapOwner(_ owner: DiskMapOwner) {
+        switch owner {
+        case .developerTools:
+            developerToolsTab = .artifacts
+            appState.selectedFeature = .devTools
+        case .packageManagers:
+            developerToolsTab = .packages
+            appState.selectedFeature = .devTools
+        case .toolchains: appState.selectedFeature = .toolchains
+        case .xcode: appState.selectedFeature = .xcodeCleanup
+        case .virtualMachines: appState.selectedFeature = .virtualMachines
+        case .editorCaches: appState.selectedFeature = .editorCaches
         }
     }
 
@@ -260,10 +297,18 @@ private extension Feature {
              .batteryMonitor,
              .maintenance,
              .uninstaller,
-             .homebrewUpdater,
+             .appLeftovers,
+             .updates,
              .shredder,
              .developerLogs,
-             .environmentDoctor:
+             .environmentDoctor,
+             .developerDiskMap,
+             .staleProjects,
+             .xcodeCleanup,
+             .toolchains,
+             .localSnapshots,
+             .virtualMachines,
+             .editorCaches:
             return false
         }
     }
@@ -759,8 +804,8 @@ struct DeveloperSettingsView: View {
                 Toggle("Developer mode", isOn: $developerModeEnabled)
             } footer: {
                 Text(
-                    "Shows the Developer section and its local Logs page. "
-                        + "Deletion auditing stays active even when Developer mode is off."
+                    "Shows developer storage maps, environment checks and dedicated cleanup reviews. "
+                        + "Cleanup protections stay active when Developer mode is off."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

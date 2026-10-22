@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import MacSweepCore
 
 @Suite(.serialized)
@@ -33,6 +34,33 @@ struct ProcessRunnerPipelineTests {
         }
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func cancellationTerminatesAndReapsEveryRunningStage() async throws {
+        let recorder = PipelinePIDRecorder()
+        let (starts, continuation) = AsyncStream<Void>.makeStream()
+        let task = Task {
+            defer { continuation.finish() }
+            return try await ProcessRunner.runPipeline(
+                stages: [
+                    ProcessPipelineStage(executable: "/bin/sleep", arguments: ["30"]),
+                    ProcessPipelineStage(executable: "/bin/cat")
+                ], timeout: 3, onStageStartedForTesting: { _, pid in
+                    recorder.append(pid)
+                    if recorder.pids.count == 2 { continuation.yield() }
+                })
+        }
+        for await _ in starts { break }
+        #expect(recorder.pids.count == 2)
+        task.cancel()
+        do {
+            _ = try await task.value
+            Issue.record("Cancelled pipeline returned success")
+        } catch is CancellationError {} catch {
+            Issue.record("Cancelled pipeline must preserve cancellation, got \(error)")
+        }
+        expectReaped(recorder.pids)
+    }
+
     @Test func connectsStagesAndNeverInterpretsArgumentsAsShell() async throws {
         let payload = "$(whoami) `id` ; touch /tmp/macsweep-must-not-exist"
         let result = try await ProcessRunner.runPipeline(
@@ -56,14 +84,15 @@ struct ProcessRunnerPipelineTests {
     }
 
     @Test func drainsLargeTailOutputWithoutDeadlock() async throws {
-        let scriptURL = try makeExecutable("""
-        #!/bin/sh
-        i=0
-        while [ $i -lt 5000 ]; do
-          echo "PIPELINE ........................................... line $i"
-          i=$((i + 1))
-        done
-        """)
+        let scriptURL = try makeExecutable(
+            """
+            #!/bin/sh
+            i=0
+            while [ $i -lt 5000 ]; do
+              echo "PIPELINE ........................................... line $i"
+              i=$((i + 1))
+            done
+            """)
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
         let result = try await ProcessRunner.runPipeline(
@@ -79,11 +108,12 @@ struct ProcessRunnerPipelineTests {
     }
 
     @Test func nonzeroStageThrowsWithCapturedTailOutput() async throws {
-        let scriptURL = try makeExecutable("""
-        #!/bin/sh
-        printf partial-output
-        exit 7
-        """)
+        let scriptURL = try makeExecutable(
+            """
+            #!/bin/sh
+            printf partial-output
+            exit 7
+            """)
         defer { try? FileManager.default.removeItem(at: scriptURL) }
 
         do {
@@ -134,11 +164,12 @@ struct ProcessRunnerPipelineTests {
     func timeoutTerminatesAndReapsEveryStage() async {
         let hangingStageURL: URL
         do {
-            hangingStageURL = try makeExecutable("""
-            #!/bin/sh
-            exec 1>&-
-            exec /bin/sleep 5
-            """)
+            hangingStageURL = try makeExecutable(
+                """
+                #!/bin/sh
+                exec 1>&-
+                exec /bin/sleep 5
+                """)
         } catch {
             Issue.record("Failed to create the hanging pipeline stage: \(error)")
             return

@@ -105,21 +105,6 @@ enum DevArtifactPaths {
     }
 }
 
-enum DevArtifactIO {
-    static func run<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
-        try Task.checkCancellation()
-        let collector = ScanDiagnostics.current
-        let result: T = try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                continuation.resume(
-                    with: Result { try ScanDiagnostics.$current.withValue(collector, operation: operation) })
-            }
-        }
-        try Task.checkCancellation()
-        return result
-    }
-}
-
 enum DevProcessActivity {
     static let processLimit = 4096
     static let descriptorLimit = 200_000

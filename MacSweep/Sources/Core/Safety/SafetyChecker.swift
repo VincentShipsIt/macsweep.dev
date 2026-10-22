@@ -145,8 +145,8 @@ struct SafetyChecker: Sendable {
     /// protected. The action is recoverable (Trash), but still gated so a stray
     /// click — or a parent symlink pointing into a protected root — can't nuke a
     /// critical path.
-    func validateForTrash(_ url: URL) -> ValidationResult {
-        validateBlocklist(url, action: .trash)
+    func validateForTrash(_ url: URL, developerOwner: DeveloperCleanupOwner? = nil) -> ValidationResult {
+        validateBlocklist(url, action: .trash, developerOwner: developerOwner)
     }
 
     /// Validate an application bundle the user explicitly chose to uninstall.
@@ -194,7 +194,7 @@ struct SafetyChecker: Sendable {
 
     /// Validate a leftover the uninstaller matched for removal.
     ///
-    /// Leftovers live DIRECTLY inside the seven Library data roots
+    /// Leftovers live DIRECTLY inside the known Library data roots
     /// `LeftoverScanner` enumerates — one of which (`~/Library/Preferences`) is
     /// in `neverDelete`, so the generic blocklist (`validateForTrash`) would
     /// refuse every preference-plist leftover and silently break uninstall
@@ -203,7 +203,9 @@ struct SafetyChecker: Sendable {
     /// while still refusing symlinks, sensitive-looking filenames (keys,
     /// credentials, keychains), the roots themselves, and anything outside
     /// them. Removal is to Trash, so a matched leftover stays recoverable.
-    func validateForUninstallLeftover(_ url: URL) -> ValidationResult {
+    func validateForUninstallLeftover(
+        _ url: URL, libraryDirectory: URL = URL.libraryDirectory
+    ) -> ValidationResult {
         let standardized = url.standardized
 
         // Refuse a symlinked leftover: trashing through a link could move an
@@ -229,14 +231,15 @@ struct SafetyChecker: Sendable {
         // deeper, not elsewhere).
         let path = Self.realParentPath(url)
         let parent = (path as NSString).deletingLastPathComponent
-        let library = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library").standardized.path
+        let library = libraryDirectory.standardized.path
         let leftoverRoots = [
             "\(library)/Preferences",
             "\(library)/Application Support",
             "\(library)/Caches",
             "\(library)/Logs",
             "\(library)/Containers",
+            "\(library)/Group Containers",
+            "\(library)/Application Scripts",
             "\(library)/Saved Application State",
             "\(library)/LaunchAgents",
         ]
@@ -254,7 +257,9 @@ struct SafetyChecker: Sendable {
     /// Shared blocklist used by shred and explicit move-to-Trash. The shredder's and
     /// disk-map's whole purpose is acting on arbitrary user-chosen files, so an
     /// unrecognized path is *allowed*; we only refuse the catastrophic targets.
-    private func validateBlocklist(_ url: URL, action: BlocklistAction) -> ValidationResult {
+    private func validateBlocklist(
+        _ url: URL, action: BlocklistAction, developerOwner: DeveloperCleanupOwner? = nil
+    ) -> ValidationResult {
         let standardized = url.standardized
 
         // Never follow a symlink as the FINAL component: a write/overwrite opens
@@ -277,6 +282,12 @@ struct SafetyChecker: Sendable {
 
         if let validation = validateUserRules(path, mode: .cleanup) {
             return validation
+        }
+        if EditorCleanupOwnership.overlaps(URL(fileURLWithPath: path)) {
+            return .protected(reason: EditorCleanupOwnership.retentionReason)
+        }
+        if let owner = DeveloperCleanupOwnership.owner(of: URL(fileURLWithPath: path)), owner != developerOwner {
+            return .protected(reason: DeveloperCleanupOwnership.reason(owner))
         }
 
         // Refuse the filesystem root and the home directory itself.
@@ -342,6 +353,13 @@ struct SafetyChecker: Sendable {
         //    cancels a user rule, so built-in checks below still retain precedence.
         if let validation = validateUserRules(path, mode: context.mode) {
             return validation
+        }
+        if EditorCleanupOwnership.overlaps(URL(fileURLWithPath: path)) {
+            return .protected(reason: EditorCleanupOwnership.retentionReason)
+        }
+        if let owner = DeveloperCleanupOwnership.owner(
+            of: URL(fileURLWithPath: path), includingAncestors: context.mode == .cleanup) {
+            return .protected(reason: DeveloperCleanupOwnership.reason(owner))
         }
 
         if context.moduleID == "mail-attachments", MailAttachmentsModule.isAttachmentFile(at: standardized) {
@@ -562,6 +580,42 @@ struct SafetyChecker: Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return targetURL.standardized.path.hasPrefix(home)
     }
+}
+
+extension SafetyChecker {
+    /// Validates content only inside an independently matched app-data target.
+    /// This admits no additional generic Library deletion authority.
+    func validateForUninstallLeftoverTreeNode(
+        _ url: URL, within root: URL, libraryDirectory: URL = URL.libraryDirectory
+    ) -> ValidationResult {
+        let rootResult = validateForUninstallLeftover(root, libraryDirectory: libraryDirectory)
+        guard rootResult.isSafe else { return rootResult }
+        let target = url.standardizedFileURL
+        let boundary = root.standardizedFileURL
+        guard target.path == boundary.path || target.path.hasPrefix(boundary.path + "/"),
+              target.deletingLastPathComponent().resolvingSymlinksInPath().path
+                == target.deletingLastPathComponent().standardizedFileURL.path,
+              boundary.deletingLastPathComponent().resolvingSymlinksInPath().path
+                == boundary.deletingLastPathComponent().standardizedFileURL.path else {
+            return .protected(reason: "Content escapes the proven leftover root")
+        }
+        var component = target
+        while true {
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: component.path)) != nil {
+                return .symlink(reason: "Linked app data is retained")
+            }
+            if let rule = validateUserRules(component.path, mode: .cleanup) { return rule }
+            for pattern in ProtectedPaths.sensitivePatterns where matchesPattern(
+                component.lastPathComponent.lowercased(), pattern: pattern
+            ) {
+                return .sensitive(pattern: pattern)
+            }
+            if component.path == boundary.path { break }
+            component.deleteLastPathComponent()
+        }
+        return .safe
+    }
+
 }
 
 struct ValidationContext {

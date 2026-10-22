@@ -5,177 +5,94 @@ actor DiskAnalyzer {
 
     // MARK: - Static Helpers
 
-    /// Get size of a file or directory
+    /// Heavy filesystem work shares a global utility-priority budget with developer scans.
     static func size(of url: URL) async throws -> Int64 {
-        let values = try url.scanResourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileSizeKey])
-
-        if values.isDirectory == true && values.isSymbolicLink != true {
-            return try await directorySize(at: url)
-        } else {
+        try await DevArtifactIO.run {
+            let values = try url.scanResourceValues(forKeys: [
+                .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileSizeKey
+            ])
+            if values.isDirectory == true && values.isSymbolicLink != true {
+                return try directorySizeSynchronously(at: url)
+            }
             return values.diskSize
         }
     }
 
-    /// Calculate total size of a directory
     static func directorySize(at url: URL) async throws -> Int64 {
-        if try url.scanResourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { return 0 }
-        let resourceKeys: Set<URLResourceKey> = [
-            .totalFileAllocatedSizeKey,
-            .fileSizeKey,
-            .isDirectoryKey,
-            .isSymbolicLinkKey
-        ]
+        try await DevArtifactIO.run { try directorySizeSynchronously(at: url) }
+    }
 
-        guard let enumerator = ScanFileSystem.enumerator(
-            at: url,
-            includingPropertiesForKeys: Array(resourceKeys),
-            options: []
-        ) else {
+    private static func directorySizeSynchronously(at url: URL) throws -> Int64 {
+        try Task.checkCancellation()
+        if try url.scanResourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { return 0 }
+        let keys: Set<URLResourceKey> = [
+            .totalFileAllocatedSizeKey, .fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey
+        ]
+        guard let entries = ScanFileSystem.enumerator(at: url, includingPropertiesForKeys: Array(keys)) else {
             return 0
         }
-
         var total: Int64 = 0
-
-        var iterations = 0
-        while let fileURL = enumerator.nextObject() as? URL {
-            // Subtree sizing is called from long scans; keep it cancellable so
-            // an abandoned scan stops burning IO.
-            iterations += 1
-            if iterations % 512 == 0 { try Task.checkCancellation() }
-            do {
-                let values = try fileURL.scanResourceValues(forKeys: resourceKeys)
-
-                // Skip symlinks to avoid infinite loops
-                if values.isSymbolicLink == true { continue }
-
-                // Only count files, not directories themselves
-                if values.isDirectory == false {
-                    total += values.diskSize
-                }
-            } catch {
+        var inspected = 0
+        while let path = entries.nextObject() as? URL {
+            inspected += 1
+            if inspected % 128 == 0 { try Task.checkCancellation() }
+            guard let values = try? path.scanResourceValues(forKeys: keys), values.isSymbolicLink != true else {
                 continue
             }
+            if values.isDirectory == false { total += values.diskSize }
         }
-
         return total
     }
 
-    // MARK: - Disk Tree Analysis
-
-    /// Build a tree structure for disk visualization
     static func buildDiskTree(at url: URL, maxDepth: Int = 3) async throws -> DiskNode {
-        try await buildNode(at: url, depth: 0, maxDepth: maxDepth)
+        try await DevArtifactIO.run { try buildNode(at: url, depth: 0, maxDepth: maxDepth) }
     }
 
-    private static func buildNode(at url: URL, depth: Int, maxDepth: Int) async throws -> DiskNode {
-        let resourceKeys: Set<URLResourceKey> = [
-            .isDirectoryKey,
-            .isSymbolicLinkKey,
-            .totalFileAllocatedSizeKey,
-            .fileSizeKey,
-            .contentModificationDateKey
+    /// One synchronous walk owns one permit. Recursion creates no queued directory tasks.
+    private static func buildNode(at url: URL, depth: Int, maxDepth: Int) throws -> DiskNode {
+        try Task.checkCancellation()
+        let keys: Set<URLResourceKey> = [
+            .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileSizeKey, .contentModificationDateKey
         ]
-
-        let values = try url.scanResourceValues(forKeys: resourceKeys)
-        // A symlinked directory must be treated as a leaf: following it would let
-        // a self-referential link (e.g. ~/foo -> ~) recurse forever, and any link
-        // pointing inside the tree would double-count its target's bytes.
-        let isDirectory = values.isDirectory == true && values.isSymbolicLink != true
-
-        if !isDirectory {
-            // It's a file (or a symlink, counted by its own small on-disk size)
-            let size = values.diskSize
+        let values = try url.scanResourceValues(forKeys: keys)
+        let directory = values.isDirectory == true && values.isSymbolicLink != true
+        guard directory else {
             return DiskNode(
-                url: url,
-                name: url.lastPathComponent,
-                size: size,
-                isDirectory: false,
-                children: [],
-                lastModified: values.contentModificationDate
-            )
+                url: url, name: url.lastPathComponent, size: values.diskSize,
+                isDirectory: false, children: [], lastModified: values.contentModificationDate)
         }
-
-        // It's a directory
-        var children: [DiskNode] = []
-        var totalSize: Int64 = 0
-
-        if depth < maxDepth {
-            // Enumerate children
-            guard let contents = try? ScanFileSystem.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: Array(resourceKeys),
-                options: []
-            ) else {
-                return DiskNode(url: url, name: url.lastPathComponent, size: 0, isDirectory: true, children: [])
-            }
-
-            // Split children up front. A plain file (or a symlink, which we treat
-            // as a leaf for the same reason `isDirectory` does above) is sized
-            // inline from its already-cached resource values — no recursion, no
-            // task. Only real subdirectories are worth a task. The old code
-            // spawned a task per child *including every file*, and recursively, so
-            // a wide tree fanned out into thousands of concurrent enumerations
-            // that thrashed IO. `contentsOfDirectory(includingPropertiesForKeys:)`
-            // pre-caches these keys, so the per-child fetch here is not a syscall.
-            var fileNodes: [DiskNode] = []
-            var subdirectories: [URL] = []
-            for childURL in contents {
-                let childValues = try? childURL.scanResourceValues(forKeys: resourceKeys)
-                let childIsDirectory = childValues?.isDirectory == true && childValues?.isSymbolicLink != true
-                if childIsDirectory {
-                    subdirectories.append(childURL)
-                } else {
-                    fileNodes.append(DiskNode(
-                        url: childURL,
-                        name: childURL.lastPathComponent,
-                        size: childValues?.diskSize ?? 0,
-                        isDirectory: false,
-                        children: [],
-                        lastModified: childValues?.contentModificationDate
-                    ))
-                }
-            }
-
-            // Recurse into subdirectories concurrently but BOUNDED: keep at most
-            // `width` builds in flight, refilling as each finishes, so a level with
-            // thousands of folders can't spawn thousands of parallel walks.
-            let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
-            var dirNodes: [DiskNode] = []
-            await withTaskGroup(of: DiskNode?.self) { group in
-                var next = 0
-                func enqueueNext() {
-                    guard next < subdirectories.count else { return }
-                    let childURL = subdirectories[next]
-                    next += 1
-                    group.addTask {
-                        try? await buildNode(at: childURL, depth: depth + 1, maxDepth: maxDepth)
-                    }
-                }
-                for _ in 0..<min(width, subdirectories.count) { enqueueNext() }
-                while let node = await group.next() {
-                    if let node { dirNodes.append(node) }
-                    enqueueNext()
-                }
-            }
-
-            children = (fileNodes + dirNodes).sorted { $0.size > $1.size }
-            totalSize = children.reduce(0) { $0 + $1.size }
-        } else {
-            // At max depth we render no children, so we only need this directory's
-            // total — a single deep walk. (This is the exact subtree size, not a
-            // partial sum: the leaf still contributes its true weight to the
-            // parent treemap.)
-            totalSize = (try? await directorySize(at: url)) ?? 0
+        if depth >= maxDepth {
+            return DiskNode(
+                url: url, name: url.lastPathComponent,
+                size: try directorySizeSynchronously(at: url), isDirectory: true, children: [],
+                lastModified: values.contentModificationDate)
         }
-
+        let children = try children(at: url, depth: depth, maxDepth: maxDepth, keys: keys)
         return DiskNode(
-            url: url,
-            name: url.lastPathComponent,
-            size: totalSize,
-            isDirectory: true,
-            children: children,
-            lastModified: values.contentModificationDate
-        )
+            url: url, name: url.lastPathComponent, size: children.reduce(0) { $0 + $1.size },
+            isDirectory: true, children: children.sorted { $0.size > $1.size },
+            lastModified: values.contentModificationDate)
+    }
+
+    private static func children(
+        at url: URL, depth: Int, maxDepth: Int, keys: Set<URLResourceKey>
+    ) throws -> [DiskNode] {
+        guard let entries = try? ScanFileSystem.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys))
+        else {
+            return []
+        }
+        var nodes: [DiskNode] = []
+        for path in entries {
+            try Task.checkCancellation()
+            do {
+                nodes.append(try buildNode(at: path, depth: depth + 1, maxDepth: maxDepth))
+            } catch is CancellationError { throw CancellationError() } catch {
+                // Preserve the previous best-effort leaf representation and diagnostic collector.
+                nodes.append(
+                    DiskNode(url: path, name: path.lastPathComponent, size: 0, isDirectory: false, children: []))
+            }
+        }
+        return nodes
     }
 
     // MARK: - Quick Stats
@@ -213,7 +130,7 @@ actor DiskAnalyzer {
 
 // MARK: - Models
 
-struct DiskNode: Identifiable, Hashable {
+struct DiskNode: Identifiable, Hashable, Sendable {
     static func == (lhs: DiskNode, rhs: DiskNode) -> Bool {
         lhs.id == rhs.id
     }

@@ -317,6 +317,37 @@ extension DevArtifactActivityGateTests {
         #expect(ledger.paths.isEmpty)
     }
 
+    @Test func completedArtifactTrashReceiptSurvivesLateCancellation() async throws {
+        try await repository()
+        try artifact()
+        let ledger = SafetyRemovalLedger()
+        var module = module(ledger: ledger)
+        let (commits, continuation) = AsyncStream.makeStream(of: Void.self)
+        let barrier = DispatchSemaphore(value: 0)
+        module.remove = { url in
+            ledger.record(url)
+            continuation.yield(())
+            guard barrier.wait(timeout: .now() + 5) == .success else {
+                throw DevArtifactSafetyError("Fixture cancellation handshake timed out.")
+            }
+        }
+        let selected = try await item(module)
+        let frozen = module
+        let operation = Task {
+            defer { continuation.finish() }
+            return try await frozen.clean(items: [selected], dryRun: false)
+        }
+        for await _ in commits {
+            operation.cancel()
+            barrier.signal()
+            break
+        }
+        let result = try await operation.value
+        #expect(ledger.paths.count == 1)
+        #expect(result.itemsProcessed == 1)
+        #expect(result.errors.isEmpty)
+    }
+
     @Test func customTypeScriptConfigurationAndCanonicalProjectGrouping() async throws {
         try await repository()
         try FileManager.default.removeItem(at: root.appendingPathComponent("package.json"))

@@ -1,14 +1,10 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import MacSweepCore
 
-/// Coverage for DiskAnalyzer.buildDiskTree after the fan-out rewrite. buildNode
-/// now sizes plain files inline and only spawns (bounded) tasks for real
-/// subdirectories. These tests prove the tree it produces is unchanged: file and
-/// directory children are both present with correct sizes, a directory's size is
-/// the exact sum of its subtree (equal to a flat `directorySize` walk), a
-/// max-depth directory is summarized without children, and a symlink is treated
-/// as a leaf rather than recursed into.
+/// The globally budgeted synchronous walker preserves file/directory sizes,
+/// max-depth summaries, stable sorting and no-follow symlink behavior.
 final class DiskAnalyzerTests {
     private let temp: TempTestDirectory
     private let root: URL
@@ -40,21 +36,21 @@ final class DiskAnalyzerTests {
         let tree = try await DiskAnalyzer.buildDiskTree(at: root, maxDepth: 3)
 
         // Root has an inline file child and a directory child.
-        let f1 = child(tree, "f1.bin")
-        let a = child(tree, "a")
-        #expect(f1?.isDirectory == false)
-        #expect(a?.isDirectory == true)
+        let inlineFile = child(tree, "f1.bin")
+        let directory = child(tree, "a")
+        #expect(inlineFile?.isDirectory == false)
+        #expect(directory?.isDirectory == true)
 
         // The directory's size is the exact sum of its whole subtree.
         let flat = try await DiskAnalyzer.directorySize(at: root)
         #expect(tree.size == flat)
-        #expect(tree.size == (f1?.size ?? 0) + (a?.size ?? 0))
+        #expect(tree.size == (inlineFile?.size ?? 0) + (directory?.size ?? 0))
 
         // Nested directory sizes roll up correctly.
-        let a1 = child(a!, "a1.bin")
-        let b = child(a!, "b")
-        #expect(a?.size == (a1?.size ?? 0) + (b?.size ?? 0))
-        #expect(child(b!, "b1.bin")?.isDirectory == false)
+        let nestedFile = child(directory!, "a1.bin")
+        let nestedDirectory = child(directory!, "b")
+        #expect(directory?.size == (nestedFile?.size ?? 0) + (nestedDirectory?.size ?? 0))
+        #expect(child(nestedDirectory!, "b1.bin")?.isDirectory == false)
     }
 
     @Test func maxDepthDirectoryIsSizedButHasNoChildren() async throws {
@@ -104,4 +100,14 @@ final class DiskAnalyzerTests {
         #expect(sizes == sizes.sorted(by: >))
         #expect(tree.children.first?.name == "large.bin")
     }
+    @Test func cancelledCallerCannotReturnAnApparentlyCompleteTree() async throws {
+        try write(1024, to: "nested/file.bin")
+        let task = Task { try await DiskAnalyzer.buildDiskTree(at: root) }
+        task.cancel()
+        do {
+            _ = try await task.value
+            Issue.record("Cancelled disk traversal returned a complete tree")
+        } catch is CancellationError {}
+    }
+
 }

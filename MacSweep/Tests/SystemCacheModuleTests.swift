@@ -9,7 +9,7 @@ final class SystemCacheModuleTests {
         var errorDescription: String? { "simulated removal failure" }
     }
 
-    let module = SystemCacheModule()
+    let module: SystemCacheModule
     private let temp: TempTestDirectory
     let testDirectory: URL
 
@@ -17,8 +17,25 @@ final class SystemCacheModuleTests {
     // lifetime is the per-test setUp/tearDown. Each instance gets a UUID-scoped
     // temp dir so parallel test execution can't collide.
     init() throws {
-        temp = try TempTestDirectory()
-        testDirectory = temp.url
+        let owned = try TempTestDirectory()
+        let root = owned.url
+        var scanModule = SystemCacheModule()
+        scanModule.libraryDirectory = root.appending(path: "Library")
+        scanModule.temporaryDirectory = root.appending(path: "Temporary/T")
+        for relative in ["Caches", "Logs", "Application Support/CrashReporter", "Saved Application State"] {
+            try FileManager.default.createDirectory(
+                at: scanModule.libraryDirectory.appending(path: relative), withIntermediateDirectories: true)
+        }
+        for subdirectory in ["T", "C", "0"] {
+            try FileManager.default.createDirectory(
+                at: root.appending(path: "Temporary/" + subdirectory), withIntermediateDirectories: true)
+        }
+        for (name, size) in [("one.bin", 8192), ("two.bin", 16384), ("empty.bin", 0)] {
+            try Data(repeating: 1, count: size).write(to: scanModule.libraryDirectory.appending(path: "Caches/" + name))
+        }
+        module = scanModule
+        testDirectory = root
+        temp = consume owned
     }
 
     // MARK: - Module Properties Tests
@@ -42,14 +59,15 @@ final class SystemCacheModuleTests {
     // MARK: - Scan Tests
 
     @Test func scanReturnsEmptyArrayForNonexistentDirectory() async throws {
-        // The module should handle non-existent directories gracefully and
-        // not crash; it may return items from existing system directories.
-        _ = try await module.scan()
+        var absent = module
+        absent.libraryDirectory = testDirectory.appending(path: "absent-library")
+        absent.temporaryDirectory = testDirectory.appending(path: "absent-temporary/T")
+        #expect(try await absent.scan().isEmpty)
     }
 
     @Test func scanReturnsSortedBySize() async throws {
-        // Scan actual system caches
         let items = try await module.scan()
+        #expect(items.count == 2)
 
         // Verify items are sorted by size (largest first)
         if items.count >= 2 {
@@ -88,6 +106,41 @@ final class SystemCacheModuleTests {
                 "Module name should start with 'System Caches - '"
             )
         }
+    }
+
+    @Test func temporaryScanIncludesOldFilesAndRetainsRecentProtectedAndTinyEntries() async throws {
+        let old = Date(timeIntervalSince1970: 1_700_000_000)
+        let base = module.temporaryDirectory.deletingLastPathComponent()
+        for category in ["T", "C", "0"] {
+            let root = base.appending(path: category)
+            for (name, size, modified) in [
+                ("old-cache.bin", 32768, old), ("active-cache.bin", 32768, Date()), ("empty.bin", 0, old),
+                ("com.apple.private-cache", 32768, old), ("protected.lock", 32768, old)
+            ] {
+                let file = root.appending(path: name)
+                try Data(repeating: 1, count: size).write(to: file)
+                try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+            }
+        }
+        let items = try await module.scan()
+        let temporary = items.filter { $0.path.path.contains("/Temporary/") }
+        #expect(temporary.count == 3)
+        #expect(Set(temporary.map(\.moduleName)) == [
+            "System Caches - Temporary Files", "System Caches - System Cache", "System Caches - Scratch Files"
+        ])
+        #expect(temporary.allSatisfy { $0.path.lastPathComponent == "old-cache.bin" })
+    }
+
+    @Test func failedDirectoryAndBrokenEntryPreserveHealthyCategoryFindings() async throws {
+        let logs = module.libraryDirectory.appending(path: "Logs")
+        try FileManager.default.removeItem(at: logs)
+        try Data([1]).write(to: logs)
+        try FileManager.default.createSymbolicLink(
+            atPath: module.libraryDirectory.appending(path: "Caches/broken").path,
+            withDestinationPath: testDirectory.appending(path: "missing").path)
+        let items = try await module.scan()
+        #expect(items.filter { $0.path.lastPathComponent == "one.bin" || $0.path.lastPathComponent == "two.bin" }.count == 2)
+        #expect(items.allSatisfy { !$0.moduleName.contains("Application Logs") })
     }
 
     // MARK: - Clean Tests (Dry Run)
@@ -499,16 +552,21 @@ final class SystemCacheModuleTests {
 
     // MARK: - Performance Tests
 
-    @Test func scanPerformance() async throws {
-        // This test ensures scan completes in reasonable time.
-        let startTime = Date()
-
-        _ = try await module.scan()
-
-        let elapsed = Date().timeIntervalSince(startTime)
-
-        // Scan should complete in less than 30 seconds for typical user
-        #expect(elapsed < 30.0, "Scan should complete in less than 30 seconds")
+    @Test func scanCompletesForBoundedFixture() async throws {
+        // Keep the workload explicit: 100 cache trees, 16 files each, 8 KiB per file.
+        // Repeated scans of the host's mutable caches are not a repeatable unit benchmark.
+        for directory in 0..<100 {
+            let root = module.libraryDirectory.appending(path: "Caches/fixture-\(directory)")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            for file in 0..<16 {
+                try Data(repeating: 1, count: 8192).write(to: root.appending(path: "file-\(file).bin"))
+            }
+        }
+        let start = ContinuousClock.now
+        let items = try await module.scan()
+        #expect(items.count == 102)
+        #expect(items.filter { $0.path.lastPathComponent.hasPrefix("fixture-") }.allSatisfy { $0.size >= 131_072 })
+        #expect(start.duration(to: .now) < .seconds(30))
     }
 
     // MARK: - Recursive descendant protection (#82)

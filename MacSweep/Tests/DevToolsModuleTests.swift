@@ -35,7 +35,7 @@ final class DevToolsModuleTests {
         named name: String,
         indicators: [String],
         artifactDirectories: [String]
-    ) throws -> URL {
+    ) async throws -> URL {
         let projectDir = testDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
 
@@ -54,11 +54,22 @@ final class DevToolsModuleTests {
             try Data(repeating: 0, count: 128).write(to: dirURL.appendingPathComponent("artifact.bin"))
         }
 
+        try Data(artifactDirectories.map { $0 + "/" }.joined(separator: "\n").utf8)
+            .write(to: projectDir.appending(path: ".gitignore"))
+        for arguments in [["init", "-q"], ["add", "."]] {
+            let result = await GitArtifactScanner.run(["git", "-C", projectDir.path] + arguments)
+            try #require(result.didSucceed, Comment(rawValue: result.error))
+        }
         return projectDir
     }
 
-    private func discoveredProjects() async -> [ProjectInfo] {
-        await ProjectScanner().discoverProjects(in: testDirectory)
+    private func discoveredProjects() async throws -> [ProjectInfo] {
+        var module = DevToolsModule()
+        module.searchPaths = [testDirectory]
+        module.minimumDirectorySize = 0
+        module.includesSystemCaches = false
+        module.safety.processSnapshot = { DevProcessSnapshot() }
+        return ProjectScanner.projects(from: try await module.scan())
     }
 
     /// Symlink-resolved path for URL comparison: the fixture URLs are built from
@@ -71,13 +82,13 @@ final class DevToolsModuleTests {
     // MARK: - Project Discovery: existing types (regression guard)
 
     @Test func discoverProjectsDetectsNodeProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "node-app",
             indicators: ["package.json"],
             artifactDirectories: ["node_modules", "dist"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .nodejs)
@@ -87,17 +98,17 @@ final class DevToolsModuleTests {
     }
 
     @Test func projectDiscoveryDepthMatchesDevToolsScan() {
-        #expect(ProjectScanner.defaultMaxDepth == DevToolsModule.defaultMaxDepth)
+        #expect(DevToolsModule().maxDepth == DevToolsModule.defaultMaxDepth)
     }
 
     @Test func discoverProjectsDetectsSwiftProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "swift-pkg",
             indicators: ["Package.swift"],
             artifactDirectories: [".build"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .swift)
@@ -107,13 +118,13 @@ final class DevToolsModuleTests {
     // MARK: - Project Discovery: types missing from the browser table (#112)
 
     @Test func discoverProjectsDetectsCocoaPodsProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "pods-app",
             indicators: ["Podfile"],
             artifactDirectories: ["Pods"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .xcode)
@@ -121,13 +132,13 @@ final class DevToolsModuleTests {
     }
 
     @Test func discoverProjectsDetectsXcodeProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "xcode-app",
             indicators: ["App.xcodeproj"],
             artifactDirectories: ["build"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .xcode)
@@ -135,13 +146,13 @@ final class DevToolsModuleTests {
     }
 
     @Test func discoverProjectsDetectsDotNetProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "dotnet-app",
             indicators: ["App.csproj"],
             artifactDirectories: ["bin", "obj"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .dotnet)
@@ -151,13 +162,13 @@ final class DevToolsModuleTests {
     }
 
     @Test func discoverProjectsDetectsCMakeProject() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "cmake-app",
             indicators: ["CMakeLists.txt"],
             artifactDirectories: ["build"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let project = try #require(projects.first { canonicalPath($0.path) == canonicalPath(projectDir) })
         #expect(project.type == .cmake)
@@ -168,13 +179,13 @@ final class DevToolsModuleTests {
     /// the two indicators must resolve to ONE project entry, not a duplicate
     /// per indicator file.
     @Test func discoverProjectsDeduplicatesIndicatorsOfSameType() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "pods-xcode-app",
             indicators: ["Podfile", "App.xcodeproj"],
             artifactDirectories: ["Pods", "build"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let matches = projects.filter { canonicalPath($0.path) == canonicalPath(projectDir) }
         #expect(matches.count == 1)
@@ -186,13 +197,13 @@ final class DevToolsModuleTests {
     /// A polyglot directory (e.g. Node + Rust) keeps one entry PER type, matching
     /// the pre-existing behavior of the hand-written indicator table.
     @Test func discoverProjectsKeepsSeparateEntriesPerType() async throws {
-        let projectDir = try makeProject(
+        let projectDir = try await makeProject(
             named: "polyglot-app",
             indicators: ["package.json", "Cargo.toml"],
             artifactDirectories: ["node_modules", "target"]
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         let types = Set(projects.filter { canonicalPath($0.path) == canonicalPath(projectDir) }.map(\.type))
         #expect(types == [.nodejs, .rust])
@@ -216,7 +227,7 @@ final class DevToolsModuleTests {
             withDestinationURL: URL(fileURLWithPath: "/System/Library")
         )
 
-        let projects = await discoveredProjects()
+        let projects = try await discoveredProjects()
 
         // The only artifact is unsafe, so the project must not surface at all.
         #expect(!projects.contains { canonicalPath($0.path) == canonicalPath(projectDir) })

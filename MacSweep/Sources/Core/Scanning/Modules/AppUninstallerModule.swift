@@ -237,44 +237,6 @@ actor LeftoverScanner {
         return leftovers
     }
 
-    /// Find orphaned leftovers (no matching app installed)
-    func findOrphanedLeftovers(installedBundleIDs: Set<String>) async -> [AppLeftover] {
-        var orphans: [AppLeftover] = []
-
-        for (baseURL, type) in leftoverLocations {
-            guard let contents = try? ScanFileSystem.contentsOfDirectory(
-                at: baseURL,
-                includingPropertiesForKeys: [.isDirectoryKey]
-            ) else { continue }
-
-            for item in contents {
-                // Skip if matches an installed app
-                let itemName = item.lastPathComponent.lowercased()
-                let matchesInstalled = installedBundleIDs.contains { bundleID in
-                    itemName.contains(bundleID.lowercased()) ||
-                    bundleID.lowercased().contains(itemName.replacingOccurrences(of: ".plist", with: ""))
-                }
-
-                if matchesInstalled { continue }
-
-                // Check if it looks like app data
-                if looksLikeAppData(item) {
-                    let size = (try? await DiskAnalyzer.size(of: item)) ?? 0
-                    guard size > 1024 else { continue }  // Skip tiny items
-
-                    orphans.append(AppLeftover(
-                        id: UUID(),
-                        path: item,
-                        size: size,
-                        type: type
-                    ))
-                }
-            }
-        }
-
-        return orphans
-    }
-
     private func scanForAppData(
         in baseURL: URL,
         matching bundleID: String,
@@ -401,21 +363,7 @@ actor LeftoverScanner {
         return mostSpecificOwners[0].id.lowercased()
     }
 
-    private func looksLikeAppData(_ url: URL) -> Bool {
-        let name = url.lastPathComponent
 
-        // Check for common app data patterns
-        if name.contains(".") && name.split(separator: ".").count >= 2 {
-            // Looks like a bundle ID (com.company.app)
-            return true
-        }
-
-        if name.hasSuffix(".plist") || name.hasSuffix(".savedState") {
-            return true
-        }
-
-        return false
-    }
 }
 
 // MARK: - App Uninstaller

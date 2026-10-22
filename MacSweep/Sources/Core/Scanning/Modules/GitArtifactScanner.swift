@@ -163,31 +163,23 @@ struct GitArtifactScanner: Sendable {
     }
 
     func discoverRepositoryRoots() -> [URL] {
-        let worktreeRoots = Set(Self.worktreeRoots(in: homeDirectory).map(\.path))
-        var roots: [URL] = []
-        var seen = Set<String>()
-
-        for path in candidateSearchPaths() {
-            for root in Self.repositoryRoots(in: path, maxDepth: maxDepth, skipHidden: !worktreeRoots.contains(path.standardizedFileURL.path)) {
-                let standardized = root.standardizedFileURL.path
-                if seen.insert(standardized).inserted {
-                    roots.append(root)
-                }
+        do {
+            let discovery = try DeveloperRepositoryDiscovery.discover(
+                searchPaths: searchPaths + Self.worktreeRoots(in: homeDirectory),
+                homeDirectory: homeDirectory, maxDepth: maxDepth)
+            for issue in discovery.issues {
+                ScanDiagnostics.current?.record(DevArtifactSafetyError(issue), at: homeDirectory)
             }
+            return discovery.roots
+        } catch {
+            ScanDiagnostics.current?.record(error, at: homeDirectory)
+            return []
         }
-
-        return roots
     }
 
     static func worktreeRoots(in home: URL) -> [URL] {
         [".codex/worktrees", ".claude/worktrees", ".agents/worktrees", ".grok/worktrees", ".t3/worktrees", "worktrees"].map {
             home.appending(path: $0).standardizedFileURL
-        }
-    }
-
-    private func candidateSearchPaths() -> [URL] {
-        (searchPaths + Self.worktreeRoots(in: homeDirectory)).filter {
-            ScanFileSystem.exists(atPath: $0.path)
         }
     }
 
@@ -295,44 +287,6 @@ struct GitArtifactScanner: Sendable {
     private func isStale(_ date: Date?) -> Bool {
         guard let date else { return false }
         return Date().timeIntervalSince(date) >= staleInterval
-    }
-
-    static func repositoryRoots(in baseURL: URL, maxDepth: Int, skipHidden: Bool) -> [URL] {
-        var roots: [URL] = []
-        let options: FileManager.DirectoryEnumerationOptions = skipHidden
-            ? [.skipsHiddenFiles, .skipsPackageDescendants]
-            : [.skipsPackageDescendants]
-
-        if isRepositoryRoot(baseURL) {
-            roots.append(baseURL)
-        }
-
-        guard let enumerator = ScanFileSystem.enumerator(
-            at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: options
-        ) else { return roots }
-
-        while let url = enumerator.nextObject() as? URL {
-            let depth = url.pathComponents.count - baseURL.pathComponents.count
-            if depth > maxDepth {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            let name = url.lastPathComponent
-            if shouldSkipDirectory(named: name) {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            if isRepositoryRoot(url) {
-                roots.append(url)
-                enumerator.skipDescendants()
-            }
-        }
-
-        return roots
     }
 
     static func parseWorktreeList(_ output: String) -> [GitWorktreeEntry] {
@@ -614,18 +568,6 @@ struct GitArtifactScanner: Sendable {
             || path.hasPrefix(home + "/.agents/worktrees/")
             || path.hasPrefix(home + "/.grok/worktrees/")
             || path.hasPrefix(home + "/.t3/worktrees/")
-    }
-
-    private static func isRepositoryRoot(_ url: URL) -> Bool {
-        ScanFileSystem.exists(atPath: url.appending(path: ".git").path)
-    }
-
-    private static func shouldSkipDirectory(named name: String) -> Bool {
-        let skipped: Set<String> = [
-            ".git", ".svn", "node_modules", "vendor", ".build", "build",
-            "Pods", "DerivedData", "Library", ".Trash", ".Trashes"
-        ]
-        return skipped.contains(name)
     }
 
     static func executablePath(for command: String) -> String? {

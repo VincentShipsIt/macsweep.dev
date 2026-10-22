@@ -5,12 +5,9 @@ struct AppUninstallerView: View {
     @EnvironmentObject var appState: AppState
     @State private var isLoading = false
     @State private var apps: [InstalledApp] = []
-    @State private var orphanedLeftovers: [AppLeftover] = []
     @State private var selectedApp: InstalledApp?
     @State private var searchText = ""
     @State private var showingUninstallConfirmation = false
-    @State private var showingCleanOrphansConfirmation = false
-    @State private var isCleaningOrphans = false
     @State private var errorMessage: String?
     @State private var sortOrder: AppUninstallerSortOrder = .name
     // Follow-up: adopt the shared `animated(_:value:)` reduce-motion helper from
@@ -33,12 +30,10 @@ struct AppUninstallerView: View {
     init(
         snapshotApps: [InstalledApp],
         snapshotSelectedApp: InstalledApp? = nil,
-        snapshotOrphans: [AppLeftover] = [],
         snapshotError: String? = nil
     ) {
         _apps = State(initialValue: snapshotApps)
         _selectedApp = State(initialValue: snapshotSelectedApp)
-        _orphanedLeftovers = State(initialValue: snapshotOrphans)
         _errorMessage = State(initialValue: snapshotError)
         disableAutoLoad = true
     }
@@ -132,11 +127,11 @@ struct AppUninstallerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isLoading)
 
-            // Orphaned leftovers section
-            if !orphanedLeftovers.isEmpty {
-                Divider()
-                orphanedSection
-            }
+            Divider()
+            Button("Review App Leftovers…") { appState.selectedFeature = .appLeftovers }
+                .glassButton()
+                .padding()
+                .help("Check ownership and age before reviewing data from removed apps.")
         }
         .frame(maxHeight: .infinity)
         .task {
@@ -182,56 +177,6 @@ struct AppUninstallerView: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedApp?.id)
     }
 
-    // MARK: - Orphaned Section
-
-    private var orphanedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-
-                Text("Orphaned Leftovers")
-                    .font(.headline)
-
-                Spacer()
-
-                Text("\(orphanedLeftovers.count) items")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-
-            Text("Files from uninstalled apps")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-
-            // Size summary
-            let totalSize = orphanedLeftovers.reduce(0) { $0 + $1.size }
-            Text(totalSize.formattedFileSize)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .padding(.horizontal)
-
-            Button("Clean Orphans") {
-                showingCleanOrphansConfirmation = true
-            }
-            .glassButton(prominent: true)
-            .tint(.orange)
-            .disabled(isCleaningOrphans || orphanedLeftovers.isEmpty)
-            .padding()
-        }
-        .background(MacSweepTheme.panel)
-        .cleanupReview(
-            isPresented: $showingCleanOrphansConfirmation,
-            items: orphanCleanupItems,
-            disposition: .trash,
-            note: "These files were attributed to apps that are no longer installed.",
-            onConfirm: { await cleanOrphans() }
-        )
-    }
-
     // MARK: - Actions
 
     private func loadApps() async {
@@ -252,9 +197,6 @@ struct AppUninstallerView: View {
 
         apps = loadedApps
 
-        // Find orphaned leftovers
-        let installedIDs = Set(apps.map(\.id))
-        orphanedLeftovers = await scanner.findOrphanedLeftovers(installedBundleIDs: installedIDs)
     }
 
     private func uninstallApp(_ app: InstalledApp, includeLeftovers: Bool) async -> CleanupResult? {
@@ -274,49 +216,13 @@ struct AppUninstallerView: View {
         }
     }
 
-    /// Trash the orphaned leftovers through ScanEngine so the full safety pipeline
-    /// (per-item SafetyChecker + aggregate DeletionGuard cap) vets each path — the
-    /// same route the other GUI cleanups take. A blocked delete throws and surfaces
-    /// in the error banner rather than failing silently.
-    private func cleanOrphans() async -> CleanupResult? {
-        isCleaningOrphans = true
-        defer { isCleaningOrphans = false }
-
-        do {
-            let result = try await ScanEngine().clean(
-                items: orphanCleanupItems,
-                dryRun: false,
-                confirmedLargeDeletion: true
-            )
-            errorMessage = nil
-            orphanedLeftovers = []
-            // Re-scan so anything the safety pipeline refused stays visible.
-            await loadApps()
-            return result
-        } catch {
-            errorMessage = "Couldn't clean orphaned leftovers: \(error.localizedDescription)"
-            return nil
-        }
-    }
-
     // MARK: - Computed
 
     private var filteredApps: [InstalledApp] {
         apps.appList(matching: searchText, sortedBy: sortOrder)
     }
 
-    private var orphanCleanupItems: [CleanupItem] {
-        orphanedLeftovers.map { leftover in
-            CleanupItem(
-                id: leftover.id,
-                path: leftover.path,
-                size: leftover.size,
-                type: .directory,
-                module: "app-uninstaller",
-                moduleName: "App Uninstaller"
-            )
-        }
-    }
+
 }
 
 // MARK: - App List Row

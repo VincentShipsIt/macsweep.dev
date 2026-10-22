@@ -45,7 +45,7 @@ struct CacheAnalyzer {
 
     /// Mirrors the GUI `CacheCategory` raw values so JSON output is identical
     /// across the app and CLI.
-    enum Category: String {
+    enum Category: String, Sendable {
         case electronChromium = "Electron/Chromium"
         case packageManager = "Package Manager"
         case devDebugLogs = "Dev Debug Logs"
@@ -53,7 +53,7 @@ struct CacheAnalyzer {
         case other = "Other"
     }
 
-    struct Finding {
+    struct Finding: Sendable {
         let path: String
         /// Exact on-disk size when the finding comes from the deterministic fast
         /// scan; `nil` for AI findings, whose sizes are free-text estimates.
@@ -108,6 +108,10 @@ struct CacheAnalyzer {
             }
         }
 
+        findings.removeAll {
+            let path = URL(fileURLWithPath: $0.path.expandingTilde)
+            return EditorCleanupOwnership.overlaps(path) || DeveloperCleanupOwnership.owner(of: path) != nil
+        }
         return Result(findings: findings, fastCount: fast.findings.count, aiRan: aiRan, errors: errors)
     }
 
@@ -122,7 +126,6 @@ struct CacheAnalyzer {
         "*/Library/Application Support/*/DawnWebGPUCache",
         "*/Library/Application Support/*/DawnGraphiteCache",
         "*/Library/Application Support/*/ShaderCache",
-        "*/vm_bundles/warm",
         "*/.npm/_cacache",
         "*/.npm/_npx",
         "*/.npm/_logs",
@@ -155,13 +158,15 @@ struct CacheAnalyzer {
             findArguments.append(contentsOf: ["-path", pattern])
         }
         findArguments.append(contentsOf: [")", "-type", "d", "-prune", "-print0"])
+        let arguments = findArguments
 
-        return await Task.detached(priority: .userInitiated) {
+        do {
+            return try await DevArtifactIO.runAsync {
             let output = await Self.bestEffortPipelineOutput(
                 stages: [
                     ProcessPipelineStage(
                         executable: "/usr/bin/find",
-                        arguments: findArguments
+                        arguments: arguments
                     ),
                     ProcessPipelineStage(
                         executable: "/usr/bin/xargs",
@@ -175,7 +180,8 @@ struct CacheAnalyzer {
                 timeout: Self.fastScanTimeout
             )
             return (Self.parseFastScanOutput(output.output), output.error)
-        }.value
+            }
+        } catch { return ([], "Cache inspection incomplete: \(error.localizedDescription)") }
     }
 
     /// Pure transform of `du -sk` tab-separated output (KiB + path) into findings.
@@ -187,7 +193,9 @@ struct CacheAnalyzer {
             guard parts.count == 2 else { return nil }
             let size = parts[0].trimmingCharacters(in: .whitespaces)
             let path = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !path.isEmpty, !isConversationHistory(path), let kibibytes = Int64(size),
+            guard !path.isEmpty, !isConversationHistory(path),
+                  !EditorCleanupOwnership.overlaps(URL(fileURLWithPath: path)),
+                  DeveloperCleanupOwnership.owner(of: URL(fileURLWithPath: path)) == nil, let kibibytes = Int64(size),
                   kibibytes >= 0, kibibytes <= Int64.max / 1024 else { return nil }
             let bytes = kibibytes * 1024
             return Finding(
@@ -226,7 +234,8 @@ struct CacheAnalyzer {
     // MARK: - AI Scan
 
     private func largestApplicationSupportDirectories() async -> (output: String, error: String?) {
-        await Task.detached(priority: .userInitiated) {
+        do {
+            return try await DevArtifactIO.runAsync {
             // Replaces `du -sh ~/Library/Application\ Support/*/ | sort -rh | head -50`.
             // The shell glob `*/` is expanded here to immediate, non-hidden
             // subdirectories so no path is ever passed through a shell.
@@ -264,7 +273,8 @@ struct CacheAnalyzer {
                 .split(separator: "\n", omittingEmptySubsequences: false)
                 .prefix(50)
                 .joined(separator: "\n"), output.error)
-        }.value
+            }
+        } catch { return ("", "Application Support inspection incomplete: \(error.localizedDescription)") }
     }
 
     static func bestEffortPipelineOutput(
@@ -291,7 +301,7 @@ struct CacheAnalyzer {
         \(dirList)
 
         Identify safe-to-delete cache directories. Categories:
-        1. Electron/Chromium: "Code Cache", "GPUCache", "DawnWebGPUCache", "DawnGraphiteCache", "ShaderCache", "warm" in "vm_bundles/"
+        1. Electron/Chromium: "Code Cache", "GPUCache", "DawnWebGPUCache", "DawnGraphiteCache", "ShaderCache"
         2. Package Manager: .npm/_cacache, .npm/_npx, .bun/install/cache, .yarn/cache, .pnpm-store, .cache/pip, .cache/uv
         3. Dev Debug Logs: dotdir's "debug", "log", "logs"
         4. AI Tool Caches: .claude/debug, .claude/paste-cache, .claude/telemetry, .claude/shell-snapshots
@@ -452,6 +462,9 @@ struct CacheAnalyzer {
 
     private static func isConversationHistory(_ path: String) -> Bool {
         let components = URL(fileURLWithPath: path.expandingTilde).standardized.pathComponents.map { $0.lowercased() }
+        if components.contains(where: { ["vm_bundles", "claude-code-vm", "local-agent-mode-sessions"].contains($0) }) {
+            return true
+        }
         for (index, component) in components.enumerated() where index + 1 < components.count {
             if component == ".codex", ["sessions", "archived_sessions"].contains(components[index + 1]) { return true }
             if component == ".claude", components[index + 1] == "projects" { return true }
