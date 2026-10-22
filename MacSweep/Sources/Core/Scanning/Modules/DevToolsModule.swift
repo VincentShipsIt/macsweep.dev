@@ -1,176 +1,137 @@
 import Foundation
 
-/// Module for cleaning up developer tool artifacts
 struct DevToolsModule: ScanModule {
     static let defaultMaxDepth = 6
-
     let id = "dev-tools"
     let name = "Developer Tools"
-    let description = "Clean node_modules, DerivedData, build artifacts"
+    let description = "Review generated build artifacts and developer caches"
     let icon = "wrench.and.screwdriver"
-
-    /// Search paths for dev artifacts
-    var searchPaths: [URL] = [
-        FileManager.default.homeDirectoryForCurrentUser
-    ]
-
-    /// Maximum depth to search for projects
+    var searchPaths: [URL] = [FileManager.default.homeDirectoryForCurrentUser]
+    var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     var maxDepth: Int = Self.defaultMaxDepth
+    var minimumDirectorySize: Int64 = 1_048_576
+    var includesSystemCaches = true
+    var safety = DevArtifactSafety()
+    var remove: @Sendable (URL) throws -> Void = { try CleanupFileRemover.recoverable($0, module: "dev-tools") }
 
-    func scan() async throws -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
-        let patterns = DevArtifactPattern.allPatterns
-
-        for searchPath in searchPaths.flatMap({ DeveloperScanRoots.paths(in: $0) }) {
-            let found = await scanForPatterns(patterns, in: searchPath)
-            items.append(contentsOf: found)
-        }
-
-        // Fixed Xcode / tooling cache locations under ~/Library, gated by the
-        // shared exists+size helper.
-        //
-        // npm / pnpm / Bun / pip / cargo / Homebrew caches are intentionally NOT
-        // scanned here. PackageManagerModule already covers them with correctly
-        // SCOPED paths (~/.npm/_cacache, ~/.cargo/registry/cache, …). DevTools
-        // previously registered the broad parents (whole ~/.npm, all of
-        // ~/.cargo/registry — which also holds the `src/` tarballs cargo needs),
-        // double-counting the same bytes and risking over-deletion.
-        let library = URL.libraryDirectory
-        let fixedTargets: [(path: String, name: String)] = [
-            ("Developer/Xcode/DerivedData", "Xcode DerivedData"),
-            ("Developer/Xcode/Archives", "Xcode Archives"),
-            ("Developer/Xcode/iOS DeviceSupport", "iOS Device Support"),
-            ("Caches/ms-playwright", "Playwright Browsers"),
-            ("Developer/CoreSimulator/Devices", "iOS Simulators"),
-        ]
-        for target in fixedTargets {
-            if let item = await scanCacheDirectory(at: library.appending(path: target.path), moduleName: target.name) {
-                items.append(item)
-            }
-        }
-
-        var seen = Set<String>()
-        return items.filter { seen.insert($0.path.standardizedFileURL.path).inserted }.sorted { $0.size > $1.size }
+    private struct Candidate: Sendable {
+        let url: URL
+        let name: String
+        let type: CleanupItem.ItemType
     }
 
-    private func scanForPatterns(_ patterns: [DevArtifactPattern], in baseURL: URL) async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-
-        guard let enumerator = ScanFileSystem.enumerator(
-            at: baseURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsPackageDescendants]
-        ) else { return [] }
-
-        while let url = enumerator.nextObject() as? URL {
-            if Task.isCancelled { return items }
-            // Depth is derived inline from path components on each visit.
-            let pathComponents = url.pathComponents.count - baseURL.pathComponents.count
-            if pathComponents > maxDepth {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            // Skip certain directories to speed up scanning
-            let name = url.lastPathComponent
-            if name == ".git" || name == ".svn" || name == "Library"
-                || (name.hasPrefix(".") && !patterns.contains(where: { $0.directoryName == name })) {
-                enumerator.skipDescendants()
-                continue
-            }
-
-            // Check against patterns
-            for pattern in patterns {
-                if pattern.matches(url) {
-                    // Safety check
-                    let checker = SafetyChecker()
-                    guard checker.validateForScan(url, moduleID: id).isSafe else { continue }
-
-                    let size = (try? await DiskAnalyzer.directorySize(at: url)) ?? 0
-                    guard size > 1_048_576 else { continue }  // Skip if < 1MB
-
-                    // Skip artifacts whose project shows recent activity: a build
-                    // may be in progress, and removing artifacts mid-build can
-                    // corrupt it. Regenerable and removed to Trash, so this is
-                    // best-effort hardening, not a data-loss stop.
-                    if Self.projectHasRecentActivity(forArtifactAt: url) {
-                        enumerator.skipDescendants()
-                        break
+    func scan() async throws -> [CleanupItem] {
+        let processes = try await safety.processSnapshot()
+        let candidates = try await DevArtifactIO.run {
+            let roots = searchPaths.flatMap { DeveloperScanRoots.paths(in: $0, homeDirectory: homeDirectory) }
+            let specialRoots = Set(GitArtifactScanner.worktreeRoots(in: homeDirectory).map(\.path))
+            var found: [Candidate] = []
+            var inspected = 0
+            let deadline = ProcessInfo.processInfo.systemUptime + 15
+            for root in roots {
+                guard
+                    let enumerator = ScanFileSystem.enumerator(
+                        at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                        options: [.skipsPackageDescendants]
+                    )
+                else { continue }
+                while let url = enumerator.nextObject() as? URL {
+                    inspected += 1
+                    guard inspected <= 500_000, ProcessInfo.processInfo.systemUptime < deadline else {
+                        throw DevArtifactSafetyError(
+                            "Developer artifact discovery exceeded its safety limit. Narrow the scan roots.")
                     }
-
-                    items.append(CleanupItem(
-                        id: UUID(),
-                        path: url,
-                        size: size,
-                        type: .directory,
-                        module: id,
-                        moduleName: pattern.name,
-                        lastModified: try? url.resourceValues(
-                            forKeys: [.contentModificationDateKey]
-                        ).contentModificationDate
-                    ))
-
-                    // Don't descend into matched directories
-                    enumerator.skipDescendants()
-                    break
+                    let depth = enumerator.level
+                    if depth > maxDepth { enumerator.skipDescendants(); continue }
+                    let name = url.lastPathComponent
+                    let pattern = DevArtifactPattern.allPatterns.first { $0.matches(url) }
+                    if [".git", ".svn", ".hg", "Library", ".Trash"].contains(name)
+                        || name.hasPrefix(".") && pattern == nil
+                            && !(depth == 1 && specialRoots.contains(root.standardizedFileURL.path))
+                    {
+                        enumerator.skipDescendants()
+                        continue
+                    }
+                    if let pattern {
+                        found.append(
+                            Candidate(
+                                url: url, name: pattern.name,
+                                type: pattern.fileExtension == nil ? .directory : .file))
+                        enumerator.skipDescendants()
+                    } else if ["node_modules", "vendor", "Pods", "target", "build", "dist"].contains(name) {
+                        enumerator.skipDescendants()
+                    }
                 }
             }
+            return found
         }
-
-        return items
+        var items: [CleanupItem] = []
+        var seen = Set<String>()
+        var targets = candidates
+        if includesSystemCaches {
+            targets += DevArtifactSafety.fixedTargets(in: safety.libraryDirectory).map {
+                Candidate(url: $0.path, name: $0.name, type: .directory)
+            }
+        }
+        for target in targets {
+            let (url, title, type) = (target.url, target.name, target.type)
+            try Task.checkCancellation()
+            guard ScanFileSystem.exists(atPath: url.path),
+                seen.insert(url.standardizedFileURL.path).inserted
+            else { continue }
+            let receipt = await safety.assess(url, processes: processes)
+            let size: Int64
+            do {
+                size =
+                    type == .file
+                    ? Int64(try url.scanResourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+                    : try await DiskAnalyzer.directorySize(at: url)
+            } catch { ScanDiagnostics.current?.record(error, at: url); continue }
+            guard size > (type == .file ? 0 : minimumDirectorySize) else { continue }
+            let date = try? url.scanResourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let item = CleanupItem(
+                id: UUID(), path: url, size: size, type: type, module: id, moduleName: title,
+                lastModified: date, contentModificationDate: date,
+                cleanupReviewReason: receipt.isEligible ? nil : receipt.reason,
+                devArtifactReceipt: receipt)
+            if SafetyChecker().validateForScan(item, moduleID: id).isSafe { items.append(item) }
+        }
+        return items.sorted { $0.size > $1.size }
     }
 
     func clean(items: [CleanupItem], dryRun: Bool) async throws -> CleanupResult {
-        await cleanItems(items, dryRun: dryRun) { item, _ in
-            try CleanupFileRemover.recoverable(item.path, module: item.module)
-        }
-    }
-
-    /// A project is "active" if a source/config file was modified within this
-    /// window. 3 days spans a normal work break (e.g. a weekend).
-    static let activeProjectWindow: TimeInterval = 3 * 24 * 60 * 60
-
-    /// Directory names that are themselves regenerable build artifacts — their
-    /// mtime bumps on every build, so they're excluded from the activity signal.
-    private static let artifactDirectoryNames: Set<String> =
-        Set(DevArtifactPattern.allPatterns.map(\.directoryName))
-
-    /// True if the artifact's project root shows recent activity.
-    ///
-    /// Cheap shallow heuristic: the newest content-modification date among the
-    /// parent directory's direct children, skipping regenerable artifact
-    /// directories and VCS metadata (both churn independently of real work). A
-    /// recently touched `package.json`, lockfile, or top-level source file trips
-    /// it. Deep edits that touch no root-level file are not detected — acceptable
-    /// for a best-effort, Trash-recoverable gate that avoids walking whole trees
-    /// mid-scan.
-    static func projectHasRecentActivity(forArtifactAt artifactURL: URL) -> Bool {
-        let parent = artifactURL.deletingLastPathComponent()
-        guard let entries = try? ScanFileSystem.contentsOfDirectory(
-            at: parent,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: []
-        ) else { return false }
-
-        let skip = artifactDirectoryNames.union([".git", ".svn", ".hg", ".DS_Store"])
-        let cutoff = Date().addingTimeInterval(-activeProjectWindow)
-
-        for entry in entries {
-            if skip.contains(entry.lastPathComponent) { continue }
-            if let modified = try? entry.resourceValues(
-                forKeys: [.contentModificationDateKey]
-            ).contentModificationDate, modified > cutoff {
-                return true
-            }
-        }
-        return false
+        await cleanItems(
+            items, dryRun: dryRun, errorMessage: { $0.localizedDescription },
+            remove: { item, checker in
+                guard let scanned = item.devArtifactReceipt, let expected = scanned.identity, scanned.isEligible else {
+                    throw DevArtifactSafetyError("A verified artifact scan is required before cleanup.")
+                }
+                let fresh = await safety.assess(item.path, expected: expected, checker: checker)
+                guard fresh.isEligible else { throw DevArtifactSafetyError(fresh.reason) }
+                guard fresh.content == scanned.content else {
+                    throw DevArtifactSafetyError("Artifact contents changed since scanning. Rescan before cleanup.")
+                }
+                try await DevArtifactIO.run {
+                    // Keep the final content/identity checks and Trash on one utility task.
+                    guard try DevArtifactIdentity.read(item.path) == expected,
+                        try DevArtifactContent.validateTree(
+                            item.path,
+                            genericOutput: ["dist", "build"].contains(item.path.lastPathComponent),
+                            checker: checker) == fresh.content,
+                        checker.validateForCleanup(item.path, moduleID: id, itemType: item.type).isSafe
+                    else {
+                        throw DevArtifactSafetyError("Target changed immediately before cleanup and was retained.")
+                    }
+                    try fresh.gitEvidence?.validate()
+                    try remove(item.path)
+                }
+            })
     }
 }
 
 // MARK: - Dev Artifact Patterns
 
-struct DevArtifactPattern {
+struct DevArtifactPattern: Sendable {
     let name: String
     let directoryName: String
     let siblingIndicators: [String]  // Files that indicate this is a project root
@@ -179,9 +140,14 @@ struct DevArtifactPattern {
     /// .pnpm-store) that aren't tied to a single project root and so never appear
     /// in the per-project breakdown.
     let projectType: ProjectType?
+    var fileExtension: String?
 
     func matches(_ url: URL) -> Bool {
-        guard url.lastPathComponent == directoryName else { return false }
+        if let fileExtension {
+            guard url.pathExtension == fileExtension else { return false }
+        } else {
+            guard url.lastPathComponent == directoryName else { return false }
+        }
 
         // Check for sibling files that indicate a project root
         let parent = url.deletingLastPathComponent()
@@ -201,8 +167,8 @@ struct DevArtifactPattern {
     /// file literally named `*.csproj` and never match. For a `*.ext` glob we
     /// enumerate the directory and match by suffix; everything else keeps the fast
     /// exact-name `fileExists` path.
-    private static func parentContainsFile(matching glob: String, in parent: URL) -> Bool {
-        guard glob.hasPrefix("*.") else {
+    static func parentContainsFile(matching glob: String, in parent: URL) -> Bool {
+        guard glob.contains("*") else {
             return ScanFileSystem.exists(atPath: parent.appending(path: glob).path)
         }
         let entries = (try? ScanFileSystem.contentsOfDirectory(atPath: parent.path)) ?? []
@@ -212,8 +178,10 @@ struct DevArtifactPattern {
     /// Whether `filename` satisfies an indicator entry: exact name, or suffix
     /// match for the "*.ext" glob form the .NET/Xcode indicators use.
     static func indicator(_ indicator: String, matchesFilename filename: String) -> Bool {
-        guard indicator.hasPrefix("*.") else { return filename == indicator }
-        return filename.hasSuffix(String(indicator.dropFirst(1)))   // "*.csproj" -> ".csproj"
+        guard let wildcard = indicator.firstIndex(of: "*") else { return filename == indicator }
+        let prefix = String(indicator[..<wildcard])
+        let suffix = String(indicator[indicator.index(after: wildcard)...])
+        return filename.count >= prefix.count + suffix.count && filename.hasPrefix(prefix) && filename.hasSuffix(suffix)
     }
 
     /// Project type for a file that marks a project root, derived from
@@ -239,7 +207,7 @@ struct DevArtifactPattern {
     static func artifactDirectories(for type: ProjectType) -> [String] {
         var seen = Set<String>()
         var directories: [String] = []
-        for pattern in allPatterns where pattern.projectType == type {
+        for pattern in allPatterns where pattern.projectType == type && pattern.fileExtension == nil {
             if seen.insert(pattern.directoryName).inserted {
                 directories.append(pattern.directoryName)
             }
@@ -258,6 +226,9 @@ struct DevArtifactPattern {
     ]
 
     static let allPatterns: [DevArtifactPattern] = [
+        DevArtifactPattern(name: "TypeScript build info", directoryName: "tsbuildinfo",
+                           siblingIndicators: ["tsconfig*.json", "package.json"], projectType: .nodejs,
+                           fileExtension: "tsbuildinfo"),
         // JavaScript/TypeScript
         DevArtifactPattern(
             name: "node_modules",
@@ -402,7 +373,7 @@ struct DevArtifactPattern {
         DevArtifactPattern(
             name: "Next.js build",
             directoryName: ".next",
-            siblingIndicators: ["next.config.js", "next.config.mjs", "next.config.ts"],
+            siblingIndicators: ["next.config.js", "next.config.mjs", "next.config.ts", "package.json"],
             projectType: .nodejs
         ),
 
@@ -661,6 +632,21 @@ actor ProjectScanner {
     /// carrying two indicator files of the same type (Podfile + *.xcodeproj) is
     /// one project; indicators of different types (package.json + Cargo.toml)
     /// keep one entry per type, as the old hand-written table did.
+    static func projects(from items: [CleanupItem]) -> [ProjectInfo] {
+        var grouped: [String: [CleanupItem]] = [:]
+        for item in items {
+            guard let receipt = item.devArtifactReceipt, let type = receipt.projectType else { continue }
+            grouped[receipt.project.standardizedFileURL.path + "|" + type.rawValue, default: []].append(item)
+        }
+        return grouped.values.compactMap { artifacts in
+            guard let receipt = artifacts.first?.devArtifactReceipt, let type = receipt.projectType else { return nil }
+            var project = ProjectInfo(path: receipt.project, type: type, artifactPaths: artifacts.map(\.path))
+            project.artifactSize = artifacts.reduce(0) { $0 + $1.size }
+            project.lastModified = artifacts.compactMap(\.contentModificationDate).max()
+            return project
+        }.sorted { $0.artifactSize > $1.artifactSize }
+    }
+
     func discoverProjects(
         in baseURL: URL,
         maxDepth: Int = ProjectScanner.defaultMaxDepth

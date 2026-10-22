@@ -266,6 +266,8 @@ struct BuildArtifactsView: View {
                 }
             }
 
+            DeveloperActivityPanel(items: allCleanupItems) { await scan() }
+
             if let gitToolStatus {
                 HStack(spacing: 8) {
                     Label(
@@ -323,6 +325,7 @@ struct BuildArtifactsView: View {
                     ForEach(systemArtifacts) { item in
                         ArtifactRow(item: item, isSelected: selectedItems.contains(item.id))
                             .tag(item.id)
+                            .selectionDisabled(item.devArtifactReceipt?.isEligible != true)
                     }
                 }
             }
@@ -382,6 +385,7 @@ struct BuildArtifactsView: View {
                     ForEach(allCleanupItems) { item in
                         ArtifactRow(item: item, isSelected: selectedItems.contains(item.id))
                             .tag(item.id)
+                            .selectionDisabled(item.devArtifactReceipt?.isEligible != true)
                     }
                 }
             }
@@ -418,7 +422,7 @@ struct BuildArtifactsView: View {
                         HStack(spacing: 2) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.caption2)
-                            Text("\(recentlyModifiedCount) active")
+                            Text("\(recentlyModifiedCount) recently edited")
                                 .font(.caption2)
                         }
                         .foregroundStyle(.orange)
@@ -436,7 +440,7 @@ struct BuildArtifactsView: View {
 
             // Quick actions
             Button("Select All") {
-                selectedItems = Set(allCleanupItems.map(\.id))
+                selectedItems = Set(allCleanupItems.filter { $0.devArtifactReceipt?.isEligible == true }.map(\.id))
                 selectedGitItems = Set(gitArtifacts.map(\.id))
             }
             .glassButton()
@@ -485,8 +489,8 @@ struct BuildArtifactsView: View {
         }
         if recentlyModifiedCount > 0 {
             sections.insert(
-                "Warning: \(recentlyModifiedCount) selected project(s) were modified recently " +
-                "and may be in active development.",
+                "\(recentlyModifiedCount) selected project(s) have recent edits. " +
+                "Live jobs and generated content are checked again before cleanup.",
                 at: 0
             )
         }
@@ -520,14 +524,13 @@ struct BuildArtifactsView: View {
         }
         do {
             _ = try await ScanDiagnostics.collect {
-                projects = await ProjectScanner().discoverProjects(in: FileManager.default.homeDirectoryForCurrentUser)
                 try Task.checkCancellation()
                 scanState.scanStage = "Measuring build artifacts…"
-                projectCleanupItems = await buildCleanupItems(for: projects)
-                try Task.checkCancellation()
-                systemArtifacts = try await DevToolsModule().scan()
-                let projectPaths = Set(projects.flatMap(\.artifactPaths).map(\.path))
-                systemArtifacts = systemArtifacts.filter { !projectPaths.contains($0.path.path) }
+                let artifacts = try await DevToolsModule().scan()
+                projects = ProjectScanner.projects(from: artifacts)
+                let projectPaths = Set(projects.flatMap(\.artifactPaths).map { $0.standardizedFileURL.path })
+                projectCleanupItems = artifacts.filter { projectPaths.contains($0.path.standardizedFileURL.path) }
+                systemArtifacts = artifacts.filter { !projectPaths.contains($0.path.standardizedFileURL.path) }
                 scanState.scanStage = "Inspecting Git branches and worktrees…"
                 let gitScanner = GitArtifactScanner()
                 gitToolStatus = await gitScanner.toolStatus()
@@ -577,7 +580,8 @@ struct BuildArtifactsView: View {
         // Also include system artifacts (DerivedData, etc.) that are safe
         let systemIds = Set(systemArtifacts.map(\.id))
 
-        selectedItems = staleProjectIds.union(systemIds)
+        let eligible = Set(allCleanupItems.filter { $0.devArtifactReceipt?.isEligible == true }.map(\.id))
+        selectedItems = staleProjectIds.union(systemIds).intersection(eligible)
         selectedGitItems = Set(gitArtifacts.map(\.id))
     }
 
@@ -661,7 +665,7 @@ struct BuildArtifactsView: View {
     }
 
     private var selectedCleanupItems: [CleanupItem] {
-        allCleanupItems.filter { selectedItems.contains($0.id) }
+        allCleanupItems.filter { selectedItems.contains($0.id) && $0.devArtifactReceipt?.isEligible == true }
     }
 
     private var selectedGitCleanupItems: [GitCleanupItem] {
@@ -688,26 +692,8 @@ struct BuildArtifactsView: View {
     }
 
     private func cleanupItemIDs(for project: ProjectInfo) -> Set<UUID> {
-        Set(projectCleanupItems.filter { project.artifactPaths.contains($0.path) }.map(\.id))
-    }
-
-    private func buildCleanupItems(for projects: [ProjectInfo]) async -> [CleanupItem] {
-        var items: [CleanupItem] = []
-        for project in projects {
-            for path in project.artifactPaths {
-                let size = (try? await DiskAnalyzer.directorySize(at: path)) ?? 0
-                let lastModified = try? path.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-                items.append(CleanupItem(
-                    id: UUID(),
-                    path: path,
-                    size: size,
-                    type: .directory,
-                    module: "dev-tools",
-                    moduleName: "\(project.type.rawValue) - \(project.name)",
-                    lastModified: lastModified
-                ))
-            }
-        }
-        return items
+        Set(projectCleanupItems.filter {
+            project.artifactPaths.contains($0.path) && $0.devArtifactReceipt?.isEligible == true
+        }.map(\.id))
     }
 }

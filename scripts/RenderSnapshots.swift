@@ -174,7 +174,17 @@ struct SnapshotRenderer {
         let trashItems = sampleTrashItems()
         let trashSelection = Set(trashItems.prefix(2).map(\.id))
 
+        let protectedArtifact = developerActivityFixture()
+
         return [
+            ("developer-activity-protection", wrap(
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("Developer Tools").font(.largeTitle)
+                    DeveloperActivityPanel(items: [protectedArtifact]) {}
+                    ArtifactRow(item: protectedArtifact, isSelected: false)
+                    Spacer()
+                }.padding(32), appState: AppState()
+            )),
             ("cleanup-history-results", wrap(
                 CleanupHistoryView(snapshotRuns: sampleCleanupHistory()),
                 appState: AppState()
@@ -254,6 +264,24 @@ struct SnapshotRenderer {
                 appState: AppState()
             )),
         ]
+    }
+
+    static func developerActivityFixture() -> CleanupItem {
+        let project = URL(fileURLWithPath: "/Users/example/Projects/app")
+        let compiler = DevProcessJob(
+            identity: DevProcessIdentity(pid: 1234, seconds: 1, microseconds: 0, executable: "/tools/swiftc"),
+            parentPID: 1, directory: project, arguments: ["swiftc", "build"], openFiles: [],
+            sharedDependencies: [], inspectionIssue: nil)
+        let importer = DevProcessJob(
+            identity: DevProcessIdentity(pid: 5678, seconds: 2, microseconds: 0, executable: "/tools/python3"),
+            parentPID: 1, directory: project, arguments: ["python3", "import-data.py"], openFiles: [],
+            sharedDependencies: [], inspectionIssue: nil)
+        let receipt = DevArtifactReceipt(identity: nil, project: project,
+            reason: "In use by swiftc (PID 1234) and python3 (PID 5678). Retained until a fresh scan.",
+            blockers: [compiler, importer], isEligible: false, projectType: .swift)
+        return CleanupItem(id: UUID(), path: project.appendingPathComponent(".build"), size: 536_870_912,
+                           type: .directory, module: "dev-tools", moduleName: "Swift .build",
+                           cleanupReviewReason: receipt.reason, devArtifactReceipt: receipt)
     }
 
     static func sampleCleanupHistory() -> [CleanupHistoryRun] {

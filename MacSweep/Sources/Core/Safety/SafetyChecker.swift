@@ -105,6 +105,9 @@ struct SafetyChecker: Sendable {
             case .scan:
                 return validate(path, context: .scan(moduleID: owner, itemType: type))
             case .cleanup:
+                if owner == "dev-tools", let receipt = item.devArtifactReceipt, !receipt.isEligible {
+                    return .unknown(reason: receipt.reason)
+                }
                 return validate(path, context: .cleanup(moduleID: owner, itemType: type))
             }
         case .action(let action):
@@ -410,6 +413,12 @@ struct SafetyChecker: Sendable {
         if context.moduleID == Self.aiAnalysisModuleID,
            isUnder(normalizedPath, anyOf: Self.aiAnalysisCacheRoots)
                || isUnder(normalizedPath, anyOf: Self.packageManagerCacheRoots) {
+            return .safe
+        }
+
+        // The module still requires a captured receipt and fresh Git/content/activity
+        // verification before mutating any build-info file.
+        if context.moduleID == "dev-tools", context.itemType == .file, filename.hasSuffix(".tsbuildinfo") {
             return .safe
         }
 
