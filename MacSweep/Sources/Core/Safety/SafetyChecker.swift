@@ -105,6 +105,9 @@ struct SafetyChecker: Sendable {
             case .scan:
                 return validate(path, context: .scan(moduleID: owner, itemType: type))
             case .cleanup:
+                if let receipt = item.managedCleanupReceipt, !receipt.isEligible {
+                    return .unknown(reason: receipt.retentionReason ?? "Target retained")
+                }
                 if owner == "dev-tools", let receipt = item.devArtifactReceipt, !receipt.isEligible {
                     return .unknown(reason: receipt.reason)
                 }
@@ -368,6 +371,15 @@ struct SafetyChecker: Sendable {
             case .cleanup where profile.allowsCloudCleanup: return .safe
             default: break
             }
+        }
+
+        if context.moduleID == "developer-cli-logs", DeveloperCLILogsModule.isLogPath(standardized) {
+            return .safe
+        }
+
+        if context.mode == .cleanup, context.moduleID != "package-managers",
+            PackageManagerModule.overlapsCache(URL(fileURLWithPath: path)) {
+            return .unknown(reason: "Package cache requires its lock-aware Package Managers adapter.")
         }
 
         // 6. Longest-prefix arbitration: a path may sit under both a protected root
@@ -776,6 +788,7 @@ struct ProtectedPaths {
     static let packageManagerCacheRoots: Set<String> = [
         "~/.npm/_cacache",
         "~/.npm/_logs",
+        "~/.cache/uv",
         "~/.yarn/cache",
         "~/Library/pnpm/store",
         "~/.bun/install/cache",

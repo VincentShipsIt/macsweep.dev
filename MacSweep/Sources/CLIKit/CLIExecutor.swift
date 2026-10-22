@@ -37,6 +37,12 @@ public enum CLIExecutor {
 
         case .apply(let request, let yes, let format):
             let plan = try await service.prepareCleanup(request: request)
+            for finding in plan.scan.findings where finding.reviewReason == nil {
+                if let details = finding.actionDetails {
+                    let line = "Cleanup preview: \(finding.path)\n\(details)\n"
+                    FileHandle.standardError.write(Data(line.utf8))
+                }
+            }
             if !yes {
                 try confirmCleanup(plan.cleanupPreview)
             }
@@ -540,6 +546,7 @@ public enum CLIExecutor {
                     }
                     let size = $0.size.formattedFileSize
                     return "  - [\($0.module)] \($0.path) (\(size))\(status)"
+                        + ($0.actionDetails.map { "\n    Action: " + $0 } ?? "")
                 })
             }
 
@@ -914,7 +921,7 @@ public enum CLIExecutor {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         let size = formatter.string(fromByteCount: preview.bytesFreed)
-        try confirm("Proceed to clean \(preview.itemsProcessed) items and reclaim \(size)?")
+        try confirm("Proceed with the declared actions for \(preview.itemsProcessed) items (estimated processed size \(size))?")
     }
 
     /// Generic interactive confirmation gate for destructive/external commands.

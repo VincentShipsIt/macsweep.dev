@@ -197,6 +197,7 @@ actor ScanEngine {
 
             // Developer
             PackageManagerModule(),
+            DeveloperCLILogsModule(),
             DockerModule(),
             NetworkModule(),
         ]

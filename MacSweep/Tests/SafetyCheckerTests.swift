@@ -112,13 +112,14 @@ struct SafetyCheckerTests {
 
     @Test func aiAnalysisCachesAllowedForAIAnalysisModule() {
         for path in ["~/.npm/_npx/abc", "~/.cache/pip/http", "~/.claude/debug/x.log",
-                     "~/.codex/log/session", "~/.m2/repository/org"] {
+                     "~/.codex/log/session"] {
             #expect(checker.validateForCleanup(url(path), moduleID: "ai-analysis").isSafe,
                     "\(path) should be cleanable by ai-analysis")
         }
     }
 
     @Test func aiAnalysisCachesBlockedForOtherModuleAndSensitiveStillBlocked() {
+        #expect(!checker.validateForCleanup(url("~/.m2/repository/org"), moduleID: "ai-analysis").isSafe)
         // Same paths are NOT cleanable without the ai-analysis module id …
         #expect(!checker.validateForCleanup(url("~/.claude/debug/x.log"), moduleID: "system-cache").isSafe)
         // … and a sensitive file inside an allowed root is still blocked.

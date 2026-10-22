@@ -334,6 +334,11 @@ struct BrowserResultCard: View {
                             }
                         }
 
+                        if let reason = BrowserLiveCleanupCapability.retentionReason(browserID: result.browserName == "Brave" ? "browser-brave" : "", running: result.isRunning) {
+                            Text(reason).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
                         Text("\(result.items.count) items • \(result.formattedSize)")
                             .font(.caption)
                             .foregroundStyle(.secondary)

@@ -58,11 +58,13 @@ extension BrowserModule {
     /// leaving the stale-data hint rendered for exactly one browser. Now a thin
     /// wrapper over the shared `scanCacheDirectory` idiom.
     func scanPath(_ url: URL, category: String) async -> CleanupItem? {
-        await scanCacheDirectory(
+        let item = await scanCacheDirectory(
             at: url,
             moduleName: "\(browserName) \(category)",
             threshold: 1024  // Skip tiny items
         )
+        return item?.markingCleanupReview(
+            reason: BrowserLiveCleanupCapability.retentionReason(browserID: id, running: isRunning))
     }
 
     /// Get risk level for a given path
@@ -94,6 +96,7 @@ extension BrowserModule {
             return CleanupResult(itemsProcessed: 0, bytesFreed: 0, errors: [])
         }
         if isRunning && !dryRun {
+            if id == "browser-brave" { throw DevArtifactSafetyError(BrowserLiveCleanupCapability.braveDetail) }
             throw BrowserCleanupError.browserRunning(browserName)
         }
 

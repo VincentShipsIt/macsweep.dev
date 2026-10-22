@@ -27,6 +27,8 @@ enum CleanupHistoryAction: String, Codable, Equatable, Sendable {
             break
         }
 
+        if item.managedCleanupReceipt?.operation.isNative == true { return .runToolCleanup }
+
         if BrowserModuleID.matches(item.module) {
             return .deletePermanently
         }

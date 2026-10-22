@@ -133,9 +133,9 @@ enum ProcessRunner {
     /// total hard bound by at most that value before TERM/grace/KILL begins.
     ///
     /// Resource boundaries intentionally unchanged in this focused patch:
-    /// captured output is memory-unbounded, and Swift task cancellation does not
-    /// preempt the child—it completes at the configured process timeout. stdin is
-    /// inherited for noninteractive commands, but terminal reads are unsupported
+    /// captured output is memory-unbounded. Swift task cancellation terminates only
+    /// this invocation's isolated child group, using the same bounded cleanup as timeout.
+    /// stdin is inherited for noninteractive commands, but terminal reads are unsupported
     /// because the child runs in a background process group and may receive SIGTTIN.
     /// - Throws: `ProcessRunnerError.launchFailed` if the process can't start, or
     ///   `.timedOut` if the full process/output lifecycle outlives `timeout`. A
@@ -230,18 +230,21 @@ enum ProcessRunner {
             cooperativeTimeoutGrace: options.cooperativeTimeoutGrace
         )
 
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    continuation.resume(returning: try runSynchronously(
-                        executable: executable,
-                        arguments: arguments,
-                        options: options
-                    ))
-                } catch {
-                    continuation.resume(throwing: error)
+        try Task.checkCancellation()
+        let cancellation = CancellationFlag()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        continuation.resume(
+                            returning: try runSynchronously(
+                                executable: executable, arguments: arguments, options: options,
+                                cancellation: cancellation))
+                    } catch { continuation.resume(throwing: error) }
                 }
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -265,8 +268,10 @@ enum ProcessRunner {
     private static func runSynchronously(
         executable: String,
         arguments: [String],
-        options: RunOptions
+        options: RunOptions,
+        cancellation: CancellationFlag
     ) throws -> ProcessResult {
+        if cancellation.isCancelled { throw CancellationError() }
         var stdoutPipe = try makePipe()
         var stderrPipe: PipeDescriptors
         do {
@@ -403,8 +408,11 @@ enum ProcessRunner {
         )
 
         let lifecycleDeadline = DispatchTime.now() + options.timeout
-        if drains.wait(timeout: lifecycleDeadline) == .success,
-           let rawStatus = waitForChild(childPID, until: lifecycleDeadline) {
+        while !cancellation.isCancelled && DispatchTime.now() < lifecycleDeadline {
+            let pollDeadline = min(lifecycleDeadline, DispatchTime.now() + 0.05)
+            guard drains.wait(timeout: pollDeadline) == .success,
+                let rawStatus = waitForChild(childPID, until: pollDeadline)
+            else { continue }
             let stdout = stdoutBuffer.decodedUTF8
             let stderr = stderrBuffer.decodedUTF8
             return ProcessResult(
@@ -428,7 +436,7 @@ enum ProcessRunner {
         // PrivilegedRunner uses this bounded window for its root-side supervisor
         // to observe cancellation, terminate the elevated command group, and flush
         // securely captured partial output before the unprivileged wrapper dies.
-        if options.cooperativeTimeoutGrace > 0 {
+        if options.cooperativeTimeoutGrace > 0 && !cancellation.isCancelled {
             let cooperativeDeadline = DispatchTime.now() + options.cooperativeTimeoutGrace
             if drains.wait(timeout: cooperativeDeadline) == .success,
                let rawStatus = waitForChild(childPID, until: cooperativeDeadline) {
@@ -478,6 +486,7 @@ enum ProcessRunner {
             error: stderr.string,
             outputWasValidUTF8: stdout.wasValid
         )
+        if cancellation.isCancelled { throw CancellationError() }
         throw ProcessRunnerError.timedOut(after: options.timeout, partialResult: partial)
     }
 
