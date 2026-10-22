@@ -46,11 +46,11 @@ struct DeveloperCLILogsModule: ScanModule {
             throw DevArtifactSafetyError("Invalid gcloud retention policy.")
         }
         let snapshot = try await processSnapshot()
-        let inventory = try await DevArtifactIO.run { try inventory() }
+        let entries: [Entry] = try await DevArtifactIO.run { try self.inventory() }
         var retainedBytes: Int64 = 0
         var items: [CleanupItem] = []
         let cutoff = now().addingTimeInterval(-retention.minimumAge)
-        for entry in inventory.sorted(by: { $0.date > $1.date }) {
+        for entry in entries.sorted(by: { $0.date > $1.date }) {
             let keepForSize = retainedBytes < retention.retainedBytes
             let (sum, overflow) = retainedBytes.addingReportingOverflow(entry.size)
             retainedBytes = overflow ? Int64.max : sum

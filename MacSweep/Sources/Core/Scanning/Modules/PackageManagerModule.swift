@@ -54,11 +54,11 @@ struct PackageManagerModule: ScanModule {
     var processSnapshot: @Sendable () async throws -> DevProcessSnapshot = { try await DevProcessActivity.snapshot() }
     var toolPath: @Sendable (String) -> String? = { name in
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = [
-            home.appendingPathComponent(".bun/bin/\(name)").path,
-            home.appendingPathComponent(".local/bin/\(name)").path,
-            HomebrewPaths.toolPath(name)
-        ].compactMap { $0 }
+        var candidates: [String] = [
+            home.appendingPathComponent(".bun/bin/\(name)").path(percentEncoded: false),
+            home.appendingPathComponent(".local/bin/\(name)").path(percentEncoded: false)
+        ]
+        if let installed = HomebrewPaths.toolPath(name) { candidates.append(installed) }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
     var commandRunner: PackageCacheCommandRunner = { executable, arguments in
