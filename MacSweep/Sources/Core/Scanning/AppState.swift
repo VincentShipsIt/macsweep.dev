@@ -63,6 +63,7 @@ final class AppState: ObservableObject {
     struct ScanScope {
         let modules: [String]?
         let assistantTargets: [AssistantScanTarget]
+        let requiresFullDiskAccess: Bool
     }
 
     // MARK: - Initialization
@@ -106,7 +107,7 @@ final class AppState: ObservableObject {
         await startScan(
             scope: ScanScope(
                 modules: SmartCareDefaults.moduleIDs,
-                assistantTargets: assistant.enabledTargets
+                assistantTargets: assistant.enabledTargets, requiresFullDiskAccess: true
             ))
     }
 
@@ -119,18 +120,17 @@ final class AppState: ObservableObject {
         await startScan(
             scope: ScanScope(
                 modules: modules,
-                assistantTargets: modules == nil ? assistant.enabledTargets : []
+                assistantTargets: modules == nil ? assistant.enabledTargets : [], requiresFullDiskAccess: modules == nil
             ))
     }
 
     func retryLastScan() async {
-        guard hasFullDiskAccess else {
-            lastError = FullDiskAccessScope.smartCare.actionBlockedMessage
-            return
-        }
-
         guard let lastScanScope else {
             await quickScan()
+            return
+        }
+        guard !lastScanScope.requiresFullDiskAccess || hasFullDiskAccess else {
+            lastError = FullDiskAccessScope.smartCare.actionBlockedMessage
             return
         }
         await startScan(scope: lastScanScope)
@@ -166,7 +166,7 @@ final class AppState: ObservableObject {
             // remove items that actually left disk; keep failed ones in the list
             // rather than silently dropping them.
             scanResults.removeAll { submittedIDs.contains($0.id) && result.errors.failure(affecting: $0) == nil }
-            selectedItems = selectedItems.filter { id in scanResults.contains(where: { $0.id == id }) }
+            selectedItems.formIntersection(Set(scanResults.map(\.id)))
             smartCareSummary =
                 scanResults.isEmpty
                 ? nil
@@ -245,7 +245,7 @@ final class AppState: ObservableObject {
         await startScan(
             scope: ScanScope(
                 modules: plan.modules,
-                assistantTargets: plan.customTargets
+                assistantTargets: plan.customTargets, requiresFullDiskAccess: false
             ))
     }
 

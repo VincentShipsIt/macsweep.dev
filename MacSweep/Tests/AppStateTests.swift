@@ -36,6 +36,9 @@ struct AppStateTests {
         #expect(!state.isScanning)
         #expect(state.currentScanModule == nil)
         #expect(state.scanProgress == 1)
+        await state.retryLastScan()
+        #expect(state.lastError == nil)
+        #expect(state.scanResults == [finding])
     }
 
     @Test func partialScanKeepsHealthyFindingsAndRetryUsesSameScope() async {
