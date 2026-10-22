@@ -275,6 +275,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
     /// Actual filesystem content-modification timestamp when the scanner captures it separately.
     let contentModificationDate: Date?
     let cleanupReviewReason: String?
+    let devArtifactReceipt: DevArtifactReceipt?
 
     enum Target: Hashable, Sendable {
         case fileSystem(path: URL, type: ItemType)
@@ -297,7 +298,8 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         moduleName: String,
         lastModified: Date? = nil,
         contentModificationDate: Date? = nil,
-        cleanupReviewReason: String? = nil
+        cleanupReviewReason: String? = nil,
+        devArtifactReceipt: DevArtifactReceipt? = nil
     ) {
         self.id = id
         self.target = .fileSystem(path: path, type: type)
@@ -307,6 +309,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.lastModified = lastModified
         self.contentModificationDate = contentModificationDate
         self.cleanupReviewReason = cleanupReviewReason
+        self.devArtifactReceipt = devArtifactReceipt
     }
 
     /// Builds a non-filesystem cleanup finding with canonical ownership and
@@ -325,6 +328,7 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
         self.lastModified = lastModified
         self.contentModificationDate = nil
         self.cleanupReviewReason = nil
+        self.devArtifactReceipt = nil
     }
 
     /// Compatibility projection for UI/error surfaces. Action URLs use the
@@ -376,7 +380,8 @@ struct CleanupItem: Identifiable, Hashable, Sendable {
                 moduleName: moduleName,
                 lastModified: lastModified,
                 contentModificationDate: contentModificationDate,
-                cleanupReviewReason: reason
+                cleanupReviewReason: reason,
+                devArtifactReceipt: devArtifactReceipt
             )
         case .action:
             return self

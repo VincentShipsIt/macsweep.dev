@@ -628,7 +628,7 @@ struct GitArtifactScanner: Sendable {
         return skipped.contains(name)
     }
 
-    private static func executablePath(for command: String) -> String? {
+    static func executablePath(for command: String) -> String? {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
         for directory in path.split(separator: ":") {
             let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent(command).path
@@ -862,8 +862,8 @@ private extension String {
 
 
 enum DeveloperScanRoots {
-    static func paths(in base: URL) -> [URL] {
-        guard base.standardizedFileURL == FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL else { return [base] }
+    static func paths(in base: URL, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
+        guard base.standardizedFileURL.path == homeDirectory.standardizedFileURL.path else { return [base] }
         return [base] + [".codex/worktrees", ".claude/worktrees", ".agents/worktrees", ".grok/worktrees", ".t3/worktrees", "worktrees"].map {
             base.appending(path: $0)
         }.filter { ScanFileSystem.exists(atPath: $0.path) }

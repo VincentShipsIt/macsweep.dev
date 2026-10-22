@@ -32,14 +32,14 @@ struct ProjectRow: View {
                             HStack(spacing: 2) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.caption2)
-                                Text("Active")
+                                Text("Recent edits")
                                     .font(.caption2)
                             }
                             .foregroundStyle(.orange)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(.orange.opacity(0.15), in: Capsule())
-                            .help("Modified \(project.timeSinceModified ?? "recently") - this project may be in active development")
+                            .help("Modified \(project.timeSinceModified ?? "recently") — live jobs are checked separately")
                         } else if project.isModifiedRecently {
                             HStack(spacing: 2) {
                                 Image(systemName: "clock")
@@ -159,7 +159,7 @@ struct ArtifactRow: View {
 
     var body: some View {
         SelectableItemRow(isSelected: isSelected) {
-            Image(systemName: "folder.fill")
+            Image(systemName: item.type == .file ? "doc.fill" : "folder.fill")
                 .foregroundStyle(.orange)
                 .frame(width: 24)
         } content: {
@@ -182,7 +182,7 @@ struct ArtifactRow: View {
                         .truncationMode(.head)
                 }
 
-                Text("Recreated by the owning developer tool when needed")
+                Text(item.devArtifactReceipt?.reason ?? item.cleanupReviewReason ?? "Rescan to verify this artifact before cleanup")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

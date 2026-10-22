@@ -314,6 +314,32 @@ MacSweep treats scan results as a proposal, not permission to delete:
   deterministic scans; the assistant cannot bypass confirmation or protected
   paths.
 
+### Developer artifact safety
+
+Developer cleanup checks current-user process working directories, descendants,
+open files and shared dependency symlinks. The app lists jobs protecting a target.
+You can separately confirm SIGTERM for selected recognized compilers or task
+runners; imports, unknown jobs, platform agents and jobs with unknown descendants
+remain protected. Stopping jobs always requires a fresh scan before cleanup.
+
+Project artifacts need a Git-ignored boundary with no tracked or unignored
+content. Generic `build`/`dist` directories also need compiled-output evidence;
+source, fixtures, configuration, lockfiles and ambiguous files are retained.
+Ignored, untracked `*.tsbuildinfo` files must contain recognizable TypeScript
+build information. Xcode archives, device-support data and simulator devices
+require review in their owning tool.
+
+The GUI and CLI share these findings and cleanup checks. Before Trash, cleanup
+rechecks filesystem identity, generated-content evidence and live activity,
+and compares content against the scan receipt. Changes require a fresh scan.
+Inspection limits or unavailable evidence retain the target. Partial scans keep
+the findings already inspected and report incomplete coverage. Filesystem and
+process inspection runs on utility queues with bounded budgets. Activity evidence
+covers the current user; it cannot guarantee that another user or a privileged
+service will not start using a target after inspection. Recent-edit timestamps
+are informational. Kernel access restrictions can limit platform-service open-file
+coverage; platform services are never offered for stopping.
+
 ### User ignore and protection rules
 
 The native app and `macsweep` CLI load the same optional files from your home

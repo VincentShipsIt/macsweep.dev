@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Developer artifact cleanup now revalidates scan identity, Git/generated
+  content, live current-user jobs and shared dependency links before Trash.
+  The GUI shows protecting jobs and offers a separate, confirmed stop action
+  for selected verified developer jobs, with process-start identity checks.
+- Retain ambiguous build output, tracked/unignored files and persistent Xcode
+  or simulator data. Discover hidden agent worktree artifacts and recognizable,
+  ignored TypeScript build-info files without traversing dependency contents.
+
+
 - Release builds now use Developer ID signing, secure timestamps, Apple
   notarization, ticket stapling, and Gatekeeper verification before GitHub
   assets are published. Distribution signing credentials remain isolated in a
