@@ -18,14 +18,26 @@ struct StaleProjectsView: View {
     @State private var showingTrash = false
     @State private var records: [StaleProjectActionRecord] = []
 
+    private let isSnapshot: Bool
+
+    init(snapshotInventory: StaleProjectInventory? = nil) {
+        isSnapshot = snapshotInventory != nil
+        _inventory = State(initialValue: snapshotInventory ?? StaleProjectInventory())
+    }
+
     private enum ProjectSort: String, CaseIterable {
-        case artifacts = "Artifacts", total = "Total size", activity = "Last activity", name = "Name"
+        case artifacts = "Artifacts"
+        case total = "Total size"
+        case activity = "Last activity"
+        case name = "Name"
     }
 
     private var roots: [URL] {
         let paths = (try? JSONDecoder().decode([String].self, from: Data(storedRoots.utf8))) ?? []
-        return paths.isEmpty ? [FileManager.default.homeDirectoryForCurrentUser] : paths
-            .map { URL(fileURLWithPath: $0) }
+        return paths.isEmpty
+            ? [FileManager.default.homeDirectoryForCurrentUser]
+            : paths
+                .map { URL(fileURLWithPath: $0) }
     }
 
     private var service: StaleProjectsService {
@@ -45,8 +57,9 @@ struct StaleProjectsView: View {
             case .artifacts: $0.artifactBytes > $1.artifactBytes
             case .total: ($0.totalBytes ?? -1) > ($1.totalBytes ?? -1)
             case .activity: ($0.lastActivity ?? .distantPast) < ($1.lastActivity ?? .distantPast)
-            case .name: $0.path.lastPathComponent
-                .localizedStandardCompare($1.path.lastPathComponent) == .orderedAscending
+            case .name:
+                $0.path.lastPathComponent
+                    .localizedStandardCompare($1.path.lastPathComponent) == .orderedAscending
             }
         }
     }
@@ -70,6 +83,7 @@ struct StaleProjectsView: View {
             footer
         }
         .task {
+            guard !isSnapshot else { return }
             task = Task { await scan() }
             await task?.value
         }
@@ -115,11 +129,16 @@ struct StaleProjectsView: View {
                 Spacer()
                 Button("Choose Roots…", action: chooseRoots).disabled(isWorking)
             }
-            Text("Roots: " + roots.map(\.path).joined(separator: ", ")
-                + ". Home scans include supported agent worktree homes. Discovery has depth, entry and time limits.")
-                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Text(
+                "Roots: " + roots.map(\.path).joined(separator: ", ")
+                    + ". Home scans include supported agent worktree homes. Discovery has depth, entry and time limits."
+            )
+            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
         }.padding().background(MacSweepTheme.panelStrong)
-            .onChange(of: staleMonths) { selected = []; inventory = .init() }
+            .onChange(of: staleMonths) {
+                selected = []
+                inventory = .init()
+            }
     }
 
     private var content: some View {
@@ -127,10 +146,11 @@ struct StaleProjectsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(inventory.issues, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
                 if inventory.projects.isEmpty, !isWorking {
-                    ContentUnavailableView("No Projects Found", systemImage: "folder.badge.questionmark",
-                                           description: Text(
-                                               "Choose developer roots, then scan to inspect repositories.",
-                                           ))
+                    ContentUnavailableView(
+                        "No Projects Found", systemImage: "folder.badge.questionmark",
+                        description: Text(
+                            "Choose developer roots, then scan to inspect repositories.",
+                        ))
                 }
                 if let receipt {
                     archiveResult(receipt)
@@ -141,7 +161,7 @@ struct StaleProjectsView: View {
                     }
                 }
                 if !records.isEmpty {
-                    history
+                    StaleProjectHistoryPanel(records: records)
                 }
             }.padding()
         }
@@ -180,30 +200,15 @@ struct StaleProjectsView: View {
         }.padding().macSweepCard()
     }
 
-    private var history: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent Project Actions").font(.headline)
-            ForEach(records.prefix(10)) { record in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.kind.rawValue + ": " + URL(fileURLWithPath: record.project).lastPathComponent)
-                    Text("\(record.completedCount) completed · \(record.errors.count) failed · "
-                        + record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.secondary)
-                    ForEach(record.errors, id: \.self) { Text($0).foregroundStyle(.secondary) }
-                }.font(.caption)
-            }
-            Text("Archive bytes are copied data. Artifact and checkout Trash estimates are separate; "
-                + "available-space changes may include other processes and are not attributed to these actions.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.padding().macSweepCard()
-    }
-
     private func scan() async {
         guard !isWorking else { return }
         isWorking = true
         selected = []
         errorMessage = nil
-        defer { isWorking = false; records = service.history.history() }
+        defer {
+            isWorking = false
+            records = service.history.history()
+        }
         do { inventory = try await service.inventory() } catch { errorMessage = error.localizedDescription }
     }
 
@@ -219,7 +224,10 @@ struct StaleProjectsView: View {
     private func createArchive(_ plan: StaleProjectArchivePlan) async {
         isWorking = true
         errorMessage = nil
-        defer { isWorking = false; records = service.history.history() }
+        defer {
+            isWorking = false
+            records = service.history.history()
+        }
         do { receipt = try await service.createArchive(plan.project, destination: plan.destination) } catch {
             errorMessage = error.localizedDescription
         }
@@ -244,8 +252,9 @@ struct StaleProjectsView: View {
         panel.allowsMultipleSelection = true
         panel.prompt = "Use Roots"
         guard panel.runModal() == .OK, !panel.urls.isEmpty,
-              let data = try? JSONEncoder().encode(panel.urls.map { $0.resolvingSymlinksInPath().path }),
-              let text = String(data: data, encoding: .utf8) else { return }
+            let data = try? JSONEncoder().encode(panel.urls.map { $0.resolvingSymlinksInPath().path }),
+            let text = String(data: data, encoding: .utf8)
+        else { return }
         storedRoots = text
         task = Task { await scan() }
     }

@@ -129,7 +129,9 @@ struct XcodeCleanupFiles {
         else {
             throw XcodeCleanupError("Linked or non-directory target retained.")
         }
-        let validation = appBundle ? safety.validateForAppBundleRemoval(root) : safety.validateForTrash(root, developerOwner: .xcode)
+        let validation = appBundle
+            ? safety.validateForAppBundleRemoval(root)
+            : safety.validateForTrash(root, developerOwner: .xcode)
         guard validation.isSafe else { throw XcodeCleanupError(validation.reason ?? "Safety validation failed.") }
         let start = Date()
         var stack = [root]

@@ -19,7 +19,9 @@ struct FeatureNavigationTests {
     @Test func developerLogsStayInTheirGatedSection() {
         #expect(
             FeatureSection.developer.features == [
-                .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+                .developerLogs, .environmentDoctor, .developerDiskMap, .staleProjects, .xcodeCleanup, .toolchains,
+                .localSnapshots,
+                .virtualMachines,
                 .editorCaches
             ])
         #expect(Feature.developerLogs.section == .developer)

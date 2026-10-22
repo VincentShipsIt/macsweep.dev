@@ -835,6 +835,8 @@ extension Feature {
         case .developerLogs: return "developer-logs"
         case .environmentDoctor: return "environment-doctor"
         case .appLeftovers: return "app-leftovers"
+        case .developerDiskMap: return "developer-disk-map"
+        case .staleProjects: return "stale-projects"
         case .xcodeCleanup: return "xcode-cleanup"
         case .toolchains: return "toolchains"
         case .localSnapshots: return "local-snapshots"
@@ -929,6 +931,36 @@ extension SnapshotRenderer {
                 manager: brew, executableIdentity: identity(brew.path), executableStamp: nil,
                 writableRoots: [], rootIdentities: [], blockedReason: nil)
         ], reports: [UpdateSourceReport(source: .mas, message: UpdateSource.mas.installHint, isError: false)])
+        let projects = StaleProjectInventory(projects: [
+            StaleProject(path: url("/Users/you/Projects/archived-example"), identity: identity("/Users/you/Projects/archived-example"),
+                totalBytes: 4_000_000_000, sourceBytes: 500_000_000, artifactBytes: 3_500_000_000,
+                lastFileModification: old,
+                git: StaleProjectGitState(lastCommit: old, lastCheckout: old, remote: "origin", isClean: true,
+                    unpushedCommits: 0, metadataIsContained: true, worktreeCount: 1),
+                age: .stale, artifacts: [], archiveBlocker: nil, issues: []),
+            StaleProject(path: url("/Users/you/Projects/work-in-progress"), identity: nil,
+                totalBytes: nil, sourceBytes: nil, artifactBytes: 0, lastFileModification: old,
+                git: StaleProjectGitState(lastCommit: old, remote: "origin", isClean: false, unpushedCommits: 2),
+                age: .unknown, artifacts: [], archiveBlocker: "Incomplete manifest; checkout retained.",
+                issues: ["One unreadable directory was retained."])
+        ], roots: [url("/Users/you/Projects")])
+        let map = DiskMapReport(roots: [
+            DiskMapNode(id: "/Users/you/Projects/example", url: url("/Users/you/Projects/example"),
+                name: "example", kind: .repository, owner: .developerTools,
+                logicalBytes: 2_000_000_000, allocatedBytes: 1_600_000_000,
+                generatedLogical: 1_700_000_000, generatedAllocated: 1_400_000_000),
+            DiskMapNode(id: "/Users/you/.lima/default", url: url("/Users/you/.lima/default"),
+                name: "Persistent VM", kind: .vmData, owner: .virtualMachines,
+                logicalBytes: 64_000_000_000, allocatedBytes: 4_000_000_000,
+                protectedReason: "Persistent native environment; inspect the dedicated VM review."),
+            DiskMapNode(id: "/Users/you/Library/Caches/JetBrains", url: url("/Users/you/Library/Caches/JetBrains"),
+                name: "IDE caches", kind: .cache, owner: .editorCaches,
+                logicalBytes: 800_000_000, allocatedBytes: 600_000_000, coverage: .partial,
+                protectedReason: "Current versions and Local History stay retained."),
+            DiskMapNode(id: "/private/var/vm", url: url("/private/var/vm"), name: "System swap",
+                kind: .swap, coverage: .unknown, protectedReason: "System-managed; no cleanup action.")
+        ], issues: ["One large root reached its inspection budget; shown sizes are lower bounds."],
+            cached: true, finished: false)
         return [
             ("xcode-cleanup-results", wrap(XcodeCleanupView(snapshotInventory: xcode))),
             ("toolchains-results", wrap(ToolchainsView(snapshotInventory: toolchains))),
@@ -936,7 +968,9 @@ extension SnapshotRenderer {
             ("virtual-machines-results", wrap(VirtualMachinesView(snapshotInventory: vms))),
             ("app-leftovers-results", wrap(AppLeftoversView(snapshotReport: leftovers))),
             ("editor-caches-partial", wrap(EditorCachesView(snapshotReport: editor))),
-            ("updates-results", wrap(UpdatesView(snapshotInventory: updates)))
+            ("updates-results", wrap(UpdatesView(snapshotInventory: updates))),
+            ("stale-projects-results", wrap(StaleProjectsView(snapshotInventory: projects))),
+            ("developer-disk-map-partial", wrap(DeveloperDiskMapView(snapshotReport: map)))
         ]
     }
 }

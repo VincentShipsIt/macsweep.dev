@@ -36,7 +36,7 @@ enum DevArtifactIO {
             let collector = ScanDiagnostics.current
             let worker = Task.detached(priority: .utility) {
                 try Task.checkCancellation()
-                return try await ScanDiagnostics.$current.withValue(collector, operation: operation)
+                return try await ScanDiagnostics.$current.withValue(collector) { try await operation() }
             }
             let result = try await withTaskCancellationHandler {
                 try await worker.value

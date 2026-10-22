@@ -25,6 +25,10 @@ struct DevToolsView: View {
         case packages = "Package Managers"
     }
 
+    init(initialTab: DevToolsTab = .artifacts) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     private var showsBuildArtifactLanding: Bool {
         selectedTab == .artifacts
             && (!scanSession.hasCompletedBuildArtifactScan || scanSession.isBuildArtifactScanRunning)

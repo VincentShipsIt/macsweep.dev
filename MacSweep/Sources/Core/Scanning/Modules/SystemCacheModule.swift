@@ -13,12 +13,16 @@ struct SystemCacheModule: ScanModule {
     let icon = "folder.badge.gearshape"
 
     /// Standard user library targets
-    private let libraryTargets: [(URL, String)] = [
-        (URL.libraryDirectory.appending(path: "Caches"), "User Caches"),
-        (URL.libraryDirectory.appending(path: "Logs"), "Application Logs"),
-        (URL.libraryDirectory.appending(path: "Application Support/CrashReporter"), "Crash Reports"),
-        (URL.libraryDirectory.appending(path: "Saved Application State"), "Saved App States"),
-    ]
+    var libraryDirectory = URL.libraryDirectory
+    var temporaryDirectory = FileManager.default.temporaryDirectory
+    private var libraryTargets: [(URL, String)] {
+        [
+            (libraryDirectory.appending(path: "Caches"), "User Caches"),
+            (libraryDirectory.appending(path: "Logs"), "Application Logs"),
+            (libraryDirectory.appending(path: "Application Support/CrashReporter"), "Crash Reports"),
+            (libraryDirectory.appending(path: "Saved Application State"), "Saved App States")
+        ]
+    }
 
     /// Protected subdirectory names that should never be deleted
     private let protectedSubdirectories: Set<String> = [
@@ -147,7 +151,7 @@ struct SystemCacheModule: ScanModule {
         var items: [CleanupItem] = []
 
         // Get user's temporary directory which is typically in /private/var/folders/XX/XXXXX/T/
-        let userTempDir = FileManager.default.temporaryDirectory
+        let userTempDir = temporaryDirectory
 
         // Find the base folder path (parent of T)
         let userFolderBase = userTempDir.deletingLastPathComponent()

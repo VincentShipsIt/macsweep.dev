@@ -158,6 +158,7 @@ struct CacheAnalyzer {
             findArguments.append(contentsOf: ["-path", pattern])
         }
         findArguments.append(contentsOf: [")", "-type", "d", "-prune", "-print0"])
+        let arguments = findArguments
 
         do {
             return try await DevArtifactIO.runAsync {
@@ -165,7 +166,7 @@ struct CacheAnalyzer {
                 stages: [
                     ProcessPipelineStage(
                         executable: "/usr/bin/find",
-                        arguments: findArguments
+                        arguments: arguments
                     ),
                     ProcessPipelineStage(
                         executable: "/usr/bin/xargs",

@@ -19,6 +19,7 @@ struct ContentView: View {
     @AppStorage(DeveloperModePreferences.enabledKey) private var developerModeEnabled = false
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var displayedFeature: Feature?
+    @State private var developerToolsTab: DevToolsView.DevToolsTab = .artifacts
     @State private var usesSlideTransition = true
     @FocusState private var isSidebarFocused: Bool
 
@@ -174,7 +175,7 @@ struct ContentView: View {
         case .trashBins:
             landingDetail(TrashBinsView())
         case .devTools:
-            landingDetail(DevToolsView())
+            landingDetail(DevToolsView(initialTab: developerToolsTab))
         case .aiAnalysis:
             landingDetail(AIAnalysisView())
         case .networkCleanup:
@@ -228,6 +229,10 @@ struct ContentView: View {
             staticDetail(DeveloperLogsView())
         case .environmentDoctor:
             staticDetail(EnvironmentDoctorView())
+        case .developerDiskMap:
+            staticDetail(DeveloperDiskMapView(onOpenOwner: openDiskMapOwner))
+        case .staleProjects:
+            staticDetail(StaleProjectsView())
         case .xcodeCleanup:
             staticDetail(XcodeCleanupView())
         case .toolchains:
@@ -235,9 +240,24 @@ struct ContentView: View {
         case .localSnapshots:
             staticDetail(LocalSnapshotsView())
         case .virtualMachines:
-            staticDetail(VirtualMachinesView(onReviewDocker: { appState.selectedFeature = .devTools }))
+            staticDetail(VirtualMachinesView(onReviewDocker: { openDiskMapOwner(.developerTools) }))
         case .editorCaches:
             staticDetail(EditorCachesView())
+        }
+    }
+
+    private func openDiskMapOwner(_ owner: DiskMapOwner) {
+        switch owner {
+        case .developerTools:
+            developerToolsTab = .artifacts
+            appState.selectedFeature = .devTools
+        case .packageManagers:
+            developerToolsTab = .packages
+            appState.selectedFeature = .devTools
+        case .toolchains: appState.selectedFeature = .toolchains
+        case .xcode: appState.selectedFeature = .xcodeCleanup
+        case .virtualMachines: appState.selectedFeature = .virtualMachines
+        case .editorCaches: appState.selectedFeature = .editorCaches
         }
     }
 
@@ -282,6 +302,8 @@ private extension Feature {
              .shredder,
              .developerLogs,
              .environmentDoctor,
+             .developerDiskMap,
+             .staleProjects,
              .xcodeCleanup,
              .toolchains,
              .localSnapshots,

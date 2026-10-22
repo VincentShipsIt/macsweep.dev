@@ -29,7 +29,9 @@ enum FeatureSection: String, CaseIterable, Identifiable {
             return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         case .developer:
             return [
-                .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+                .developerLogs, .environmentDoctor, .developerDiskMap, .staleProjects, .xcodeCleanup, .toolchains,
+                .localSnapshots,
+                .virtualMachines,
                 .editorCaches
             ]
         }
@@ -71,6 +73,8 @@ enum Feature: String, CaseIterable, Identifiable {
 
     case developerLogs = "Logs"
     case environmentDoctor = "Environment Doctor"
+    case developerDiskMap = "Developer Disk Map"
+    case staleProjects = "Stale Projects"
     case xcodeCleanup = "Xcode Deep Clean"
     case toolchains = "Toolchains"
     case localSnapshots = "Local Snapshots"
@@ -109,6 +113,8 @@ enum Feature: String, CaseIterable, Identifiable {
         case .shredder: return "scissors"
         case .developerLogs: return "list.bullet.rectangle"
         case .environmentDoctor: return "stethoscope"
+        case .developerDiskMap: return "square.grid.3x3"
+        case .staleProjects: return "archivebox"
         case .xcodeCleanup: return "hammer.circle"
         case .toolchains: return "wrench.adjustable"
         case .localSnapshots: return "clock.arrow.circlepath"
@@ -126,7 +132,9 @@ enum Feature: String, CaseIterable, Identifiable {
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
         case .uninstaller, .appLeftovers, .updates: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
-        case .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+        case .developerLogs, .environmentDoctor, .developerDiskMap, .staleProjects, .xcodeCleanup, .toolchains,
+            .localSnapshots,
+            .virtualMachines,
             .editorCaches:
             return .developer
         }
