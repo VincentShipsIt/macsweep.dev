@@ -1,0 +1,59 @@
+name: Fresh Homebrew Acceptance
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/fresh-install.yml
+      - .github/workflows/release.yml
+      - scripts/*acceptance*
+      - scripts/FreshInstallProbe.swift
+      - docs/releases/**
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Current published tag (blank resolves latest)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        description: Current published tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance-tools:
+    name: Acceptance tooling fixtures
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - run: |
+          python3 scripts/release-acceptance-test.py
+          bash -n scripts/fresh-install-acceptance.sh
+          xcrun swiftc -parse-as-library scripts/FreshInstallProbe.swift -o "$RUNNER_TEMP/window-probe-tests"
+          "$RUNNER_TEMP/window-probe-tests" --self-test
+  fresh-install:
+    if: github.event_name != 'pull_request'
+    needs: acceptance-tools
+    name: Fresh cask install and first launch
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUESTED_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Checkout acceptance tooling
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install current cask and observe actual first launch
+        run: bash scripts/fresh-install-acceptance.sh
+      - name: Upload actual fresh-runner evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-install-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/macsweep-fresh-install/
+          if-no-files-found: warn
+          retention-days: 30
