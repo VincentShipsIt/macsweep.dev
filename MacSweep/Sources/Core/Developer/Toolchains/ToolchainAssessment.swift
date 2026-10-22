@@ -9,6 +9,7 @@ enum ToolchainAssessment {
         let snapshot: DevProcessSnapshot
         let capability: Bool
         let now: Date
+        let installedVersions: Set<String>
     }
 
     private struct Inspection {
@@ -70,6 +71,7 @@ enum ToolchainAssessment {
         }
         if relevant.contains(where: {
             !ToolchainReferences.matches($0.version, version: candidate.version)
+                && !context.installedVersions.contains($0.version)
                 && !Self.isExactOrNumericReference($0.version)
         }) {
             reasons.append("An unresolved version alias or dynamic reference requires manual review.")
@@ -127,6 +129,6 @@ enum ToolchainAssessment {
     }
 
     private static func isExactOrNumericReference(_ value: String) -> Bool {
-        value.range(of: "^v?[0-9]+(\\.[0-9]+)*$", options: .regularExpression) != nil
+        value == "system" || value.range(of: #"^v?[0-9]+(\.[0-9]+)*$"#, options: .regularExpression) != nil
     }
 }

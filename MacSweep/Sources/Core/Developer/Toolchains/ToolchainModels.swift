@@ -78,7 +78,8 @@ struct ToolchainReferences: Sendable {
     static func matches(_ reference: String, version: String) -> Bool {
         let left = reference.hasPrefix("v") ? String(reference.dropFirst()) : reference
         let right = version.hasPrefix("v") ? String(version.dropFirst()) : version
-        if ["node", "stable", "latest", "*", "lts/*", "system"].contains(left) { return true }
+        if left == "system" { return false }
+        if ["node", "latest", "*", "lts/*"].contains(left) { return true }
         return left == right || right.hasPrefix(left + ".") || right.hasPrefix(left + "-")
     }
 }

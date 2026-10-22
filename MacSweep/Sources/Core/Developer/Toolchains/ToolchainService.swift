@@ -41,7 +41,8 @@ struct ToolchainService: Sendable {
                 for candidate in candidates where seen.insert(candidate.path.path).inserted {
                     let context = ToolchainAssessment.Context(
                         policy: policy, references: references, globals: globals,
-                        snapshot: snapshot, capability: capability, now: now())
+                        snapshot: snapshot, capability: capability, now: now(),
+                        installedVersions: Set(candidates.filter { $0.tool == candidate.tool }.map(\.version)))
                     let item = try await ToolchainAssessment.assess(candidate, location: location, context: context)
                     inventory.installations.append(item)
                 }

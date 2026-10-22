@@ -32,6 +32,35 @@ struct ToolchainManagerTests {
         #expect(inventory.installations.allSatisfy { $0.status == .active && !$0.isSelectable })
     }
 
+    @Test func exactRustupDefaultDoesNotLockOtherStaleInstalledVersions() async throws {
+        let fixture = try ToolchainFixture(manager: .rustup)
+        try fixture.install("stable-aarch64-apple-darwin")
+        try fixture.install("1.80.0-aarch64-apple-darwin")
+        let settings = "default_toolchain = \"stable-aarch64-apple-darwin\""
+        try Data(settings.utf8).write(to: fixture.location.root.appendingPathComponent("settings.toml"))
+        let inventory = try await fixture.service().inventory()
+        #expect(inventory.installations.first { $0.version.hasPrefix("stable-") }?.status == .active)
+        #expect(inventory.installations.first { $0.version.hasPrefix("1.80.0-") }?.status == .stale)
+    }
+
+    @Test func numericRepoReferenceDoesNotLockOtherMajorVersions() async throws {
+        let fixture = try ToolchainFixture()
+        try fixture.install("3.8.0")
+        try fixture.install("3.9.0")
+        try Data("3.9".utf8).write(to: fixture.projects.appendingPathComponent(".python-version"))
+        let inventory = try await fixture.service().inventory()
+        #expect(inventory.installations.first { $0.version == "3.8.0" }?.status == .stale)
+        #expect(inventory.installations.first { $0.version == "3.9.0" }?.status == .active)
+    }
+
+    @Test func systemSelectionDoesNotReferenceManagerOwnedVersions() async throws {
+        let fixture = try ToolchainFixture()
+        try fixture.install()
+        try Data("system".utf8).write(to: fixture.location.root.appendingPathComponent("version"))
+        let inventory = try await fixture.service().inventory()
+        #expect(inventory.installations.first?.status == .stale)
+    }
+
     @Test func nvmDefaultMajorAliasProtectsMatchingVersions() async throws {
         let fixture = try ToolchainFixture(manager: .nvm)
         try fixture.install("v18.20.0")
