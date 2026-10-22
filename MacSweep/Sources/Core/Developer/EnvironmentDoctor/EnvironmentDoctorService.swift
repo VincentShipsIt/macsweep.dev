@@ -26,13 +26,13 @@ struct EnvironmentDoctorService: Sendable {
             result.issues += check.issues
         }
         for index in result.findings.indices where result.findings[index].requiresAdministrator {
-                if privilegedTrash == nil {
-                    result.findings[index].retentionReason =
-                        "Administrator repair is unavailable; use the copyable instructions."
-                } else if !PrivilegedRunner.doctorAdministratorRepairIsSupported(result.findings[index]) {
-                    result.findings[index].retentionReason =
-                        "This system repair requires manual review; use the copyable instructions."
-                }
+            if privilegedTrash == nil {
+                result.findings[index].retentionReason =
+                    "Administrator repair is unavailable; use the copyable instructions."
+            } else if !PrivilegedRunner.doctorAdministratorRepairIsSupported(result.findings[index]) {
+                result.findings[index].retentionReason =
+                    "This system repair requires manual review; use the copyable instructions."
+            }
         }
         return result
     }
