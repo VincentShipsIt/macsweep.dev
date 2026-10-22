@@ -13,11 +13,15 @@ final class UpdatesService: ObservableObject {
     var scanner: UpdateScanner
     var executor: UpdateExecutor
 
-    init(administratorUpdate: MasAdministratorUpdate? = nil) {
+    init(administratorUpdate: MasAdministratorUpdate? = nil, snapshotInventory: UpdateInventory? = nil) {
         var scanner = UpdateScanner()
         scanner.administratorAvailable = administratorUpdate != nil
         self.scanner = scanner
         executor = UpdateExecutor(scanner: scanner, administratorUpdate: administratorUpdate)
+        if let snapshotInventory {
+            inventory = snapshotInventory
+            hasChecked = true
+        }
     }
 
     func dismissError() { errorMessage = nil }

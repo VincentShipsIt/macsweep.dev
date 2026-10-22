@@ -1,4 +1,5 @@
 import Testing
+
 @testable import MacSweepCore
 
 struct FeatureNavigationTests {
@@ -16,7 +17,11 @@ struct FeatureNavigationTests {
     }
 
     @Test func developerLogsStayInTheirGatedSection() {
-        #expect(FeatureSection.developer.features == [.developerLogs, .environmentDoctor])
+        #expect(
+            FeatureSection.developer.features == [
+                .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+                .editorCaches
+            ])
         #expect(Feature.developerLogs.section == .developer)
         #expect(Feature.environmentDoctor.section == .developer)
     }

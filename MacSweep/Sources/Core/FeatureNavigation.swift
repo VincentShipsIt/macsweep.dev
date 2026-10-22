@@ -24,11 +24,14 @@ enum FeatureSection: String, CaseIterable, Identifiable {
         case .speed:
             return [.optimization, .networkCleanup, .batteryMonitor, .maintenance]
         case .applications:
-            return [.uninstaller, .homebrewUpdater]
+            return [.uninstaller, .appLeftovers, .updates]
         case .files:
             return [.spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder]
         case .developer:
-            return [.developerLogs, .environmentDoctor]
+            return [
+                .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+                .editorCaches
+            ]
         }
     }
 }
@@ -57,7 +60,8 @@ enum Feature: String, CaseIterable, Identifiable {
     case maintenance = "Maintenance"
 
     case uninstaller = "Uninstaller"
-    case homebrewUpdater = "Homebrew Updater"
+    case appLeftovers = "App Leftovers"
+    case updates = "Updates"
 
     case spaceLens = "Space Lens"
     case largeOldFiles = "Large & Old Files"
@@ -67,6 +71,11 @@ enum Feature: String, CaseIterable, Identifiable {
 
     case developerLogs = "Logs"
     case environmentDoctor = "Environment Doctor"
+    case xcodeCleanup = "Xcode Deep Clean"
+    case toolchains = "Toolchains"
+    case localSnapshots = "Local Snapshots"
+    case virtualMachines = "Virtual Machines"
+    case editorCaches = "IDE & Editor Caches"
 
     var id: String { rawValue }
 
@@ -91,7 +100,8 @@ enum Feature: String, CaseIterable, Identifiable {
         case .batteryMonitor: return "battery.100"
         case .maintenance: return "wrench.and.screwdriver"
         case .uninstaller: return "xmark.app"
-        case .homebrewUpdater: return "arrow.up.circle"
+        case .appLeftovers: return "app.badge.checkmark"
+        case .updates: return "arrow.up.circle"
         case .spaceLens: return "chart.pie"
         case .largeOldFiles: return "doc.badge.clock"
         case .duplicateFiles: return "doc.on.doc"
@@ -99,18 +109,26 @@ enum Feature: String, CaseIterable, Identifiable {
         case .shredder: return "scissors"
         case .developerLogs: return "list.bullet.rectangle"
         case .environmentDoctor: return "stethoscope"
+        case .xcodeCleanup: return "hammer.circle"
+        case .toolchains: return "wrench.adjustable"
+        case .localSnapshots: return "clock.arrow.circlepath"
+        case .virtualMachines: return "desktopcomputer"
+        case .editorCaches: return "curlybraces"
         }
     }
 
     var section: FeatureSection {
         switch self {
         case .smartScan, .assistant, .share, .cleanupHistory: return .main
-        case .systemJunk, .browserCleanup, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup: return .cleanup
+        case .systemJunk, .browserCleanup, .mailAttachments, .trashBins, .devTools, .aiAnalysis, .cloudCleanup:
+            return .cleanup
         case .malwareRemoval, .privacy, .loginItems: return .protection
         case .optimization, .networkCleanup, .batteryMonitor, .maintenance: return .speed
-        case .uninstaller, .homebrewUpdater: return .applications
+        case .uninstaller, .appLeftovers, .updates: return .applications
         case .spaceLens, .largeOldFiles, .duplicateFiles, .similarPhotos, .shredder: return .files
-        case .developerLogs, .environmentDoctor: return .developer
+        case .developerLogs, .environmentDoctor, .xcodeCleanup, .toolchains, .localSnapshots, .virtualMachines,
+            .editorCaches:
+            return .developer
         }
     }
 }

@@ -129,7 +129,7 @@ struct XcodeCleanupFiles {
         else {
             throw XcodeCleanupError("Linked or non-directory target retained.")
         }
-        let validation = appBundle ? safety.validateForAppBundleRemoval(root) : safety.validateForTrash(root)
+        let validation = appBundle ? safety.validateForAppBundleRemoval(root) : safety.validateForTrash(root, developerOwner: .xcode)
         guard validation.isSafe else { throw XcodeCleanupError(validation.reason ?? "Safety validation failed.") }
         let start = Date()
         var stack = [root]
@@ -195,7 +195,7 @@ struct XcodeCleanupFiles {
             throw XcodeCleanupError("Linked or special contents retained.")
         }
         if !appBundle {
-            let check = safety.validateForTrash(url)
+            let check = safety.validateForTrash(url, developerOwner: .xcode)
             guard check.isSafe else { throw XcodeCleanupError(check.reason ?? "Protected contents retained.") }
         }
         return status

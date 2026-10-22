@@ -201,8 +201,15 @@ struct ContentView: View {
         // Applications
         case .uninstaller:
             staticDetail(AppUninstallerView())
-        case .homebrewUpdater:
-            staticDetail(HomebrewUpdaterView())
+        case .appLeftovers:
+            staticDetail(AppLeftoversView())
+        case .updates:
+            staticDetail(UpdatesView(administratorUpdate: { request, output in
+                try await PrivilegedRunner.updateMacStoreApp(
+                    executable: URL(fileURLWithPath: request.executable), appID: request.appID,
+                    expectedIdentity: request.executableIdentity, expectedStamp: request.executableStamp,
+                    onOutput: output)
+            }))
 
         // Files
         case .spaceLens:
@@ -221,6 +228,16 @@ struct ContentView: View {
             staticDetail(DeveloperLogsView())
         case .environmentDoctor:
             staticDetail(EnvironmentDoctorView())
+        case .xcodeCleanup:
+            staticDetail(XcodeCleanupView())
+        case .toolchains:
+            staticDetail(ToolchainsView())
+        case .localSnapshots:
+            staticDetail(LocalSnapshotsView())
+        case .virtualMachines:
+            staticDetail(VirtualMachinesView(onReviewDocker: { appState.selectedFeature = .devTools }))
+        case .editorCaches:
+            staticDetail(EditorCachesView())
         }
     }
 
@@ -260,10 +277,16 @@ private extension Feature {
              .batteryMonitor,
              .maintenance,
              .uninstaller,
-             .homebrewUpdater,
+             .appLeftovers,
+             .updates,
              .shredder,
              .developerLogs,
-             .environmentDoctor:
+             .environmentDoctor,
+             .xcodeCleanup,
+             .toolchains,
+             .localSnapshots,
+             .virtualMachines,
+             .editorCaches:
             return false
         }
     }
@@ -759,8 +782,8 @@ struct DeveloperSettingsView: View {
                 Toggle("Developer mode", isOn: $developerModeEnabled)
             } footer: {
                 Text(
-                    "Shows the Developer section and its local Logs page. "
-                        + "Deletion auditing stays active even when Developer mode is off."
+                    "Shows developer storage maps, environment checks and dedicated cleanup reviews. "
+                        + "Cleanup protections stay active when Developer mode is off."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -149,7 +149,7 @@ struct VirtualMachineFiles {
                 throw VirtualMachineError(
                     "VM process/socket metadata remains; native teardown cannot be proven inactive.")
             }
-            let validation = safety.validateForTrash(path)
+            let validation = safety.validateForTrash(path, developerOwner: .virtualMachines)
             guard validation.isSafe else { throw VirtualMachineError(validation.reason ?? "Protected VM state.") }
             guard status.st_uid == getuid() else { throw VirtualMachineError("VM ownership is unknown.") }
             if path.lastPathComponent == ".git" { throw VirtualMachineError("Source repository contents retained.") }

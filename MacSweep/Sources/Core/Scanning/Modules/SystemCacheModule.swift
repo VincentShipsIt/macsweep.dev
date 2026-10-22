@@ -208,6 +208,7 @@ struct SystemCacheModule: ScanModule {
 
     /// Check if a path is protected and should not be deleted
     private func isProtected(_ url: URL) -> Bool {
+        if EditorCleanupOwnership.overlaps(url) { return true }
         let filename = url.lastPathComponent
 
         // Check protected subdirectory names

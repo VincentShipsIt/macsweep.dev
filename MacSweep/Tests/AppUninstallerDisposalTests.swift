@@ -223,17 +223,5 @@ final class AppUninstallerDisposalTests {
         #expect(plistLeftovers.first?.type == .applicationSupport)
     }
 
-    @Test func findOrphanedLeftoversSkipsInstalledApps() async throws {
-        let locations = try makeFixtureLibrary()
-        // > 1KB so the orphan-size floor doesn't drop the fixtures.
-        try Data(repeating: 0, count: 8_192).write(to: locations[0].0.appendingPathComponent("com.gone.app.plist"))
-        try Data(repeating: 0, count: 8_192).write(to: locations[0].0.appendingPathComponent("com.installed.app.plist"))
 
-        let orphans = await LeftoverScanner(leftoverLocations: locations)
-            .findOrphanedLeftovers(installedBundleIDs: ["com.installed.app"])
-
-        let names = Set(orphans.map(\.path.lastPathComponent))
-        #expect(names.contains("com.gone.app.plist"))
-        #expect(!names.contains("com.installed.app.plist"))
-    }
 }

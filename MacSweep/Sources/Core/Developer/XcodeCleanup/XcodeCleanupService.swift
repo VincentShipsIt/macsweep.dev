@@ -47,14 +47,20 @@ struct XcodeCleanupService {
         let safety = SafetyChecker(userRules: rules())
         var result = await XcodeCleanupNative(home: home, safety: safety, command: command).scan()
         let selectedDeveloper = result.selectedDeveloper
-        let fileTask = Task.detached {
-            XcodeCleanupFiles(
-                home: home, applications: applications, now: now(), safety: safety, systemCaches: systemCaches
-            )
-            .scan(selectedDeveloper: selectedDeveloper)
+        let fileInventory: XcodeCleanupInventory
+        do {
+            fileInventory = try await DevArtifactIO.run {
+                XcodeCleanupFiles(
+                    home: home, applications: applications, now: now(), safety: safety, systemCaches: systemCaches
+                ).scan(selectedDeveloper: selectedDeveloper)
+            }
+        } catch {
+            result.issues.append("Xcode file inspection incomplete: \(error.localizedDescription)")
+            for index in result.targets.indices {
+                result.targets[index].retentionReason = "Inspection incomplete; rescan."
+            }
+            return result
         }
-        let fileInventory = await withTaskCancellationHandler(
-            operation: { await fileTask.value }, onCancel: { fileTask.cancel() })
         result.targets += fileInventory.targets
         result.issues += fileInventory.issues
         do {
@@ -197,13 +203,12 @@ struct XcodeCleanupService {
     private func fileEvidence(
         _ target: XcodeCleanupTarget, safety: SafetyChecker
     ) async throws -> XcodeCleanupEvidence {
-        let task = Task.detached {
+        return try await DevArtifactIO.run {
             try XcodeCleanupFiles.measure(
                 target.path, safety: safety,
                 appBundle: target.category == .applications
             ).evidence
         }
-        return try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() })
     }
 
     private static func activityReason(_ snapshot: DevProcessSnapshot, target: XcodeCleanupTarget) -> String? {

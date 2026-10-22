@@ -38,33 +38,8 @@ struct VirtualMachineService {
 
     func scan() async -> VirtualMachineInventory {
         var result = await nativeInventory()
-        let fileTask = Task.detached { VirtualMachineFiles(home: home, applications: applications).scan() }
-        let files = await withTaskCancellationHandler(
-            operation: { await fileTask.value }, onCancel: { fileTask.cancel() })
-        result.installedManagers.formUnion(files.installedManagers)
-        result.issues += files.issues
-        for target in files.targets {
-            if let index = result.targets.firstIndex(where: {
-                $0.manager == target.manager && $0.paths.map(\.path) == target.paths.map(\.path)
-            }) {
-                result.targets[index].measuredBytes = target.measuredBytes
-                result.targets[index].modified = target.modified
-            } else {
-                result.targets.append(target)
-            }
-        }
-        for index in result.targets.indices where result.targets[index].measuredBytes == nil {
-            let paths = result.targets[index].paths
-            guard !paths.isEmpty else { continue }
-            let task = Task.detached { try? VirtualMachineFiles.measure(paths) }
-            let measured = await withTaskCancellationHandler(
-                operation: { await task.value }, onCancel: { task.cancel() })
-            result.targets[index].measuredBytes = measured?.bytes
-            if let path = paths.first {
-                result.targets[index].modified = try? path.resourceValues(forKeys: [.contentModificationDateKey])
-                    .contentModificationDate
-            }
-        }
+        result = await mergingFileInventory(into: result)
+        if Task.isCancelled { return result }
         let safety = SafetyChecker(userRules: rules())
         do {
             let snapshot = try await activity()
@@ -82,6 +57,43 @@ struct VirtualMachineService {
             result.issues.append("VM activity inspection unavailable.")
             for index in result.targets.indices {
                 result.targets[index].retentionReason = "VM activity is unknown; retained."
+            }
+        }
+        return result
+    }
+
+    private func mergingFileInventory(into native: VirtualMachineInventory) async -> VirtualMachineInventory {
+        var result = native
+        let files: VirtualMachineInventory
+        do {
+            files = try await DevArtifactIO.run { VirtualMachineFiles(home: home, applications: applications).scan() }
+        } catch {
+            result.issues.append("VM file inspection incomplete: \(error.localizedDescription)")
+            for index in result.targets.indices {
+                result.targets[index].retentionReason = "Inspection incomplete; rescan."
+            }
+            return result
+        }
+        result.installedManagers.formUnion(files.installedManagers)
+        result.issues += files.issues
+        for target in files.targets {
+            if let index = result.targets.firstIndex(where: {
+                $0.manager == target.manager && $0.paths.map(\.path) == target.paths.map(\.path)
+            }) {
+                result.targets[index].measuredBytes = target.measuredBytes
+                result.targets[index].modified = target.modified
+            } else {
+                result.targets.append(target)
+            }
+        }
+        for index in result.targets.indices where result.targets[index].measuredBytes == nil {
+            let paths = result.targets[index].paths
+            guard !paths.isEmpty else { continue }
+            let measured = try? await DevArtifactIO.run { try VirtualMachineFiles.measure(paths) }
+            result.targets[index].measuredBytes = measured?.bytes
+            if let path = paths.first {
+                result.targets[index].modified = try? path.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate
             }
         }
         return result
@@ -179,9 +191,7 @@ struct VirtualMachineService {
             throw VirtualMachineError("CLI identity is unknown.")
         }
         let executableStamp = DevArtifactNode(path: resolvedTool.path, status: executableStatus)
-        let task = Task.detached { try VirtualMachineFiles.measure(target.paths, safety: safety) }
-        let measured = try await withTaskCancellationHandler(
-            operation: { try await task.value }, onCancel: { task.cancel() })
+        let measured = try await DevArtifactIO.run { try VirtualMachineFiles.measure(target.paths, safety: safety) }
         var value = target
         value.measuredBytes = measured.bytes
         value.evidence = VirtualMachineEvidence(

@@ -6,11 +6,16 @@ struct ToolchainsView: View {
     @State private var inventory = ToolchainInventory()
     @State private var selected = Set<String>()
     @State private var isScanning = false
+    @State private var didScan = false
     @State private var showingReview = false
     @State private var errorMessage: String?
     private let service: ToolchainService
 
-    init(service: ToolchainService = .init()) { self.service = service }
+    init(service: ToolchainService = .init(), snapshotInventory: ToolchainInventory? = nil) {
+        self.service = service
+        _inventory = State(initialValue: snapshotInventory ?? ToolchainInventory())
+        _didScan = State(initialValue: snapshotInventory != nil)
+    }
 
     private var policy: ToolchainPolicy { ToolchainPolicy(staleMonths: staleMonths) }
     private var selectedVersions: [ToolchainInstallation] {
@@ -36,7 +41,6 @@ struct ToolchainsView: View {
             selected = []
             inventory = .init()
         }
-        .task { await scan() }
     }
 
     private var header: some View {
@@ -69,8 +73,12 @@ struct ToolchainsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if inventory.installations.isEmpty {
                     ContentUnavailableView(
-                        "No Installed Toolchains Found", systemImage: "terminal",
-                        description: Text("Supported managers appear when their installed versions are detected."))
+                        didScan ? "No Installed Toolchains Found" : "Review Installed Toolchains",
+                        systemImage: "terminal",
+                        description: Text(
+                            didScan
+                                ? "Supported managers appear when their installed versions are detected."
+                                : "Scan to inspect versions, project references and running jobs before review."))
                 }
                 ForEach(inventory.issues, id: \.self) { issue in
                     Label(issue, systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
@@ -126,7 +134,10 @@ struct ToolchainsView: View {
         isScanning = true
         selected = []
         errorMessage = nil
-        defer { isScanning = false }
+        defer {
+            isScanning = false
+            didScan = true
+        }
         do { inventory = try await service.inventory(policy: policy) } catch {
             inventory = .init()
             errorMessage = error.localizedDescription

@@ -6,8 +6,10 @@ struct UpdatesView: View {
     @State private var reviewed: [PackageUpdate] = []
     @State private var showingReview = false
 
-    init(administratorUpdate: MasAdministratorUpdate? = nil) {
-        _service = StateObject(wrappedValue: UpdatesService(administratorUpdate: administratorUpdate))
+    init(administratorUpdate: MasAdministratorUpdate? = nil, snapshotInventory: UpdateInventory? = nil) {
+        _service = StateObject(
+            wrappedValue: UpdatesService(
+                administratorUpdate: administratorUpdate, snapshotInventory: snapshotInventory))
     }
 
     private var isBusy: Bool { service.isChecking || service.isUpdating }

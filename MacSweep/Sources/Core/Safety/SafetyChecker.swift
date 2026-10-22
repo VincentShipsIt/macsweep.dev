@@ -145,8 +145,8 @@ struct SafetyChecker: Sendable {
     /// protected. The action is recoverable (Trash), but still gated so a stray
     /// click — or a parent symlink pointing into a protected root — can't nuke a
     /// critical path.
-    func validateForTrash(_ url: URL) -> ValidationResult {
-        validateBlocklist(url, action: .trash)
+    func validateForTrash(_ url: URL, developerOwner: DeveloperCleanupOwner? = nil) -> ValidationResult {
+        validateBlocklist(url, action: .trash, developerOwner: developerOwner)
     }
 
     /// Validate an application bundle the user explicitly chose to uninstall.
@@ -257,7 +257,9 @@ struct SafetyChecker: Sendable {
     /// Shared blocklist used by shred and explicit move-to-Trash. The shredder's and
     /// disk-map's whole purpose is acting on arbitrary user-chosen files, so an
     /// unrecognized path is *allowed*; we only refuse the catastrophic targets.
-    private func validateBlocklist(_ url: URL, action: BlocklistAction) -> ValidationResult {
+    private func validateBlocklist(
+        _ url: URL, action: BlocklistAction, developerOwner: DeveloperCleanupOwner? = nil
+    ) -> ValidationResult {
         let standardized = url.standardized
 
         // Never follow a symlink as the FINAL component: a write/overwrite opens
@@ -280,6 +282,12 @@ struct SafetyChecker: Sendable {
 
         if let validation = validateUserRules(path, mode: .cleanup) {
             return validation
+        }
+        if EditorCleanupOwnership.overlaps(URL(fileURLWithPath: path)) {
+            return .protected(reason: EditorCleanupOwnership.retentionReason)
+        }
+        if let owner = DeveloperCleanupOwnership.owner(of: URL(fileURLWithPath: path)), owner != developerOwner {
+            return .protected(reason: DeveloperCleanupOwnership.reason(owner))
         }
 
         // Refuse the filesystem root and the home directory itself.
@@ -345,6 +353,13 @@ struct SafetyChecker: Sendable {
         //    cancels a user rule, so built-in checks below still retain precedence.
         if let validation = validateUserRules(path, mode: context.mode) {
             return validation
+        }
+        if EditorCleanupOwnership.overlaps(URL(fileURLWithPath: path)) {
+            return .protected(reason: EditorCleanupOwnership.retentionReason)
+        }
+        if let owner = DeveloperCleanupOwnership.owner(
+            of: URL(fileURLWithPath: path), includingAncestors: context.mode == .cleanup) {
+            return .protected(reason: DeveloperCleanupOwnership.reason(owner))
         }
 
         if context.moduleID == "mail-attachments", MailAttachmentsModule.isAttachmentFile(at: standardized) {
