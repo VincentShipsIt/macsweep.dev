@@ -83,6 +83,18 @@ struct DeveloperRepositoryDiscoveryTests {
         }
     }
 
+    @Test func wildcardIndicatorLookupDoesNotEagerlyListAnUnboundedDirectory() throws {
+        let temp = try TempTestDirectory(prefix: "IndicatorBounds")
+        try Data().write(to: temp.url.appending(path: "Project.csproj"))
+        let collector = ScanDiagnostics.Collector()
+        let found = ScanDiagnostics.$current.withValue(collector) {
+            DevArtifactPattern.parentContainsFile(matching: "*.csproj", in: temp.url, maximumEntries: 0)
+        }
+        #expect(!found)
+        #expect(collector.issues.contains { $0.contains("indicator lookup exceeded its safety limit") })
+        #expect(DevArtifactPattern.parentContainsFile(matching: "*.csproj", in: temp.url))
+    }
+
     @Test func recognizesArtifactsWithoutTraversingTheirContents() throws {
         let temp = try TempTestDirectory(prefix: "DiscoveryArtifacts")
         try FileManager.default.createDirectory(at: temp.url.appending(path: "repo/node_modules/nested/repo/.git"),

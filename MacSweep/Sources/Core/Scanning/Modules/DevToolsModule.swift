@@ -136,12 +136,31 @@ struct DevArtifactPattern: Sendable {
     /// file literally named `*.csproj` and never match. For a `*.ext` glob we
     /// enumerate the directory and match by suffix; everything else keeps the fast
     /// exact-name `fileExists` path.
-    static func parentContainsFile(matching glob: String, in parent: URL) -> Bool {
+    static func parentContainsFile(
+        matching glob: String, in parent: URL, maximumEntries: Int = 4096, timeLimit: TimeInterval = 1
+    ) -> Bool {
         guard glob.contains("*") else {
             return ScanFileSystem.exists(atPath: parent.appending(path: glob).path)
         }
-        let entries = (try? ScanFileSystem.contentsOfDirectory(atPath: parent.path)) ?? []
-        return entries.contains { indicator(glob, matchesFilename: $0) }
+        guard let entries = FileManager.default.enumerator(
+            at: parent, includingPropertiesForKeys: nil, options: [.skipsSubdirectoryDescendants],
+            errorHandler: { path, error in ScanDiagnostics.current?.record(error, at: path); return false }) else {
+            return false
+        }
+        let deadline = ProcessInfo.processInfo.systemUptime + max(0, timeLimit)
+        var inspected = 0
+        for case let entry as URL in entries {
+            inspected += 1
+            guard !Task.isCancelled, inspected <= max(0, maximumEntries),
+                ProcessInfo.processInfo.systemUptime < deadline else {
+                ScanDiagnostics.current?.record(
+                    DevArtifactSafetyError("Project indicator lookup exceeded its safety limit; results are partial."),
+                    at: parent)
+                return false
+            }
+            if indicator(glob, matchesFilename: entry.lastPathComponent) { return true }
+        }
+        return false
     }
 
     /// Whether `filename` satisfies an indicator entry: exact name, or suffix
