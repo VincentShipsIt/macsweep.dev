@@ -332,7 +332,8 @@ require review in their owning tool.
 The GUI and CLI share these findings and cleanup checks. Before Trash, cleanup
 rechecks filesystem identity, generated-content evidence and live activity,
 and compares content against the scan receipt. Changes require a fresh scan.
-Inspection limits or unavailable evidence retain the target. Filesystem and
+Inspection limits or unavailable evidence retain the target. Partial scans keep
+the findings already inspected and report incomplete coverage. Filesystem and
 process inspection runs on utility queues with bounded budgets. Activity evidence
 covers the current user; it cannot guarantee that another user or a privileged
 service will not start using a target after inspection. Recent-edit timestamps

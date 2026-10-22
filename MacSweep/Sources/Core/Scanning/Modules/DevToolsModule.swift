@@ -9,6 +9,7 @@ struct DevToolsModule: ScanModule {
     var searchPaths: [URL] = [FileManager.default.homeDirectoryForCurrentUser]
     var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     var maxDepth: Int = Self.defaultMaxDepth
+    var maximumDiscoveryEntries = 500_000
     var minimumDirectorySize: Int64 = 1_048_576
     var includesSystemCaches = true
     var safety = DevArtifactSafety()
@@ -28,7 +29,9 @@ struct DevToolsModule: ScanModule {
             var found: [Candidate] = []
             var inspected = 0
             let deadline = ProcessInfo.processInfo.systemUptime + 15
+            var seenRoots = Set<String>()
             for root in roots {
+                guard seenRoots.insert(root.standardizedFileURL.path).inserted else { continue }
                 guard
                     let enumerator = ScanFileSystem.enumerator(
                         at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
@@ -37,9 +40,16 @@ struct DevToolsModule: ScanModule {
                 else { continue }
                 while let url = enumerator.nextObject() as? URL {
                     inspected += 1
-                    guard inspected <= 500_000, ProcessInfo.processInfo.systemUptime < deadline else {
-                        throw DevArtifactSafetyError(
-                            "Developer artifact discovery exceeded its safety limit. Narrow the scan roots.")
+                    guard inspected <= maximumDiscoveryEntries, ProcessInfo.processInfo.systemUptime < deadline else {
+                        ScanDiagnostics.current?.record(
+                            DevArtifactSafetyError(
+                                "Developer artifact discovery stopped at its safety limit; results are partial."),
+                            at: root)
+                        return found
+                    }
+                    if specialRoots.contains(url.standardizedFileURL.path) {
+                        enumerator.skipDescendants()
+                        continue
                     }
                     let depth = enumerator.level
                     if depth > maxDepth { enumerator.skipDescendants(); continue }

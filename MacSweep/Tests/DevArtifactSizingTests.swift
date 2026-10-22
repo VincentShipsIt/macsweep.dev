@@ -26,4 +26,30 @@ struct DevArtifactSizingTests {
         #expect(FileManager.default.fileExists(atPath: outside.appendingPathComponent("private.bin").path))
     }
 
+    @Test func discoveryBudgetPreservesFindingsAndReportsIncompleteCoverage() async throws {
+        let temp = try TempTestDirectory(prefix: "DiscoveryBudget")
+        for marker in ["package.json", "turbo.json"] {
+            try Data("{}".utf8).write(to: temp.url.appendingPathComponent(marker))
+        }
+        for name in ["node_modules", "dist", ".next", ".turbo", "coverage"] {
+            let artifact = temp.url.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: artifact, withIntermediateDirectories: true)
+            try Data(repeating: 1, count: 4096).write(to: artifact.appendingPathComponent("generated.bin"))
+        }
+        var module = DevToolsModule()
+        module.searchPaths = [temp.url]
+        module.minimumDirectorySize = 0
+        module.includesSystemCaches = false
+        module.maximumDiscoveryEntries = 6
+        module.safety.processSnapshot = { DevProcessSnapshot() }
+        do {
+            _ = try await ScanDiagnostics.collect { try await module.scan() }
+            Issue.record("Expected explicit partial-scan diagnostics")
+        } catch let partial as PartialModuleScanError {
+            #expect(!partial.items.isEmpty)
+            #expect(partial.issues.contains { $0.contains("discovery stopped at its safety limit") })
+            #expect(partial.items.allSatisfy { $0.devArtifactReceipt != nil })
+        }
+    }
+
 }
