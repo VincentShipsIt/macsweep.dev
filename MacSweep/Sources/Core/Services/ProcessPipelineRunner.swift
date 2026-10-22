@@ -32,7 +32,8 @@ enum ProcessPipelineRunner {
     static func run(
         stages: [ProcessPipelineStage],
         timeout: TimeInterval,
-        onStageStarted: ProcessPipelineLaunchHandler?
+        onStageStarted: ProcessPipelineLaunchHandler?,
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) throws -> ProcessResult {
         let lifecycleDeadline = DispatchTime.now() + timeout
         var links = try makeLinks(count: stages.count - 1)
@@ -52,7 +53,7 @@ enum ProcessPipelineRunner {
                 stages: stages,
                 links: links,
                 finalOutput: finalOutput,
-                onStageStarted: onStageStarted
+                onStageStarted: onStageStarted, isCancelled: isCancelled
             )
         } catch let failure as LaunchFailure {
             terminateAndReap(
@@ -81,17 +82,13 @@ enum ProcessPipelineRunner {
         _ = Darwin.kill(-launched.groupLeader, SIGCONT)
 
         var statuses: [pid_t: Int32] = [:]
-        if drains.wait(timeout: lifecycleDeadline) == .success,
-           waitForChildren(
-               launched,
-               statuses: &statuses,
-               until: lifecycleDeadline
-           ) {
-            return try completedResult(
-                launched: launched,
-                statuses: statuses,
-                output: outputBuffer.decodedUTF8
-            )
+        while !isCancelled() && DispatchTime.now() < lifecycleDeadline {
+            let pollDeadline = min(lifecycleDeadline, DispatchTime.now() + 0.05)
+            if drains.wait(timeout: pollDeadline) == .success,
+                waitForChildren(launched, statuses: &statuses, until: pollDeadline) {
+                return try completedResult(
+                    launched: launched, statuses: statuses, output: outputBuffer.decodedUTF8)
+            }
         }
 
         signalPipeline(launched, statuses: statuses, signal: SIGTERM)
@@ -114,6 +111,7 @@ enum ProcessPipelineRunner {
         scheduleDeferredReaping(for: launched.pids, statuses: statuses)
 
         let output = outputBuffer.decodedUTF8
+        if isCancelled() { throw CancellationError() }
         throw ProcessRunnerError.timedOut(
             after: timeout,
             partialResult: ProcessResult(
@@ -126,7 +124,7 @@ enum ProcessPipelineRunner {
     }
 
     private struct LaunchFailure: Error {
-        let error: ProcessRunnerError
+        let error: any Error
         let groupLeader: pid_t
         let startedPIDs: [pid_t]
     }
@@ -135,7 +133,8 @@ enum ProcessPipelineRunner {
         stages: [ProcessPipelineStage],
         links: [PipeDescriptors],
         finalOutput: PipeDescriptors,
-        onStageStarted: ProcessPipelineLaunchHandler?
+        onStageStarted: ProcessPipelineLaunchHandler?,
+        isCancelled: @escaping @Sendable () -> Bool
     ) throws -> LaunchedPipeline {
         let descriptors = links.flatMap { [$0.read, $0.write] }
             + [finalOutput.read, finalOutput.write]
@@ -144,6 +143,7 @@ enum ProcessPipelineRunner {
 
         do {
             for index in stages.indices.reversed() {
+                if isCancelled() { throw CancellationError() }
                 let childPID = try spawn(
                     stage: stages[index],
                     index: index,
@@ -157,7 +157,7 @@ enum ProcessPipelineRunner {
                 onStageStarted?(index, childPID)
                 if groupLeader == 0 { groupLeader = childPID }
             }
-        } catch let error as ProcessRunnerError {
+        } catch {
             throw LaunchFailure(
                 error: error,
                 groupLeader: groupLeader,

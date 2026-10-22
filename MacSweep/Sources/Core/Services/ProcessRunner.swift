@@ -211,20 +211,22 @@ enum ProcessRunner {
             return ProcessResult(status: 0, output: "", error: "")
         }
 
+        let cancellation = CancellationFlag()
         return try await executionBudget.withPermit {
-            try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        continuation.resume(
-                            returning: try ProcessPipelineRunner.run(
-                                stages: stages,
-                                timeout: timeout,
-                                onStageStarted: onStageStartedForTesting
-                            ))
-                    } catch {
-                        continuation.resume(throwing: error)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(
+                                returning: try ProcessPipelineRunner.run(
+                                    stages: stages, timeout: timeout,
+                                    onStageStarted: onStageStartedForTesting,
+                                    isCancelled: { cancellation.isCancelled }))
+                        } catch { continuation.resume(throwing: error) }
                     }
                 }
+            } onCancel: {
+                cancellation.cancel()
             }
         }
     }
