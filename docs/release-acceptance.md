@@ -19,7 +19,7 @@ gh run view RUN_ID --log-failed
 gh run download RUN_ID --name fresh-install-RUN_ID-ATTEMPT
 ```
 
-The workflow uses a new standard GitHub-hosted `macos-26` VM. Homebrew and other runner tools are preinstalled, so this is a fresh MacSweep installation on a runner image, not a factory-default retail Mac. The script refuses execution outside GitHub-hosted macOS and refuses pre-existing MacSweep app, formula, cask, process or known user state. It never removes existing state to manufacture freshness, creates no account, and provisions no nested VM.
+The workflow uses a new standard GitHub-hosted `macos-26` VM. Homebrew and other runner tools are preinstalled, so this is a fresh MacSweep installation on a runner image, not a factory-default retail Mac. The script refuses execution outside GitHub-hosted macOS and refuses pre-existing MacSweep app, formula, cask, process or known user state. Full formula/cask inventories must succeed; exact package tokens are checked and raw output, diagnostics and statuses are retained. Process absence requires `pgrep` exit 1 without diagnostics; inspection errors fail closed. It never removes existing state to manufacture freshness, creates no account, and provisions no nested VM.
 
 The real acceptance path:
 

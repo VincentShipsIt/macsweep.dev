@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 
 REPOSITORY = "VincentShipsIt/macsweep.dev"
@@ -97,6 +98,35 @@ def installed(directory):
     return validate_installed(data)
 
 
+def freshness(directory, run=subprocess.run):
+    commands = (("casks", ["brew", "list", "--cask", "--versions"]),
+                ("formulae", ["brew", "list", "--formula", "--versions"]),
+                ("processes", ["pgrep", "-x", "MacSweep"]))
+    results = {}
+    for name, command in commands:
+        result = run(command, capture_output=True, text=True, timeout=30, check=False)
+        (directory / f"preexisting-{name}.txt").write_text(result.stdout)
+        (directory / f"preexisting-{name}-stderr.txt").write_text(result.stderr)
+        results[name] = {"exitStatus": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+    (directory / "freshness-command-status.json").write_text(json.dumps(
+        {name: {"exitStatus": row["exitStatus"]} for name, row in results.items()}, indent=2) + "\n")
+    for name in ("casks", "formulae"):
+        row = results[name]
+        require(row["exitStatus"] == 0, f"Homebrew {name} inventory failed; freshness is unknown")
+        for line in row["stdout"].splitlines():
+            fields = line.split()
+            if not fields:
+                continue
+            require(len(fields) >= 2 and re.fullmatch(r"[A-Za-z0-9@+_.-]+(?:/[A-Za-z0-9@+_.-]+)*", fields[0]),
+                    f"Malformed Homebrew {name} inventory; freshness is unknown")
+            require(fields[0] not in ("macsweep", TAP), f"MacSweep already installed in {name}")
+    processes = results["processes"]
+    require(processes["exitStatus"] != 0, "MacSweep already running")
+    require(processes["exitStatus"] == 1 and not processes["stdout"].strip() and not processes["stderr"].strip(),
+            "MacSweep process inspection failed; freshness is unknown")
+    return {"packagesAbsent": True, "processAbsent": True, "nativeInventoriesSucceeded": True}
+
+
 def load(directory):
     data = {key: json.loads((directory / f"{key}.json").read_text()) for key in ("release", "cask", "formula")}
     for key, filename in (("swift", "MacSweepVersion.swift"), ("pbx", "project.pbxproj"),
@@ -108,11 +138,17 @@ def load(directory):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path, nargs="?")
+    parser.add_argument("--freshness", type=Path)
     parser.add_argument("--installed", type=Path)
     parser.add_argument("--notes", type=Path)
     parser.add_argument("--version")
     args = parser.parse_args()
     try:
+        if args.freshness:
+            receipt = freshness(args.freshness)
+            (args.freshness / "package-process-freshness.json").write_text(json.dumps(receipt, indent=2) + "\n")
+            print(json.dumps(receipt))
+            raise SystemExit(0)
         if args.installed:
             receipt = installed(args.installed)
             (args.installed / "installed-alignment.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -126,5 +162,5 @@ if __name__ == "__main__":
         receipt = validate(load(args.directory))
         (args.directory / "metadata.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt))
-    except (KeyError, TypeError, ValueError, OSError) as error:
+    except (KeyError, TypeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
         parser.exit(1, f"Release metadata acceptance failed: {error}\n")

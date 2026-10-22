@@ -54,9 +54,9 @@ for entry in \
   "$HOME/Library/Saved Application State/dev.macsweep.app.savedState"; do
   [[ ! -e "$entry" ]] || { echo 'Pre-existing MacSweep user state; runner is not fresh' >&2; exit 1; }
 done
-[[ -z "$(pgrep -x MacSweep || true)" ]] || { echo 'MacSweep already running' >&2; exit 1; }
-[[ -z "$(brew list --cask --versions macsweep 2>/dev/null || true)" ]] || { echo 'MacSweep cask already installed' >&2; exit 1; }
-[[ -z "$(brew list --formula --versions macsweep 2>/dev/null || true)" ]] || { echo 'MacSweep formula already installed' >&2; exit 1; }
+# Full successful package inventories and pgrep's explicit no-match status are
+# required. Native errors remain saved evidence and never mean "not installed".
+python3 "$REPO_ROOT/scripts/release-acceptance.py" --freshness "$EVIDENCE"
 printf 'No prior app, package, process or known user state found.\n' > "$EVIDENCE/freshness.txt"
 
 gh api repos/VincentShipsIt/macsweep.dev/releases/latest > "$EVIDENCE/release.json"

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.dont_write_bytecode = True
@@ -96,6 +97,62 @@ class ReleaseAcceptanceTests(unittest.TestCase):
                                 env={"PATH": os.environ["PATH"]}, capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 2)
         self.assertIn("requires a GitHub-hosted macOS runner", result.stderr)
+
+    def run_freshness(self, casks=(0, "", ""), formulae=(0, "", ""), processes=(1, "", "")):
+        results = {("brew", "list", "--cask", "--versions"): casks,
+                   ("brew", "list", "--formula", "--versions"): formulae,
+                   ("pgrep", "-x", "MacSweep"): processes}
+        def native(command, **options):
+            status, stdout, stderr = results[tuple(command)]
+            self.assertEqual(options["timeout"], 30)
+            return subprocess.CompletedProcess(command, status, stdout, stderr)
+        scratch = ROOT / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as temporary:
+            directory = Path(temporary)
+            try:
+                receipt = MODULE.freshness(directory, run=native)
+                return receipt, None, {path.name: path.read_text() for path in directory.iterdir()}
+            except ValueError as error:
+                return None, str(error), {path.name: path.read_text() for path in directory.iterdir()}
+
+    def test_successful_full_inventories_match_only_exact_package_tokens(self):
+        receipt, error, raw = self.run_freshness(
+            casks=(0, "macsweeper 1.2.3\n", ""), formulae=(0, "macsweep-cli 1.2.3\nother 4.5.6\n", ""))
+        self.assertIsNone(error)
+        self.assertTrue(receipt["nativeInventoriesSucceeded"])
+        self.assertEqual(raw["preexisting-casks.txt"], "macsweeper 1.2.3\n")
+        self.assertEqual(json.loads(raw["freshness-command-status.json"])["processes"]["exitStatus"], 1)
+        for token in ("macsweep", MODULE.TAP):
+            for category in ("casks", "formulae"):
+                receipt, error, _ = self.run_freshness(**{category: (0, token + " 1.1.4\n", "")})
+                with self.subTest(token=token, category=category):
+                    self.assertIsNone(receipt)
+                    self.assertIn("already installed", error)
+
+    def test_failed_or_malformed_package_inspection_never_means_absent(self):
+        for category in ("casks", "formulae"):
+            for status in (1, 2, 126):
+                receipt, error, raw = self.run_freshness(**{category: (status, "", "inspection denied\n")})
+                with self.subTest(category=category, status=status):
+                    self.assertIsNone(receipt)
+                    self.assertIn("freshness is unknown", error)
+                    self.assertEqual(raw[f"preexisting-{category}-stderr.txt"], "inspection denied\n")
+            receipt, error, _ = self.run_freshness(**{category: (0, "unparseable\n", "")})
+            self.assertIsNone(receipt)
+            self.assertIn("Malformed", error)
+
+    def test_process_absence_requires_exit_one_without_diagnostics(self):
+        receipt, error, _ = self.run_freshness(processes=(1, "", ""))
+        self.assertIsNone(error)
+        self.assertTrue(receipt["processAbsent"])
+        for status, stdout, stderr in ((0, "1234\n", ""), (2, "", "inspection failed\n"),
+                                       (-9, "", ""), (1, "", "unexpected diagnostic\n")):
+            receipt, error, raw = self.run_freshness(processes=(status, stdout, stderr))
+            with self.subTest(status=status, stderr=stderr):
+                self.assertIsNone(receipt)
+                self.assertIsNotNone(error)
+                self.assertEqual(raw["preexisting-processes-stderr.txt"], stderr)
 
     def test_installed_gui_cli_and_package_versions_must_all_align(self):
         data = {"version": "1.2.3", "app_version": "1.2.3\n", "app_build": "1.2.3\n",
