@@ -52,16 +52,16 @@ struct DiskMapNode: Identifiable, Codable, Sendable {
     var children: [DiskMapNode] = []
 
     var sizeLabel: String {
-        coverage == .unknown
+        coverage == .unknown || !hasValidOwnSizes
             ? "Size unknown" : "\(coverage == .partial ? "At least " : "")\(allocatedBytes.formattedFileSize) allocated"
     }
     var logicalLabel: String {
-        coverage == .unknown
+        coverage == .unknown || !hasValidOwnSizes
             ? "Logical size unknown"
             : "\(coverage == .partial ? "At least " : "")\(logicalBytes.formattedFileSize) logical"
     }
     var canOpenOwner: Bool {
-        owner != nil && coverage != .unknown && kind != .source && kind != .swap
+        owner != nil && coverage != .unknown && hasValidOwnSizes && kind != .source && kind != .swap
     }
 
     func find(_ identifier: String) -> DiskMapNode? {
@@ -76,11 +76,30 @@ struct DiskMapNode: Identifiable, Codable, Sendable {
 
     /// Geometry reuses the existing Space Lens layout; zero-size unknown blocks remain in the accompanying list.
     func diskNode(maxDepth: Int = 4) -> DiskNode {
-        DiskNode(
-            url: URL(fileURLWithPath: id), name: name, size: allocatedBytes,
-            isDirectory: !children.isEmpty,
-            children: maxDepth > 0 ? children.map { $0.diskNode(maxDepth: maxDepth - 1) } : [], lastModified: modified)
+        let node = normalizedSizes()
+        let total = node.geometryWeightTotal(depth: max(0, maxDepth))
+        let budget = Double(Int64.max / 4)
+        let divisor = max(1, total / budget)
+        return node.geometryNode(depth: max(0, maxDepth), divisor: divisor)
     }
+
+    private func geometryWeightTotal(depth: Int) -> Double {
+        Double(allocatedBytes)
+            + (depth > 0
+                ? children.reduce(0.0) {
+                    $0 + $1.geometryWeightTotal(depth: depth - 1)
+                } : 0)
+    }
+
+    private func geometryNode(depth: Int, divisor: Double) -> DiskNode {
+        // Only layout weights are rescaled. The map's detail labels retain measured/clamped byte counts.
+        let weight = divisor > 1 ? Int64(min(Double(Int64.max / 4), Double(allocatedBytes) / divisor)) : allocatedBytes
+        return DiskNode(
+            url: URL(fileURLWithPath: id), name: name, size: weight, isDirectory: !children.isEmpty,
+            children: depth > 0 ? children.map { $0.geometryNode(depth: depth - 1, divisor: divisor) } : [],
+            lastModified: modified)
+    }
+
 }
 
 struct DiskMapReport: Codable, Sendable {
@@ -92,19 +111,20 @@ struct DiskMapReport: Codable, Sendable {
     var finished = false
 
     var grouped: DiskMapNode {
-        let groups = Dictionary(grouping: roots, by: \.kind).map { kind, nodes in
-            DiskMapNode(
+        let normalized = roots.map { $0.normalizedSizes() }
+        let groups = Dictionary(grouping: normalized, by: \.kind).map { kind, nodes in
+            var group = DiskMapNode(
                 id: "group:\(kind.rawValue)", name: kind.title, kind: kind,
-                logicalBytes: nodes.reduce(0) { $0 + $1.logicalBytes },
-                allocatedBytes: nodes.reduce(0) { $0 + $1.allocatedBytes },
                 coverage: Self.coverage(nodes),
                 children: nodes.sorted { $0.allocatedBytes > $1.allocatedBytes })
+            for node in nodes { group.accumulateSizes(from: node) }
+            return group
         }.sorted { $0.allocatedBytes > $1.allocatedBytes }
-        return DiskMapNode(
+        var root = DiskMapNode(
             id: "map", name: "Developer Disk Map",
-            logicalBytes: roots.reduce(0) { $0 + $1.logicalBytes },
-            allocatedBytes: roots.reduce(0) { $0 + $1.allocatedBytes },
-            coverage: finished && issues.isEmpty ? Self.coverage(roots) : .partial, children: groups)
+            coverage: finished && issues.isEmpty ? Self.coverage(normalized) : .partial, children: groups)
+        for group in groups { root.accumulateSizes(from: group) }
+        return root
     }
     private static func coverage(_ nodes: [DiskMapNode]) -> DiskMapCoverage {
         if nodes.allSatisfy({ $0.coverage == .complete }) { return .complete }

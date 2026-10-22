@@ -67,7 +67,7 @@ struct DiskMapMeasurement {
             walk.issue("A directory was unreadable; displayed bytes are incomplete.")
             ScanDiagnostics.current?.record(error, at: url)
         }
-        appendRemainder(to: &node)
+        node.appendSizeRemainder()
         node.children.sort { $0.allocatedBytes > $1.allocatedBytes }
         return node
     }
@@ -133,8 +133,8 @@ struct DiskMapMeasurement {
             let identity = "\(metadata.st_dev):\(metadata.st_ino)"
             guard walk.hardLinks.insert(identity).inserted else { return node }
         }
-        node.logicalBytes = max(0, metadata.st_size)
-        node.allocatedBytes = max(0, Int64(metadata.st_blocks) * 512)
+        node.applySize(DiskMapSizeMath.add(metadata.st_size, 0), to: \.logicalBytes)
+        node.applySize(DiskMapSizeMath.allocated(blocks: Int64(metadata.st_blocks)), to: \.allocatedBytes)
         if generated {
             node.generatedLogical = node.logicalBytes
             node.generatedAllocated = node.allocatedBytes
@@ -168,11 +168,10 @@ struct DiskMapMeasurement {
                 context.generated || (context.root.kind == .repository && Self.generatedNames.contains(name))
             childContext.protection = node.protectedReason
             let child = try inspect(url.appending(path: name), context: childContext, walk: &walk)
-            node.logicalBytes += child.logicalBytes
-            node.allocatedBytes += child.allocatedBytes
-            node.generatedLogical += child.generatedLogical
-            node.generatedAllocated += child.generatedAllocated
-            if child.coverage != .complete { node.coverage = .partial }
+            node.accumulateSizes(from: child)
+            if node.coverage != .complete {
+                walk.issue("Some size metadata is incomplete or exceeds the representable range.")
+            }
             if context.depth < limits.visibleDepth && walk.visible < limits.maximumVisibleNodes {
                 walk.visible += 1
                 node.children.append(child)
@@ -181,23 +180,10 @@ struct DiskMapMeasurement {
         if walk.stopped { node.coverage = .partial }
     }
 
-    private func appendRemainder(to node: inout DiskMapNode) {
-        guard !node.children.isEmpty else { return }
-        let logical = node.logicalBytes - node.children.reduce(0) { $0 + $1.logicalBytes }
-        let allocated = node.allocatedBytes - node.children.reduce(0) { $0 + $1.allocatedBytes }
-        guard logical > 0 || allocated > 0 else { return }
-        node.children.append(
-            DiskMapNode(
-                id: node.id + "#other", url: node.url, name: "Other measured contents", kind: node.kind,
-                owner: node.owner, logicalBytes: logical, allocatedBytes: allocated,
-                generatedLogical: node.generatedLogical - node.children.reduce(0) { $0 + $1.generatedLogical },
-                generatedAllocated: node.generatedAllocated - node.children.reduce(0) { $0 + $1.generatedAllocated },
-                coverage: node.coverage, protectedReason: node.protectedReason))
-    }
-
-    private func partitionRepository(_ node: DiskMapNode) -> DiskMapNode {
-        var repository = node
-        repository.children = [partition(node, generated: false), partition(node, generated: true)].compactMap { $0 }
+    func partitionRepository(_ node: DiskMapNode) -> DiskMapNode {
+        var repository = node.normalizedSizes()
+        repository.children = [partition(repository, generated: false), partition(repository, generated: true)]
+            .compactMap { $0 }
         for index in repository.children.indices {
             repository.children[index].name =
                 repository.children[index].kind == .generated
@@ -207,15 +193,22 @@ struct DiskMapMeasurement {
     }
 
     private func partition(_ original: DiskMapNode, generated: Bool) -> DiskMapNode? {
-        var node = original
+        var node = original.normalizedSizes()
+        let totals = node
         node.id += generated ? "#generated" : "#source"
-        node.logicalBytes = generated ? original.generatedLogical : original.logicalBytes - original.generatedLogical
+        node.logicalBytes =
+            generated
+            ? totals.generatedLogical : DiskMapSizeMath.subtract(totals.logicalBytes, totals.generatedLogical).bytes
         node.allocatedBytes =
-            generated ? original.generatedAllocated : original.allocatedBytes - original.generatedAllocated
-        guard node.logicalBytes > 0 || node.allocatedBytes > 0 || original.coverage != .complete else { return nil }
+            generated
+            ? totals.generatedAllocated
+            : DiskMapSizeMath.subtract(totals.allocatedBytes, totals.generatedAllocated).bytes
+        node.generatedLogical = generated ? node.logicalBytes : 0
+        node.generatedAllocated = generated ? node.allocatedBytes : 0
+        guard node.logicalBytes > 0 || node.allocatedBytes > 0 || node.coverage != .complete else { return nil }
         node.kind = generated ? .generated : .source
         node.owner = generated ? .developerTools : nil
-        node.children = original.children.compactMap { partition($0, generated: generated) }
+        node.children = totals.children.compactMap { partition($0, generated: generated) }
         return node
     }
 }

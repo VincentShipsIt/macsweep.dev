@@ -39,6 +39,7 @@ actor DiskMapCache {
     }
 
     func put(_ entry: Entry, freeBytes: Int64?) async -> Bool {
+        let entry = Self.normalized(entry)
         loaded = true
         memory[entry.key] = entry
         if memory.count > 2, let oldest = memory.values.min(by: { $0.report.measuredAt < $1.report.measuredAt }) {
@@ -68,7 +69,19 @@ actor DiskMapCache {
         guard let data = try? handle.read(upToCount: Self.maximumIndexBytes + 1),
             data.count <= Self.maximumIndexBytes
         else { return nil }
-        return try? JSONDecoder().decode(Entry.self, from: data)
+        guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+        return Self.normalized(entry)
+    }
+
+    private static func normalized(_ original: Entry) -> Entry {
+        var entry = original
+        entry.report.roots = original.report.roots.map { $0.normalizedSizes() }
+        entry.records = original.records.mapValues { record in
+            var result = record
+            result.node = record.node.normalizedSizes()
+            return result
+        }
+        return entry
     }
 
     static func noSymlinkAncestors(_ url: URL) -> Bool {

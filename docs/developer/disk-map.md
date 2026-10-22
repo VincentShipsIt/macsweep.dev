@@ -37,6 +37,10 @@ starve later roots. Refresh discards that evidence and remeasures.
 Logical bytes are file lengths; allocated estimates use `st_blocks * 512`. Directory
 metadata allocation is omitted. Overlapping root paths are excluded by component
 boundaries. Hard links are counted once across all roots using device/inode identity.
+Counter arithmetic saturates at the representable limit with partial coverage;
+negative or inconsistent cached evidence is normalized and labeled unknown. Repository
+partitions and remainder sizes stay nonnegative. Extreme geometry weights are scaled
+before reaching the shared layout; detail labels retain measured/clamped byte counts.
 APFS clone/snapshot sharing and exclusive reclaimability are unknown: neither size is
 advertised as recovered or recoverable disk space. Persistent VM/container data is a
 separate category from caches; system swap is a separate block without an action.
