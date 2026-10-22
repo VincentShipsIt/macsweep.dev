@@ -23,6 +23,14 @@ def checked(command, log, timeout=60):
         subprocess.run(command, stdout=output, stderr=subprocess.STDOUT, timeout=timeout, check=True)
 
 
+def current_quarantine(app):
+    result = subprocess.run(['/usr/bin/xattr', '-p', 'com.apple.quarantine', str(app)],
+                            capture_output=True, text=True, timeout=10, check=False)
+    require(result.returncode == 0 and result.stdout.strip() and not result.stderr.strip(),
+            'Current quarantine missing or unreadable')
+    return result.stdout.strip()
+
+
 def authorize(evidence):
     aligned = json.loads((evidence / 'installed-alignment.json').read_text())
     metadata = json.loads((evidence / 'metadata.json').read_text())
@@ -35,7 +43,7 @@ def authorize(evidence):
     require('/Applications/MacSweep.app: accepted' in assessment, 'Gatekeeper did not accept the installed app')
     require('The validate action worked!' in (evidence / 'stapler.txt').read_text(), 'Stapled ticket gate missing')
     require((evidence / 'quarantine-before.txt').read_text().strip(), 'Quarantine evidence missing')
-    require(os.getxattr(APP, 'com.apple.quarantine'), 'Current quarantine missing')
+    current_quarantine(APP)
     info = plistlib.loads((APP / 'Contents/Info.plist').read_bytes())
     require(info['CFBundleIdentifier'] == 'dev.macsweep.app', 'Installed bundle identity changed')
     require(info['CFBundleShortVersionString'] == info['CFBundleVersion'] == metadata['version'], 'App version changed')

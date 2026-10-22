@@ -46,6 +46,29 @@ struct FirstOpenPolicyTests {
                 pressOpen: { pressed += 1 }, record: { _ in }))
             preconditionFailure("Failed authorization was ignored.")
         } catch { precondition(pressed == 1) }
+        try readinessFixtures(good)
         print("First-open policy fixtures passed; only the exact verified normal Open can be pressed.")
+    }
+
+    static func readinessFixtures(_ good: FirstOpenDialog) throws {
+        var attempts = 0
+        try FirstOpenPolicy.waitForDialog(
+            snapshot: {
+                attempts += 1
+                if attempts < 3 { throw FirstOpenPending.notYetPresent }
+                return good
+            }, until: .distantFuture, pause: {})
+        precondition(attempts == 3)
+        var retriedUnexpectedFailure = false
+        do {
+            try FirstOpenPolicy.waitForDialog(
+                snapshot: { throw FirstOpenFailure(message: "Ambiguous owner or windows") },
+                until: .distantFuture, pause: { retriedUnexpectedFailure = true })
+            preconditionFailure("Invalid inspection was ignored")
+        } catch { precondition(!retriedUnexpectedFailure) }
+        do {
+            try FirstOpenPolicy.waitForDialog(snapshot: { good }, until: .distantPast, pause: {})
+            preconditionFailure("Expired dialog deadline was ignored")
+        } catch {}
     }
 }

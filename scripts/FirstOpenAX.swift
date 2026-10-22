@@ -11,8 +11,9 @@ final class FirstOpenAXDriver {
         return value
     }
 
-    func snapshot() throws -> FirstOpenDialog {
+    private func dialogWindow() throws -> (NSRunningApplication, AXUIElement) {
         let apps = NSRunningApplication.runningApplications(withBundleIdentifier: FirstOpenPolicy.owner)
+        if apps.isEmpty { throw FirstOpenPending.notYetPresent }
         guard apps.count == 1, let app = apps.first,
             app.bundleURL?.resolvingSymlinksInPath().path == FirstOpenPolicy.ownerPath
         else { throw FirstOpenFailure(message: "Expected Apple first-open agent is not uniquely present.") }
@@ -20,9 +21,17 @@ final class FirstOpenAXDriver {
             path: FirstOpenPolicy.ownerPath, requirement: "anchor apple and identifier \"\(FirstOpenPolicy.owner)\"")
         let root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(root, 2)
-        guard let windows = attribute(root, kAXWindowsAttribute) as? [AXUIElement], windows.count == 1,
-            let window = windows.first
+        guard let windows = attribute(root, kAXWindowsAttribute) as? [AXUIElement] else {
+            throw FirstOpenFailure(message: "Apple dialog windows could not be inspected.")
+        }
+        if windows.isEmpty { throw FirstOpenPending.notYetPresent }
+        guard windows.count == 1, let window = windows.first
         else { throw FirstOpenFailure(message: "Expected exactly one Apple first-open dialog.") }
+        return (app, window)
+    }
+
+    func snapshot() throws -> FirstOpenDialog {
+        let (app, window) = try dialogWindow()
         var pending = [window]
         var texts: [String] = []
         var buttons: [String] = []
@@ -94,11 +103,9 @@ struct FirstOpenAX {
                 events.append(event)
                 try JSONEncoder().encode(events).write(to: evidence.appendingPathComponent("first-open-events.json"))
             })
-        let deadline = Date().addingTimeInterval(20)
-        while NSRunningApplication.runningApplications(withBundleIdentifier: FirstOpenPolicy.owner).isEmpty,
-            Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
+        try FirstOpenPolicy.waitForDialog(
+            snapshot: { try driver.snapshot() }, until: Date().addingTimeInterval(20),
+            pause: { RunLoop.current.run(until: Date().addingTimeInterval(0.25)) })
         try FirstOpenPolicy.confirm(actions)
     }
 }

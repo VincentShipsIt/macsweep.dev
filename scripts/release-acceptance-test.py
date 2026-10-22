@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 
@@ -40,6 +41,22 @@ def fixture():
 
 
 class ReleaseAcceptanceTests(unittest.TestCase):
+    def test_live_quarantine_reads_use_macos_xattr_and_fail_closed(self):
+        spec = importlib.util.spec_from_file_location("first_open", ROOT / "scripts/first-open.py")
+        controller = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(controller)
+        command = ['/usr/bin/xattr', '-p', 'com.apple.quarantine', '/Applications/MacSweep.app']
+        for code, output, error, allowed in [(0, '0181;Homebrew Cask\n', '', True),
+                                               (1, '', 'missing', False), (0, '', '', False),
+                                               (0, '0181', 'unreadable', False)]:
+            with self.subTest(code=code, output=output, error=error), patch.object(
+                    controller.subprocess, 'run', return_value=subprocess.CompletedProcess(command, code, output, error)) as run:
+                if allowed:
+                    self.assertEqual(controller.current_quarantine(controller.APP), output.strip())
+                else:
+                    with self.assertRaises(ValueError): controller.current_quarantine(controller.APP)
+                run.assert_called_once_with(command, capture_output=True, text=True, timeout=10, check=False)
+
     def test_aligned_release_has_a_content_addressed_receipt(self):
         result = MODULE.validate(fixture())
         self.assertTrue(result["metadataAligned"])

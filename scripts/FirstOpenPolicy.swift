@@ -17,6 +17,8 @@ struct FirstOpenEvent: Codable {
     let detail: String
 }
 
+enum FirstOpenPending: Error { case notYetPresent }
+
 struct FirstOpenFailure: LocalizedError {
     let message: String
     var errorDescription: String? { message }
@@ -53,6 +55,19 @@ enum FirstOpenPolicy {
             help.count <= 1, buttons == ["Cancel", "Open"], texts.count == 2, texts.contains(question),
             texts.contains(where: { $0.range(of: download, options: .regularExpression) != nil })
         else { throw FirstOpenFailure(message: "Unexpected dialog; normal MacSweep first-open approval refused.") }
+    }
+
+    static func waitForDialog(
+        snapshot: () throws -> FirstOpenDialog, until deadline: Date,
+        now: () -> Date = { Date() }, pause: () -> Void
+    ) throws {
+        while now() < deadline {
+            do {
+                _ = try snapshot()
+                return
+            } catch FirstOpenPending.notYetPresent { pause() }
+        }
+        throw FirstOpenFailure(message: "Normal first-open dialog did not appear before the deadline.")
     }
 
     static func confirm(_ actions: FirstOpenActions) throws {
