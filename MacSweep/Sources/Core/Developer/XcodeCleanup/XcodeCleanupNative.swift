@@ -28,12 +28,12 @@ struct XcodeCleanupNative {
             else {
                 throw XcodeCleanupError("Incomplete or oversized simulator inventory; native actions retained.")
             }
-            var allDeviceStatesKnown = true
+            var allDevicesShutdown = true
             for (runtime, entries) in devices {
                 for device in entries {
                     let target = try deviceTarget(device, runtime: runtime, context: tool)
-                    if !["Shutdown", "Booted"].contains(device["state"] as? String ?? "") {
-                        allDeviceStatesKnown = false
+                    if device["state"] as? String != "Shutdown" {
+                        allDevicesShutdown = false
                     }
                     inventory.targets.append(target)
                 }
@@ -43,7 +43,9 @@ struct XcodeCleanupNative {
                     throw XcodeCleanupError("Unknown runtime record retained.")
                 }
                 var target = try runtimeTarget(fields, key: key, runtimes: runtimes, devices: devices, context: tool)
-                if !allDeviceStatesKnown { target.retentionReason = "Simulator activity state is unknown." }
+                if !allDevicesShutdown {
+                    target.retentionReason = "A simulator is booted or its activity state is unknown."
+                }
                 inventory.targets.append(target)
             }
             inventory.nativeCommandsAvailable = true

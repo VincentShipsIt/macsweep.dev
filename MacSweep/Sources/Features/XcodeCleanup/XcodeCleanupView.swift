@@ -109,9 +109,16 @@ struct XcodeCleanupView: View {
             let detail = "\(receipt.trashedBytes.formattedFileSize) moved to Trash; empty Trash to recover that space."
             message = [message, detail].compactMap { $0 }.joined(separator: "\n")
         }
+        let accounting = CleanupAccounting(
+            estimatedTargetBytes: targets.compactMap(\.bytes).reduce(0, +),
+            estimatedProcessedBytes: receipt.removedTargetBytes + receipt.trashedBytes,
+            movedToTrashBytes: receipt.trashedBytes, permanentlyRemovedTargetBytes: 0,
+            removedLocalCopyBytes: 0, toolProcessedBytes: receipt.removedTargetBytes,
+            volumeObservations: receipt.observation.map { [$0] } ?? [])
         return CleanupResult(
-            itemsProcessed: receipt.removedIDs.count, bytesFreed: receipt.removedBytes,
-            errors: receipt.errors.map { CleanupError(path: URL(fileURLWithPath: "/"), message: $0) })
+            itemsProcessed: receipt.removedIDs.count, bytesFreed: receipt.removedTargetBytes,
+            errors: receipt.errors.map { CleanupError(path: URL(fileURLWithPath: "/"), message: $0) },
+            accounting: accounting)
     }
 }
 

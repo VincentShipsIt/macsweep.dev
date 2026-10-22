@@ -99,7 +99,7 @@ struct XcodeCleanupTests {
         let receipt = await service.remove(targets, confirmed: true)
         #expect(receipt.removedIDs.count == 1)
         #expect(receipt.errors.count == 1)
-        #expect(receipt.removedBytes == 0)
+        #expect(receipt.removedTargetBytes == 0)
         #expect(receipt.trashedBytes > 0)
         #expect(!FileManager.default.fileExists(atPath: first.path))
         #expect(FileManager.default.fileExists(atPath: second.path))
@@ -127,6 +127,24 @@ struct XcodeCleanupTests {
         #expect(target.evidence == nil)
         #expect(target.retentionReason?.contains("authority") == true)
         #expect(FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test func aggregateSelectionOverCapHasNoPartialDispatch() async throws {
+        let fixture = try XcodeFixture()
+        let first = try fixture.directory("Library/Developer/CoreSimulator/Caches/first")
+        let second = try fixture.directory("Library/Developer/CoreSimulator/Caches/second")
+        let targets = await fixture.service().scan().targets
+        let total = targets.compactMap(\.bytes).reduce(0, +)
+        #expect(targets.count == 2)
+        #expect(targets.allSatisfy { ($0.bytes ?? total) < total - 1 })
+        let service = fixture.service(
+            trash: { _ in Issue.record("Aggregate cap must prevent all dispatches") },
+            guardLimit: total - 1)
+        let receipt = await service.remove(targets, confirmed: true)
+        #expect(receipt.removedIDs.isEmpty)
+        #expect(!receipt.errors.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: first.path))
+        #expect(FileManager.default.fileExists(atPath: second.path))
     }
 
 }

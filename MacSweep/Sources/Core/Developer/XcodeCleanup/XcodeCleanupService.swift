@@ -10,6 +10,7 @@ struct XcodeCleanupService {
     let trash: @Sendable (URL) throws -> Void
     let now: @Sendable () -> Date
     let deletionGuard: DeletionGuard
+    let volumeSpace: @Sendable () -> VolumeSpaceSnapshot
 
     init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -26,7 +27,8 @@ struct XcodeCleanupService {
             try CleanupFileRemover.recoverable($0, module: "xcode-cleanup")
         },
         now: @escaping @Sendable () -> Date = { Date() },
-        deletionGuard: DeletionGuard = .fromPreferences()
+        deletionGuard: DeletionGuard = .fromPreferences(),
+        volumeSpace: @escaping @Sendable () -> VolumeSpaceSnapshot = { .capture(at: URL(fileURLWithPath: "/")) }
     ) {
         self.home = home
         self.applications =
@@ -38,6 +40,7 @@ struct XcodeCleanupService {
         self.trash = trash
         self.now = now
         self.deletionGuard = deletionGuard
+        self.volumeSpace = volumeSpace
     }
 
     func scan() async -> XcodeCleanupInventory {
@@ -75,14 +78,22 @@ struct XcodeCleanupService {
     func remove(_ selected: [XcodeCleanupTarget], confirmed: Bool) async -> XcodeCleanupReceipt {
         var removed: [String] = []
         var failures: [String] = []
-        var removedBytes: Int64 = 0
+        var removedTargetBytes: Int64 = 0
         var trashedBytes: Int64 = 0
         var authorizedBytes: Int64 = 0
         guard confirmed, Set(selected.map(\.id)).count == selected.count else {
             return XcodeCleanupReceipt(
                 removedIDs: [], errors: ["Explicit review of unique targets is required."],
-                removedBytes: 0, trashedBytes: 0)
+                removedTargetBytes: 0, observation: nil, trashedBytes: 0)
         }
+        do {
+            try preflightSelection(selected)
+        } catch {
+            return XcodeCleanupReceipt(
+                removedIDs: [], errors: [error.localizedDescription],
+                removedTargetBytes: 0, observation: nil, trashedBytes: 0)
+        }
+        let before = volumeSpace()
         for original in selected {
             do {
                 let target = try await refreshed(original)
@@ -99,7 +110,7 @@ struct XcodeCleanupService {
                     else {
                         throw XcodeCleanupError("Native deletion was not verified. Refresh before retrying.")
                     }
-                    removedBytes += bytes
+                    removedTargetBytes += bytes
                 }
                 removed.append(target.id)
             } catch {
@@ -108,7 +119,18 @@ struct XcodeCleanupService {
         }
         return XcodeCleanupReceipt(
             removedIDs: removed, errors: failures,
-            removedBytes: removedBytes, trashedBytes: trashedBytes)
+            removedTargetBytes: removedTargetBytes,
+            observation: VolumeSpaceObservation(before: before, after: volumeSpace()), trashedBytes: trashedBytes)
+    }
+
+    private func preflightSelection(_ selected: [XcodeCleanupTarget]) throws {
+        var total: Int64 = 0
+        for target in selected {
+            guard target.canRemove, let bytes = target.bytes, bytes >= 0 else {
+                throw XcodeCleanupError("Every selected target needs complete eligible size evidence.")
+            }
+            total = try authorize(bytes, alreadyAuthorized: total)
+        }
     }
 
     private func refreshed(_ original: XcodeCleanupTarget) async throws -> XcodeCleanupTarget {
@@ -142,9 +164,11 @@ struct XcodeCleanupService {
         try Task.checkCancellation()
         switch target.mechanism {
         case .runtime(let id):
+            try await validateNativeDispatch(target, safety: safety)
             let result = try await command("/usr/bin/xcrun", ["simctl", "runtime", "delete", id.uuidString], 120)
             try result.checkedSuccess()
         case .simulator(let id):
+            try await validateNativeDispatch(target, safety: safety)
             let result = try await command("/usr/bin/xcrun", ["simctl", "delete", id.uuidString], 120)
             try result.checkedSuccess()
         case .trash:
@@ -156,6 +180,18 @@ struct XcodeCleanupService {
                 throw XcodeCleanupError("Trash operation was not verified; refresh before retrying.")
             }
         }
+    }
+
+    private func validateNativeDispatch(_ target: XcodeCleanupTarget, safety: SafetyChecker) async throws {
+        let native = await XcodeCleanupNative(home: home, safety: safety, command: command).scan()
+        guard native.nativeCommandsAvailable,
+            let current = native.targets.first(where: { $0.id == target.id }), current.canRemove,
+            current.evidence == target.evidence, current.bytes == target.bytes,
+            current.path == target.path, current.mechanism == target.mechanism
+        else {
+            throw XcodeCleanupError("Native target or global simulator activity changed before dispatch; retained.")
+        }
+        try Task.checkCancellation()
     }
 
     private func fileEvidence(

@@ -71,7 +71,8 @@ struct XcodeCleanupInventory: Sendable {
 struct XcodeCleanupReceipt: Sendable {
     let removedIDs: [String]
     let errors: [String]
-    let removedBytes: Int64
+    let removedTargetBytes: Int64
+    let observation: VolumeSpaceObservation?
     let trashedBytes: Int64
 }
 

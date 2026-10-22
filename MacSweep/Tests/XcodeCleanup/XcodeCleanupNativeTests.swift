@@ -14,7 +14,7 @@ struct XcodeCleanupNativeTests {
         #expect(target.canRemove)
         let receipt = await service.remove([target], confirmed: true)
         #expect(receipt.removedIDs == [target.id])
-        #expect(receipt.removedBytes == 4096)
+        #expect(receipt.removedTargetBytes == 4096)
         #expect(receipt.trashedBytes == 0)
         let calls = await native.calls
         #expect(calls.contains(["simctl", "runtime", "delete", native.id.uuidString]))
@@ -34,7 +34,7 @@ struct XcodeCleanupNativeTests {
         let receipt = await service.remove(targets, confirmed: true)
         #expect(receipt.removedIDs.isEmpty)
         #expect(receipt.errors.count == 1)
-        #expect(receipt.removedBytes == 0)
+        #expect(receipt.removedTargetBytes == 0)
     }
 
     @Test func availableAndUnknownRuntimeStateAreRetained() async throws {
@@ -113,6 +113,31 @@ struct XcodeCleanupNativeTests {
         #expect(targets.count == 1)
         #expect(targets.first?.canRemove == false)
         #expect(targets.first?.retentionReason?.contains("Selected Xcode") == true)
+    }
+
+    @Test func bootedDeviceUnderUnrelatedRuntimeRetainsNativeRuntime() async throws {
+        let fixture = try XcodeFixture()
+        let native = XcodeNativeFixture()
+        await native.configureUnrelatedBoot(booted: true)
+        let service = fixture.service(command: { try await native.invoke($0, $1, $2) })
+        let inventory = await service.scan()
+        let runtime = try #require(inventory.targets.first { $0.category == .runtimes })
+        #expect(!runtime.canRemove)
+        #expect(runtime.retentionReason?.contains("booted") == true)
+    }
+
+    @Test func bootBetweenReviewAndFinalNativeDispatchPreventsDeletion() async throws {
+        let fixture = try XcodeFixture()
+        let native = XcodeNativeFixture()
+        await native.configureUnrelatedBoot(afterSummaries: 3)
+        let service = fixture.service(command: { try await native.invoke($0, $1, $2) })
+        let inventory = await service.scan()
+        let target = try #require(inventory.targets.first { $0.category == .runtimes })
+        #expect(target.canRemove)
+        let receipt = await service.remove([target], confirmed: true)
+        #expect(receipt.removedIDs.isEmpty)
+        let calls = await native.calls
+        #expect(!calls.contains { $0.contains("delete") && !$0.contains("help") })
     }
 
 }

@@ -49,6 +49,13 @@ actor XcodeNativeFixture {
     var runtimeAvailable = false
     var state = "Ready"
     var calls: [[String]] = []
+    var unrelatedBooted = false
+    var bootAfterSummaries: Int?
+    var summaryCount = 0
+    func configureUnrelatedBoot(booted: Bool = false, afterSummaries: Int? = nil) {
+        unrelatedBooted = booted
+        bootAfterSummaries = afterSummaries
+    }
     var deviceState: String?
     var deviceAvailable = false
     var deviceRemoved = false
@@ -79,6 +86,19 @@ actor XcodeNativeFixture {
             ]
         ]
     }
+    private func deviceMap() -> [String: [[String: Any]]] {
+        summaryCount += 1
+        var values = ["com.apple.CoreSimulator.SimRuntime.iOS-1-0": deviceRecords()]
+        if unrelatedBooted || bootAfterSummaries.map({ summaryCount >= $0 }) == true {
+            values["com.apple.CoreSimulator.SimRuntime.iOS-other"] = [
+                [
+                    "udid": "11111111-2222-3333-4444-555555555555", "name": "Unrelated device",
+                    "state": "Booted", "isAvailable": true
+                ]
+            ]
+        }
+        return values
+    }
     private func runtimeRecords() -> [String: Any] {
         guard !removed else { return [:] }
         return [
@@ -105,9 +125,7 @@ actor XcodeNativeFixture {
         case ["simctl", "help", "delete"]: output = "Usage: simctl delete <device>"
         case ["simctl", "list", "-j"]:
             output = try json([
-                "devices": [
-                    "com.apple.CoreSimulator.SimRuntime.iOS-1-0": deviceRecords()
-                ],
+                "devices": deviceMap(),
                 "runtimes": [
                     ["identifier": "com.apple.CoreSimulator.SimRuntime.iOS-1-0", "isAvailable": runtimeAvailable]
                 ]
