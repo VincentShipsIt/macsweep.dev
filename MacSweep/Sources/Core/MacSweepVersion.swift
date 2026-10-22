@@ -4,6 +4,6 @@ import Foundation
 /// (`macsweep version`) and any caller that needs to report the running build.
 /// Keep this in sync with `MARKETING_VERSION` in `MacSweep.xcodeproj`.
 public enum MacSweepVersion {
-    public static let productName = "macsweep.dev"
-    public static let current = "1.1.4"
+  public static let productName = "macsweep.dev"
+  public static let current = "1.2.0"
 }

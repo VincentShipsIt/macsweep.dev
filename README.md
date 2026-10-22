@@ -29,11 +29,11 @@ Scan, clean, and optimize your Mac with safety-first defaults.
 - **Menu Bar Widget** - Quick access to system stats and actions
 - **Real-time Monitoring** - CPU, RAM, disk, battery, and network stats
 
-Source builds include dedicated [developer storage and cleanup workflows](docs/developer/README.md).
+MacSweep v1.2.0 includes dedicated [developer storage and cleanup workflows](docs/developer/README.md).
 Enable **Settings → Developer → Developer mode** for the disk map, project review,
 Xcode, toolchain, snapshot, VM, editor-cache and environment-check pages.
 App Leftovers and unified Updates live under Applications. Published release scope
-is recorded separately in [the current release notes](docs/releases/v1.1.4.md).
+is recorded separately in [the current release notes](docs/releases/v1.2.0.md).
 
 ## Screenshots
 

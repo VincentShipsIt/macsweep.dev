@@ -1,9 +1,9 @@
 # Developer storage and cleanup
 
-These workflows describe source builds. Settings → Developer → Developer mode
+These workflows ship in MacSweep v1.2.0. Settings → Developer → Developer mode
 reveals their sidebar entries. App Leftovers and Updates remain available under
 Applications. The current published binary's scope is documented separately in
-[release notes](../releases/v1.1.4.md).
+[release notes](../releases/v1.2.0.md).
 
 | Page | Inspect and review |
 | --- | --- |
