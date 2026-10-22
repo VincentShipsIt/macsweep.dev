@@ -194,7 +194,7 @@ struct SafetyChecker: Sendable {
 
     /// Validate a leftover the uninstaller matched for removal.
     ///
-    /// Leftovers live DIRECTLY inside the seven Library data roots
+    /// Leftovers live DIRECTLY inside the known Library data roots
     /// `LeftoverScanner` enumerates — one of which (`~/Library/Preferences`) is
     /// in `neverDelete`, so the generic blocklist (`validateForTrash`) would
     /// refuse every preference-plist leftover and silently break uninstall
@@ -203,7 +203,9 @@ struct SafetyChecker: Sendable {
     /// while still refusing symlinks, sensitive-looking filenames (keys,
     /// credentials, keychains), the roots themselves, and anything outside
     /// them. Removal is to Trash, so a matched leftover stays recoverable.
-    func validateForUninstallLeftover(_ url: URL) -> ValidationResult {
+    func validateForUninstallLeftover(
+        _ url: URL, libraryDirectory: URL = URL.libraryDirectory
+    ) -> ValidationResult {
         let standardized = url.standardized
 
         // Refuse a symlinked leftover: trashing through a link could move an
@@ -229,14 +231,15 @@ struct SafetyChecker: Sendable {
         // deeper, not elsewhere).
         let path = Self.realParentPath(url)
         let parent = (path as NSString).deletingLastPathComponent
-        let library = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library").standardized.path
+        let library = libraryDirectory.standardized.path
         let leftoverRoots = [
             "\(library)/Preferences",
             "\(library)/Application Support",
             "\(library)/Caches",
             "\(library)/Logs",
             "\(library)/Containers",
+            "\(library)/Group Containers",
+            "\(library)/Application Scripts",
             "\(library)/Saved Application State",
             "\(library)/LaunchAgents",
         ]
@@ -562,6 +565,42 @@ struct SafetyChecker: Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return targetURL.standardized.path.hasPrefix(home)
     }
+}
+
+extension SafetyChecker {
+    /// Validates content only inside an independently matched app-data target.
+    /// This admits no additional generic Library deletion authority.
+    func validateForUninstallLeftoverTreeNode(
+        _ url: URL, within root: URL, libraryDirectory: URL = URL.libraryDirectory
+    ) -> ValidationResult {
+        let rootResult = validateForUninstallLeftover(root, libraryDirectory: libraryDirectory)
+        guard rootResult.isSafe else { return rootResult }
+        let target = url.standardizedFileURL
+        let boundary = root.standardizedFileURL
+        guard target.path == boundary.path || target.path.hasPrefix(boundary.path + "/"),
+              target.deletingLastPathComponent().resolvingSymlinksInPath().path
+                == target.deletingLastPathComponent().standardizedFileURL.path,
+              boundary.deletingLastPathComponent().resolvingSymlinksInPath().path
+                == boundary.deletingLastPathComponent().standardizedFileURL.path else {
+            return .protected(reason: "Content escapes the proven leftover root")
+        }
+        var component = target
+        while true {
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: component.path)) != nil {
+                return .symlink(reason: "Linked app data is retained")
+            }
+            if let rule = validateUserRules(component.path, mode: .cleanup) { return rule }
+            for pattern in ProtectedPaths.sensitivePatterns where matchesPattern(
+                component.lastPathComponent.lowercased(), pattern: pattern
+            ) {
+                return .sensitive(pattern: pattern)
+            }
+            if component.path == boundary.path { break }
+            component.deleteLastPathComponent()
+        }
+        return .safe
+    }
+
 }
 
 struct ValidationContext {
