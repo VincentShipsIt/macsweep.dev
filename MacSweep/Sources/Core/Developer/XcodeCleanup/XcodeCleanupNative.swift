@@ -133,13 +133,13 @@ struct XcodeCleanupNative {
         }
         if bytes == nil { reason = "Runtime size is unknown." }
         let date = (fields["lastUsedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        let signature = try signature(fields) + context + matching.map { try signature($0) }.joined()
+        let nativeSignature = try signature(fields) + context + matching.map { try signature($0) }.joined()
         return XcodeCleanupTarget(
             id: "runtime:\(id.uuidString)", category: .runtimes,
             name: "\(fields["version"] as? String ?? runtime) (\(fields["build"] as? String ?? "unknown build"))",
             path: URL(fileURLWithPath: pathString), bytes: bytes, lastUsed: date,
             mechanism: .runtime(id), retentionReason: reason,
-            evidence: XcodeCleanupEvidence(identity: nil, nodes: [], nativeSignature: signature))
+            evidence: XcodeCleanupEvidence(identity: nil, nodes: [], nativeSignature: nativeSignature))
     }
 
     private func signature(_ fields: [String: Any]) throws -> String {
