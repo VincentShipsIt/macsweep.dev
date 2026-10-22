@@ -154,6 +154,12 @@ class ReleaseAcceptanceTests(unittest.TestCase):
                 self.assertIsNotNone(error)
                 self.assertEqual(raw["preexisting-processes-stderr.txt"], stderr)
 
+    def test_normal_open_controller_refuses_non_runner_before_ui_or_state_access(self):
+        result = subprocess.run(["python3", str(ROOT / "scripts/first-open.py"), "/unavailable/evidence"],
+                                env={"PATH": os.environ["PATH"]}, capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("requires the disposable GitHub-hosted runner", result.stderr)
+
     def test_installed_gui_cli_and_package_versions_must_all_align(self):
         data = {"version": "1.2.3", "app_version": "1.2.3\n", "app_build": "1.2.3\n",
                 "app_id": "dev.macsweep.app\n", "cli_version": "macsweep.dev 1.2.3\n",

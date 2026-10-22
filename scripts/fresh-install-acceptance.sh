@@ -26,7 +26,8 @@ finish() {
 import json, pathlib, sys
 root, status = pathlib.Path(sys.argv[1]), int(sys.argv[2])
 receipt = {"automatedExitStatus": status, "automatedChecksPassed": status == 0,
-           "interactiveFirstLaunchReview": "pending actual screenshot/dialog review",
+           "interactiveFirstLaunchReview": "pending actual onboarding screenshot review",
+           "normalOpenConfirmation": "see first-open-events.json for exact prompt/action",
            "fullIssue48Acceptance": False,
            "securityOverridesPerformed": False}
 (root / "acceptance.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -36,7 +37,7 @@ PY
     echo '### Fresh Homebrew install acceptance'
     echo "Automated check exit status: $status. See the uploaded receipts, install log and real first-launch screenshot."
     echo 'Interactive first-launch/onboarding review remains an explicit acceptance step; fixture snapshots are not fresh-machine evidence.'
-    echo 'No quarantine removal, Gatekeeper override, administrator/unlock prompt or automated security-dialog approval was requested.'
+    echo 'Only the exact verified normal first-open Open confirmation is authorized. No quarantine removal, Gatekeeper override or administrator/unlock prompt was requested.'
   } >> "$GITHUB_STEP_SUMMARY"
   exit "$status"
 }
@@ -109,14 +110,7 @@ python3 "$REPO_ROOT/scripts/release-acceptance.py" --installed "$EVIDENCE"
 [[ "$(gh api repos/VincentShipsIt/macsweep.dev/releases/latest --jq .tag_name)" == "$TAG" ]]
 xcrun swiftc -parse-as-library "$REPO_ROOT/scripts/FreshInstallProbe.swift" -o "$EVIDENCE/window-probe"
 LAUNCH_ATTEMPTED=true
-python3 - "$APP" "$EVIDENCE" <<'PYOPEN'
-import pathlib, subprocess, sys
-app, root = sys.argv[1], pathlib.Path(sys.argv[2])
-with (root / 'launch-services.log').open('w') as log:
-    subprocess.run(['/usr/bin/open', '-n', '--stdout', str(root / 'app-stdout.txt'),
-                    '--stderr', str(root / 'app-stderr.txt'), app],
-                   timeout=20, check=True, stdout=log, stderr=log)
-PYOPEN
+python3 "$REPO_ROOT/scripts/first-open.py" "$EVIDENCE"
 "$EVIDENCE/window-probe" "$APP" "$EVIDENCE/first-launch.json"
 /usr/bin/xattr -p com.apple.quarantine "$APP" > "$EVIDENCE/quarantine-after.txt"
 [[ -s "$EVIDENCE/quarantine-after.txt" ]]
