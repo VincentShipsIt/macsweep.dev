@@ -85,7 +85,10 @@ enum DoctorCommandChecks {
         return files.prefix(64).compactMap { path in
             var status = stat()
             guard lstat(path.path, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
-                status.st_size <= 65_536, let text = try? String(contentsOf: path, encoding: .utf8)
+                status.st_size <= 65_536,
+                let data = try? AuthorizedFileEvidence.read(
+                    path, maximumBytes: 65_536, expected: DevArtifactNode(path: path.path, status: status)),
+                let text = String(data: data, encoding: .utf8)
             else { return nil }
             return (path, text)
         }
