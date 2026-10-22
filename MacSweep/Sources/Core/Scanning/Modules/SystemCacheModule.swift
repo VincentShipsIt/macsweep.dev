@@ -2,6 +2,9 @@ import Foundation
 
 /// Module for cleaning system caches, logs, and crash reports
 struct SystemCacheModule: ScanModule {
+    static let cleanupReviewReason = "Removes selected cache, log, crash-report, or saved-state data permanently. "
+        + "Caches may rebuild; saved window state may be lost."
+
     typealias PermanentRemover = @Sendable (URL, String) throws -> Void
 
     let id = "system-cache"

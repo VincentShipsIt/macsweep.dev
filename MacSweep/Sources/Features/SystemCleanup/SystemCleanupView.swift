@@ -237,6 +237,11 @@ struct CleanupItemRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(item: item, modificationDate: item.lastModified,
+            defaultReviewReason: SystemCacheModule.cleanupReviewReason)
+    }
+
     var body: some View {
         SelectableItemRow(isSelected: isSelected) {
             Image(systemName: item.icon)
@@ -248,23 +253,24 @@ struct CleanupItemRow: View {
                     .font(.body)
                     .lineLimit(1)
 
-                Text(item.path.path)
+                Text(evidence.path)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                CleanupModificationEvidenceLabel(modification: evidence.modification, showsModifiedPrefix: true)
+
+                Label(evidence.reviewReason, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } trailing: {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(item.formattedSize)
                     .font(.caption)
                     .fontWeight(.medium)
-
-                if let date = item.lastModified {
-                    Text(date, style: .relative)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
         .contentShape(Rectangle())

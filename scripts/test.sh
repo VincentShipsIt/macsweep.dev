@@ -35,6 +35,9 @@ elif [[ -d "$CLT_FW/Testing.framework" ]]; then
   TEST_ARGS=(
     --package-path "$PKG"
     --disable-xctest
+    # CLT's Swift Build engine cannot initialize without Xcode platform plists.
+    # The native engine also supports the standalone runner on older CLT releases.
+    --build-system native
     -Xswiftc -F -Xswiftc "$CLT_FW"
     -Xlinker -F -Xlinker "$CLT_FW"
     -Xlinker -rpath -Xlinker "$CLT_FW"

@@ -346,6 +346,11 @@ struct TrashItemRow: View {
     let item: CleanupItem
     let isSelected: Bool
 
+    private var evidence: CleanupResultEvidence {
+        CleanupResultEvidence(item: item, modificationDate: item.lastModified,
+            defaultReviewReason: TrashBinsModule.cleanupReviewReason)
+    }
+
     var body: some View {
         SelectableItemRow(isSelected: isSelected) {
             // File icon
@@ -357,19 +362,18 @@ struct TrashItemRow: View {
                 Text(item.displayName)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    if let date = item.lastModified {
-                        Text("Deleted \(date, style: .relative) ago")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                CleanupModificationEvidenceLabel(modification: evidence.modification, showsModifiedPrefix: true)
 
-                    Text(item.path.deletingLastPathComponent().path)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                }
+                Text(evidence.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Label(evidence.reviewReason, systemImage: "trash.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } trailing: {
             Text(item.formattedSize)
