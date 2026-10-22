@@ -15,72 +15,22 @@ struct DevToolsModule: ScanModule {
     var safety = DevArtifactSafety()
     var remove: @Sendable (URL) throws -> Void = { try CleanupFileRemover.recoverable($0, module: "dev-tools") }
 
-    private struct Candidate: Sendable {
-        let url: URL
-        let name: String
-        let type: CleanupItem.ItemType
-    }
-
     func scan() async throws -> [CleanupItem] {
         let processes = try await safety.processSnapshot()
-        let candidates = try await DevArtifactIO.run {
-            let roots = searchPaths.flatMap { DeveloperScanRoots.paths(in: $0, homeDirectory: homeDirectory) }
-            let specialRoots = Set(GitArtifactScanner.worktreeRoots(in: homeDirectory).map(\.path))
-            var found: [Candidate] = []
-            var inspected = 0
-            let deadline = ProcessInfo.processInfo.systemUptime + 15
-            var seenRoots = Set<String>()
-            for root in roots {
-                guard seenRoots.insert(root.standardizedFileURL.path).inserted else { continue }
-                guard
-                    let enumerator = ScanFileSystem.enumerator(
-                        at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
-                        options: [.skipsPackageDescendants]
-                    )
-                else { continue }
-                while let url = enumerator.nextObject() as? URL {
-                    inspected += 1
-                    guard inspected <= maximumDiscoveryEntries, ProcessInfo.processInfo.systemUptime < deadline else {
-                        ScanDiagnostics.current?.record(
-                            DevArtifactSafetyError(
-                                "Developer artifact discovery stopped at its safety limit; results are partial."),
-                            at: root)
-                        return found
-                    }
-                    if specialRoots.contains(url.standardizedFileURL.path) {
-                        enumerator.skipDescendants()
-                        continue
-                    }
-                    let depth = enumerator.level
-                    if depth > maxDepth { enumerator.skipDescendants(); continue }
-                    let name = url.lastPathComponent
-                    let pattern = DevArtifactPattern.allPatterns.first { $0.matches(url) }
-                    if [".git", ".svn", ".hg", "Library", ".Trash"].contains(name)
-                        || name.hasPrefix(".") && pattern == nil
-                            && !(depth == 1 && specialRoots.contains(root.standardizedFileURL.path))
-                    {
-                        enumerator.skipDescendants()
-                        continue
-                    }
-                    if let pattern {
-                        found.append(
-                            Candidate(
-                                url: url, name: pattern.name,
-                                type: pattern.fileExtension == nil ? .directory : .file))
-                        enumerator.skipDescendants()
-                    } else if ["node_modules", "vendor", "Pods", "target", "build", "dist"].contains(name) {
-                        enumerator.skipDescendants()
-                    }
-                }
-            }
-            return found
+        let discovery = try await DevArtifactIO.run {
+            try DeveloperRepositoryDiscovery.discoverArtifacts(
+                searchPaths: searchPaths, homeDirectory: homeDirectory,
+                maxDepth: maxDepth, maximumEntries: maximumDiscoveryEntries)
+        }
+        for issue in discovery.issues {
+            ScanDiagnostics.current?.record(DevArtifactSafetyError(issue), at: searchPaths.first ?? homeDirectory)
         }
         var items: [CleanupItem] = []
         var seen = Set<String>()
-        var targets = candidates
+        var targets = discovery.candidates
         if includesSystemCaches {
             targets += DevArtifactSafety.fixedTargets(in: safety.libraryDirectory).map {
-                Candidate(url: $0.path, name: $0.name, type: .directory)
+                DeveloperRepositoryDiscovery.Artifact(url: $0.path, name: $0.name, type: .directory)
             }
         }
         for target in targets {
