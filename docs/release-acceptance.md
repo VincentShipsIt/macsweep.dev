@@ -1,0 +1,41 @@
+# Release and fresh-install acceptance
+
+The current published stable release is checked independently of the development checkout. A later merged feature is not part of an older release merely because the source version is unchanged. Versioned release notes live in `docs/releases/vX.Y.Z.md` and state both the GUI scope and deferred features. The v1.1.4 notes describe its tagged contents, not later backlog work.
+
+## Release checklist
+
+Before tagging, run `zsh scripts/release.sh check`, `zsh scripts/release-test.sh`, the package tests/coverage and CLI smoke suite. Prepare versioned notes naming supported platforms, GUI scope, known limits and deferred features. Do not bump versions or publish solely to obtain an acceptance receipt.
+
+The tag-triggered Release workflow requires aligned app/CLI/build versions, tested release-note metadata, package tests, the GUI snapshot compile, the Release CLI build and Xcode Release archive. It verifies Developer ID signing, secure timestamp, hardened runtime, bundle identity, Sparkle settings and absence of the debug entitlement. Notarization must return Accepted; the exported app is stapled, validated and assessed before packaging. It publishes checksums and signed appcast, updates the formula/cask, and then calls Fresh Homebrew Acceptance on a separate ephemeral macOS runner. Fixture snapshots prove layout/compilation only; they are never a fresh-install receipt.
+
+## Existing-release acceptance
+
+Dispatch **Fresh Homebrew Acceptance** on the default branch after the workflow lands. Supply the current `vX.Y.Z`, or leave the tag blank to resolve the latest stable release. For example:
+
+```sh
+gh workflow run fresh-install.yml --ref master -f tag=v1.1.4
+gh run list --workflow fresh-install.yml --limit 1
+gh run view RUN_ID --log-failed
+gh run download RUN_ID --name fresh-install-RUN_ID-ATTEMPT
+```
+
+The workflow uses a new standard GitHub-hosted `macos-26` VM. Homebrew and other runner tools are preinstalled, so this is a fresh MacSweep installation on a runner image, not a factory-default retail Mac. The script refuses execution outside GitHub-hosted macOS and refuses pre-existing MacSweep app, formula, cask, process or known user state. Full formula/cask inventories must succeed; exact package tokens are checked and raw output, diagnostics and statuses are retained. Process absence requires `pgrep` exit 1 without diagnostics; inspection errors fail closed. It never removes existing state to manufacture freshness, creates no account, and provisions no nested VM.
+
+The real acceptance path:
+
+1. Record OS/Homebrew versions, enabled Gatekeeper status, release identity and tap commit. Require current stable release metadata, tagged Swift/Xcode versions, formula/cask URLs/checksums and explicit release-note scope to align. The formula's historical repository rename URL is accepted only for the exact same tag and published source digest; the receipt names that alias. GitHub's uploaded app asset digest must also match the published cask checksum.
+2. Run ordinary `brew install --cask --require-sha vincentshipsit/tap/macsweep`, including the CLI dependency. When current Homebrew requires third-party trust, the runner explicitly trusts only this exact cask and formula and records that choice. This package-loader authorization does not approve macOS Gatekeeper. Homebrew's default quarantine stays enabled; bypass environment options are unset. A nonempty quarantine attribute must exist on the installed app. No custom app directory, dependency skip, ad-hoc re-signing or direct app-executable launch is used.
+3. Verify the installed app's strict signature, Developer ID authority, timestamp, hardened runtime, stapled ticket and Gatekeeper assessment. Compare installed app/build/bundle identity, CLI output, cask and formula versions against the current release. A concurrent new release fails the current-version check.
+4. Open the installed bundle through Launch Services. Passively observe exactly one matching installed bundle process, completed launch, and a real on-screen normal window at least 200×150, continuously for five seconds within a 45-second bound. Capture the actual runner desktop and launch/system logs even if the window check fails. Quarantine must remain present afterward.
+
+The observer does not request Accessibility or Screen Recording permission. If the runner cannot expose a desktop/window or permit a screenshot, the artifacts show that limitation; an app process or successful `open` return alone is insufficient. A Gatekeeper dialog that blocks launch produces a failed window gate and retained diagnostics. Do not bypass it to make CI green.
+
+## Reading the receipt and finishing acceptance
+
+The artifact includes release/tap/installed metadata, checksums, quarantine before/after, signature/stapler/Gatekeeper output, the install log, process/window JSON, the actual first-launch screenshot and launch logs. `acceptance.json` separates automated status from interactive review. It deliberately does not mark the entire issue accepted automatically.
+
+Inspect the actual screenshot for the installed app's initial onboarding and any Gatekeeper/notification dialog. Confirm there is no damaged/unidentified-app warning and no administrator/unlock request. If a first-open confirmation needs human approval, or runner security/session restrictions prevent usable UI evidence, record the exact failing step and complete that remaining interactive check on a genuinely fresh Gatekeeper-enabled Mac under the same current cask version. Preserve quarantine, use the normal first-open approval, and record OS, release tag, app/CLI versions, install log, dialog/onboarding screenshot and result on #48. Never substitute an offscreen fixture image, direct executable smoke test, signature assessment alone, or a prior machine's approval for this step.
+
+Do not close #48 until the actual fresh-runner outcome and interactive screenshot/dialog acceptance are recorded. A green tooling-fixture job only verifies the checker. A green fresh-install job proves its automated install/window gates; a human records the visual first-launch conclusion from those real artifacts or the explicitly required fresh-Mac follow-up.
+
+Primary contracts: [GitHub-hosted fresh VMs](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners), [Homebrew quarantine/security](https://docs.brew.sh/Homebrew-Security-and-Supply-Chain), [Homebrew install options](https://docs.brew.sh/Manpage), [Apple Gatekeeper behavior](https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web), and [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).

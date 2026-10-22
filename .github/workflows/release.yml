@@ -37,6 +37,15 @@ jobs:
       - name: Toolchain
         run: swift --version
 
+      - name: Verify version, release notes, package tests and GUI snapshots
+        run: |
+          set -euo pipefail
+          zsh scripts/release.sh check
+          python3 scripts/release-acceptance-test.py
+          python3 scripts/release-acceptance.py --notes "docs/releases/${RELEASE_TAG}.md" --version "${RELEASE_TAG#v}"
+          zsh scripts/test.sh
+          zsh scripts/render-screenshots.sh
+
       - name: Validate release credentials
         env:
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
@@ -331,6 +340,7 @@ jobs:
             macsweep-${{ env.RELEASE_TAG }}.tar.gz.sha256
           draft: false
           prerelease: false
+          body_path: docs/releases/${{ env.RELEASE_TAG }}.md
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -362,3 +372,12 @@ jobs:
     secrets: inherit
     permissions:
       contents: write
+
+  # A separate ephemeral runner installs the exact published cask after the tap
+  # update. Automated checks and actual first-launch artifacts are distinct from
+  # the interactive Gatekeeper/onboarding acceptance recorded on the issue.
+  fresh-install:
+    needs: update-homebrew
+    uses: ./.github/workflows/fresh-install.yml
+    with:
+      tag: ${{ github.ref_name }}
