@@ -80,7 +80,7 @@ struct DevToolsModule: ScanModule {
                 guard fresh.content == scanned.content else {
                     throw DevArtifactSafetyError("Artifact contents changed since scanning. Rescan before cleanup.")
                 }
-                try await DevArtifactIO.run {
+                try await DevArtifactIO.commit {
                     // Keep the final content/identity checks and Trash on one utility task.
                     guard try DevArtifactIdentity.read(item.path) == expected,
                         try DevArtifactContent.validateTree(
@@ -92,6 +92,7 @@ struct DevToolsModule: ScanModule {
                         throw DevArtifactSafetyError("Target changed immediately before cleanup and was retained.")
                     }
                     try fresh.gitEvidence?.validate()
+                    try Task.checkCancellation()
                     try remove(item.path)
                 }
             })
