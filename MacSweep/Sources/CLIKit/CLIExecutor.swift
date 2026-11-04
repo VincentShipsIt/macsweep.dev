@@ -178,10 +178,8 @@ public enum CLIExecutor {
             // This also surfaces not-found / ambiguous errors before any prompt.
             let preview = try await service.uninstall(app: app, dryRun: true)
             if !yes {
-                let formatter = ByteCountFormatter()
-                formatter.countStyle = .file
                 try confirm(
-                    "Uninstall \(preview.appName) and \(preview.leftovers.count) leftover item(s), moving \(formatter.string(fromByteCount: preview.bytesFreed)) to Trash?"
+                    "Uninstall \(preview.appName) and \(preview.leftovers.count) leftover item(s), moving \(preview.bytesFreed.formattedFileSize) to Trash?"
                 )
             }
             // Execute against the SAME bundle the preview resolved/priced, not the
@@ -609,13 +607,11 @@ public enum CLIExecutor {
             return lines.joined(separator: "\n\n")
 
         case let output as CLISpaceOutput:
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
             return [
                 "Disk usage:",
-                "  Total: \(formatter.string(fromByteCount: output.disk.totalBytes))",
-                "  Used:  \(formatter.string(fromByteCount: output.disk.usedBytes)) (\(String(format: "%.1f", output.disk.usedPercentage))%)",
-                "  Free:  \(formatter.string(fromByteCount: output.disk.freeBytes)) (\(String(format: "%.1f", output.disk.freePercentage))%)"
+                "  Total: \(output.disk.totalBytes.formattedFileSize)",
+                "  Used:  \(output.disk.usedBytes.formattedFileSize) (\(String(format: "%.1f", output.disk.usedPercentage))%)",
+                "  Free:  \(output.disk.freeBytes.formattedFileSize) (\(String(format: "%.1f", output.disk.freePercentage))%)"
             ].joined(separator: "\n")
 
         case let output as CLILoginItemsOutput:
@@ -639,45 +635,39 @@ public enum CLIExecutor {
 
         case let output as CLISpaceLensOutput:
             let tree = output.tree
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
             var lines = [
                 "Space lens: \(tree.rootPath)",
                 "Depth: \(tree.depth)",
-                "Total: \(formatter.string(fromByteCount: tree.totalBytes))",
+                "Total: \(tree.totalBytes.formattedFileSize)",
                 ""
             ]
-            appendDiskNodeLines(tree.root, indent: 0, formatter: formatter, into: &lines, isRoot: true)
+            appendDiskNodeLines(tree.root, indent: 0, into: &lines, isRoot: true)
             return lines.joined(separator: "\n")
 
         case let output as CLIUninstallListOutput:
             let report = output.report
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
             var lines = [
                 "Installed apps: \(report.totalApps)",
-                "Total reclaimable: \(formatter.string(fromByteCount: report.totalReclaimableBytes))"
+                "Total reclaimable: \(report.totalReclaimableBytes.formattedFileSize)"
             ]
             lines.append(contentsOf: report.apps.map {
-                "  \($0.name) (\($0.id)) — \(formatter.string(fromByteCount: $0.totalSize)) [\($0.leftoverCount) leftover(s)]"
+                "  \($0.name) (\($0.id)) — \($0.totalSize.formattedFileSize) [\($0.leftoverCount) leftover(s)]"
             })
             return lines.joined(separator: "\n")
 
         case let output as CLIUninstallOutput:
             let result = output.result
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
             let status = result.dryRun ? "preview" : (result.removedApp ? "complete" : "failed")
             var lines = [
                 "Uninstall: \(status) — \(result.appName) (\(result.appID))",
                 "Bundle: \(result.bundlePath)",
                 "Items: \(result.itemsProcessed) (\(result.leftoversRemoved) leftover(s) removed)",
-                "Processed target estimate: \(formatter.string(fromByteCount: result.bytesFreed))"
+                "Processed target estimate: \(result.bytesFreed.formattedFileSize)"
             ]
             if !result.leftovers.isEmpty {
                 lines.append("Leftovers:")
                 lines.append(contentsOf: result.leftovers.map {
-                    "  - [\($0.type)] \($0.path) (\(formatter.string(fromByteCount: $0.size)))"
+                    "  - [\($0.type)] \($0.path) (\($0.size.formattedFileSize))"
                 })
             }
             if !result.errors.isEmpty {
@@ -769,13 +759,11 @@ public enum CLIExecutor {
 
         case let output as CLIShredOutput:
             let result = output.result
-            let formatter = ByteCountFormatter()
-            formatter.countStyle = .file
             var lines = [
                 "Shred: \(result.success ? "complete" : "failed") — \(result.path)",
                 "Level: \(result.level)\(result.isDirectory ? " (directory)" : "")",
                 "Files shredded: \(result.filesShredded)",
-                "Bytes shredded: \(formatter.string(fromByteCount: result.bytesShredded))"
+                "Bytes shredded: \(result.bytesShredded.formattedFileSize)"
             ]
             if !result.errors.isEmpty {
                 lines.append("Errors:")
@@ -933,9 +921,7 @@ public enum CLIExecutor {
     }
 
     private static func confirmCleanup(_ preview: HeadlessCleanupResult) throws {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        let size = formatter.string(fromByteCount: preview.bytesFreed)
+        let size = preview.bytesFreed.formattedFileSize
         try confirm("Proceed with the declared actions for \(preview.itemsProcessed) items (estimated processed size \(size))?")
     }
 
@@ -963,19 +949,18 @@ public enum CLIExecutor {
     private static func appendDiskNodeLines(
         _ node: HeadlessDiskNode,
         indent: Int,
-        formatter: ByteCountFormatter,
         into lines: inout [String],
         isRoot: Bool
     ) {
         if !isRoot {
             let pad = String(repeating: "  ", count: indent)
             let glyph = node.isDirectory ? "▸" : "·"
-            lines.append("\(pad)\(glyph) \(node.name) (\(formatter.string(fromByteCount: node.size)))")
+            lines.append("\(pad)\(glyph) \(node.name) (\(node.size.formattedFileSize))")
         }
 
         let childIndent = isRoot ? 0 : indent + 1
         for child in node.children.prefix(diskLensChildCap) {
-            appendDiskNodeLines(child, indent: childIndent, formatter: formatter, into: &lines, isRoot: false)
+            appendDiskNodeLines(child, indent: childIndent, into: &lines, isRoot: false)
         }
         if node.children.count > diskLensChildCap {
             let pad = String(repeating: "  ", count: childIndent)
