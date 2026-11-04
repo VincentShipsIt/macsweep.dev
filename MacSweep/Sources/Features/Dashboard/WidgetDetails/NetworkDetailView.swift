@@ -151,13 +151,10 @@ struct NetworkDetailView: View {
         }
     }
 
+    /// `.file` (1000-based) to match every other disk/byte total in the app
+    /// (issue #89).
     private func formatBytes(_ bytes: UInt64) -> String {
-        let formatter = ByteCountFormatter()
-        // .file (1000-based) to match every other disk/byte total in the app;
-        // this was the lone .binary site, so the same count rendered differently
-        // on this one screen. (issue #89)
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        Int64(bytes).formattedFileSize
     }
 }
 
